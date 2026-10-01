@@ -104,6 +104,17 @@ local function RASStep(brain, ctx)
     if GetGameTimeSeconds() < 90 or brain:GetEconomyStoredRatio('ENERGY') < 0.3 then return end
 
     local enh = acu:GetBlueprint().Enhancements or {}
+    -- An upgrade replaces its prerequisite in the same slot, so walk the chain
+    -- from the top: once a later step is installed, earlier ones are done too.
+    for i = table.getn(RASChain), 1, -1 do
+        if enh[RASChain[i]] and HasEnh(acu, RASChain[i]) then
+            if i == table.getn(RASChain) or not enh[RASChain[i + 1]] then
+                ctx.rasDone = true
+                return
+            end
+            break
+        end
+    end
     for _, name in ipairs(RASChain) do
         local def = enh[name]
         if def and not HasEnh(acu, name) then
