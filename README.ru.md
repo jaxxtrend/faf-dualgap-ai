@@ -13,6 +13,9 @@
 
 [![Тестовый матч DualGap AI](https://img.youtube.com/vi/36RrrPkwhb8/hqdefault.jpg)](https://youtu.be/36RrrPkwhb8)
 
+## Поддержка
+Если проект нравится и хочется видеть, как он развивается, подписывайтесь и поддерживайте его на [Patreon](https://www.patreon.com/c/cityzenone).
+
 ## Установка
 1. Скопировать папку [`mods/DualGapAI`](mods/DualGapAI) в
    `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
