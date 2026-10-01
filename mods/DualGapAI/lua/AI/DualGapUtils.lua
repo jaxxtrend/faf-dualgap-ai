@@ -43,6 +43,23 @@ UnitIds = {
     T2Destroyer    = { 'ues0201', 'uas0201', 'urs0201', 'xss0201' },
     T2Cruiser      = { 'ues0202', 'uas0202', 'urs0202', 'xss0202' },
     T3Battleship   = { 'ues0302', 'uas0302', 'urs0302', 'xss0302' },
+
+    LandScout      = { 'uel0101', 'ual0101', 'url0101', 'xsl0101' },
+    SpyPlane       = { 'uea0302', 'uaa0302', 'ura0302', 'xsa0302' },
+    ArtilleryT2    = { 'ueb2303', 'uab2303', 'urb2303', 'xsb2303' },
+    -- Cybran has no directly buildable T3 shield: ED1 is built and upgraded.
+    ShieldT3       = { 'ueb4301', 'uab4301', 'urb4202', 'xsb4301' },
+    AntiNuke       = { 'ueb4302', 'uab4302', 'urb4302', 'xsb4302' },
+
+    -- Experimentals per role. Seraphim has no naval experimental: the
+    -- amphibious Ythotha walks the sea floor. UEF has no air experimental:
+    -- the Novax satellite centre takes that slot.
+    LandT4         = { 'uel0401', 'ual0401', 'url0402', 'xsl0401' },
+    NavalT4        = { 'ues0401', 'uas0401', 'xrl0403', 'xsl0401' },
+    AirT4          = { 'xeb2402', 'uaa0310', 'ura0401', 'xsa0402' },
+    -- Game enders ECO picks from (StrategicT4 above is the faction artillery
+    -- / launcher: Mavor, Paragon(unused), Scathis, Yolona Oss).
+    ArtilleryT4    = { 'ueb2401', 'xab2307', 'url0401', 'xsb2401' },
 }
 
 -- Factory blueprint IDs. kind: 'Land' | 'Air' | 'Naval'.
@@ -79,6 +96,18 @@ function FactoryKind(unit)
         if EntityCategoryContains(cat, unit) then return kind end
     end
     return nil
+end
+
+-- Degrees for IssueFormMove / IssueFormAggressiveMove facing from -> to
+-- (same formula as FAF's platoon-base.lua).
+function FacingDegrees(from, to)
+    local dx, dz = to[1] - from[1], to[3] - from[3]
+    local len = math.sqrt(dx * dx + dz * dz)
+    if len < 0.01 then return 0 end
+    dx, dz = dx / len, dz / len
+    local rads = math.acos(dz)
+    if dx < 0 then rads = 2 * math.pi - rads end
+    return rads * 180 / math.pi
 end
 
 function TechOf(unit)
@@ -225,17 +254,51 @@ function DeepestRearWater(side)
     return best
 end
 
+function FootprintOf(id)
+    local bp = __blueprints[id]
+    return (bp and bp.Footprint and bp.Footprint.SizeX) or 2
+end
+
+-- Placement rule that keeps bases walkable: every structure keeps `gap` free
+-- cells around it, and nothing is placed in the exit lane in front (+z) of a
+-- factory, where new units roll out. Adjacency spots (power next to a
+-- factory, storage next to a hydro) skip this check on purpose.
+FactoryExitLane = 10
+
+function HasClearance(brain, id, pos, gap)
+    gap = gap or 2
+    local size = FootprintOf(id)
+    local near = brain:GetUnitsAroundPoint(categories.STRUCTURE, pos, size + 30, 'Ally') or {}
+    for _, u in ipairs(near) do
+        if Alive(u) then
+            local up = u:GetPosition()
+            local us = u:GetBlueprint().Footprint.SizeX or 2
+            local half = (us + size) / 2 + gap
+            if math.abs(up[1] - pos[1]) < half and math.abs(up[3] - pos[3]) < half then return false end
+            if EntityCategoryContains(categories.FACTORY, u) then
+                local laneHalfX = us / 2 + 2 + size / 2
+                local laneStart = up[3] + us / 2
+                if math.abs(up[1] - pos[1]) < laneHalfX
+                    and pos[3] + size / 2 > laneStart and pos[3] - size / 2 < laneStart + FactoryExitLane then
+                    return false
+                end
+            end
+        end
+    end
+    return true
+end
+
 -- Find a buildable spot for bpId near pos (spiral). Returns position or nil.
-function FindBuildSpot(brain, bpId, pos, maxRadius)
+function FindBuildSpot(brain, bpId, pos, maxRadius, gap)
     maxRadius = maxRadius or 30
-    if brain:CanBuildStructureAt(bpId, pos) then return pos end
+    if brain:CanBuildStructureAt(bpId, pos) and HasClearance(brain, bpId, pos, gap) then return pos end
     local r = 4
     while r <= maxRadius do
         for i = 0, 11 do
             local a = (i / 12) * 2 * math.pi
             local p = { pos[1] + math.cos(a) * r, 0, pos[3] + math.sin(a) * r }
             p[2] = GetSurfaceHeight(p[1], p[3])
-            if brain:CanBuildStructureAt(bpId, p) then return p end
+            if brain:CanBuildStructureAt(bpId, p) and HasClearance(brain, bpId, p, gap) then return p end
         end
         r = r + 4
     end
@@ -243,9 +306,10 @@ function FindBuildSpot(brain, bpId, pos, maxRadius)
 end
 
 -- Order a builder to place a structure near pos. Returns true if issued.
-function BuildNear(brain, builder, bpId, pos, maxRadius)
+-- gap: clearance cells (default 2; 0 for tight defensive lines).
+function BuildNear(brain, builder, bpId, pos, maxRadius, gap)
     if not bpId or not Alive(builder) or not builder:CanBuild(bpId) then return false end
-    local spot = FindBuildSpot(brain, bpId, pos, maxRadius)
+    local spot = FindBuildSpot(brain, bpId, pos, maxRadius, gap)
     if not spot then return false end
     IssueBuildMobile({ builder }, spot, bpId, {})
     return true

@@ -45,11 +45,11 @@ FallbackRole = 'GROUND'
 Routes = {
     -- North arc out of the gap, over the central land mass (upper orange arrow).
     GroundArcNorth = {
-        { 0.200, 0.410 }, { 0.250, 0.395 }, { 0.330, 0.335 }, { 0.420, 0.285 }, { 0.500, 0.310 },
+        { 0.200, 0.410 }, { 0.250, 0.395 }, { 0.330, 0.335 }, { 0.436, 0.311 }, { 0.500, 0.310 },
     },
     -- Flatter arc along the river bank (lower orange arrow).
     GroundArcSouth = {
-        { 0.200, 0.410 }, { 0.270, 0.430 }, { 0.360, 0.440 }, { 0.430, 0.440 }, { 0.500, 0.430 },
+        { 0.200, 0.410 }, { 0.270, 0.430 }, { 0.360, 0.440 }, { 0.447, 0.433 }, { 0.500, 0.430 },
     },
     -- Coast -> underwater mexes -> central basin (blue arrow).
     NavalVector = {
@@ -68,8 +68,15 @@ MidSplitZ  = 0.40
 
 Points = {
     -- Each GROUND player holds its own zone (upper / lower mid mex group).
-    ChokeUpper    = { 0.395, 0.345 },
-    ChokeLower    = { 0.405, 0.440 },
+    -- These are the map author's 'Defensive Point' markers in the mid.
+    ChokeUpper    = { 0.436, 0.311 },  -- (446.5, 396.5)
+    ChokeLower    = { 0.447, 0.433 },  -- (457.5, 473.5)
+    -- Proxy bases (T2 shields + T2 artillery, range 115): ~100 from the
+    -- enemy's mid defensive point, so the artillery reaches it.
+    ProxyUpper    = { 0.464, 0.317 },  -- (475, 400)
+    ProxyLower    = { 0.469, 0.434 },  -- (480, 474)
+    -- Fleet gathering point: the map's 'Naval Rally Point'.
+    NavalRally    = { 0.367, 0.670 },  -- (375.5, 622.5)
     Choke         = { 0.380, 0.370 }, -- fallback for non-ranked spawns
     ArtyStaging   = { 0.320, 0.385 }, -- fallback; normally 40 behind own choke
     NavalYardHint = { 0.200, 0.600 }, -- search for coastal water from here
@@ -77,6 +84,31 @@ Points = {
     BasinCenter   = { 0.500, 0.720 },
     LandCenter    = { 0.500, 0.360 },
 }
+
+-- Air patrols fly ALONG the front (north-south), on the own side of it.
+-- AirFrontX is the normal line; each point steps back by AirFrontStep (up
+-- to AirFrontMaxSteps times) while known enemy AA near it reaches AAThreat.
+AirFrontX         = 0.42
+AirFrontZ         = { 0.26, 0.36, 0.46, 0.58, 0.70, 0.80 }
+AirFrontStep      = 0.04
+AirFrontMaxSteps  = 4
+AAThreat          = 6      -- known enemy AA units within AARadius
+AARadius          = 70
+
+-- Massing: units gather behind their own wall until the wave is this big
+-- (by the player's highest factory tech), or until the enemy comes close.
+WaveSize = { 10, 16, 20 }
+NavalFleetSize = { 6, 8, 10 }
+-- An experimental counts as this many units toward a wave.
+ExperimentalWaveWeight = 10
+
+-- Experimental (T4) phase, non-ECO roles.
+AirT4MinFighters  = 50     -- T3 air superiority fighters alive
+PushCheckRadius   = 80     -- "pushed" = no known enemy structures there and
+PushOwnUnits      = 5      --            at least this many own units there
+
+-- Scouting: units kept alive per role (any factory tech), see BuildOrders.Keep.
+ScoutRepathSeconds = 60
 
 -- Behaviour numbers.
 -- End of the T2 phase: this long after this player's first T2 factory.

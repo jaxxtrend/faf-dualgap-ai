@@ -26,13 +26,14 @@ local function Economy()
     return import('/mods/DualGapAI/lua/AI/DualGapEconomy.lua')
 end
 
+local function Projects()
+    return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+end
+
 ---------------------------------------------------------------------------
 -- Placement helpers
 ---------------------------------------------------------------------------
-local function FootprintOf(id)
-    local bp = __blueprints[id]
-    return (bp and bp.Footprint and bp.Footprint.SizeX) or 2
-end
+local FootprintOf = Utils.FootprintOf
 
 -- Spots whose footprint touches the building at `center` (edge adjacency).
 local function AdjacentSpots(center, centerSize, size)
@@ -66,22 +67,27 @@ local function PickSpots(brain, id, n, anchor, fallback, chosen)
     local size = FootprintOf(id)
     if anchor and Alive(anchor) then
         local bp = anchor:GetBlueprint()
-        for _, p in ipairs(AdjacentSpots(anchor:GetPosition(), bp.Footprint.SizeX, size)) do
+        local ap = anchor:GetPosition()
+        local isFactory = EntityCategoryContains(categories.FACTORY, anchor)
+        for _, p in ipairs(AdjacentSpots(ap, bp.Footprint.SizeX, size)) do
             if table.getn(out) >= n then break end
             p[2] = GetSurfaceHeight(p[1], p[3])
-            if FarFromAll(p, chosen, size) and brain:CanBuildStructureAt(id, p) then
+            -- Never on a factory's exit side (+z), units roll out there.
+            local blocksExit = isFactory and p[3] > ap[3] + 0.5
+            if not blocksExit and FarFromAll(p, chosen, size) and brain:CanBuildStructureAt(id, p) then
                 table.insert(out, p); table.insert(chosen, p)
             end
         end
     end
     local r = size
-    while table.getn(out) < n and r <= 50 do
+    while table.getn(out) < n and r <= 70 do
         for i = 0, 11 do
             if table.getn(out) >= n then break end
             local a = (i / 12) * 2 * math.pi
             local p = { fallback[1] + math.cos(a) * r, 0, fallback[3] + math.sin(a) * r }
             p[2] = GetSurfaceHeight(p[1], p[3])
-            if FarFromAll(p, chosen, size) and brain:CanBuildStructureAt(id, p) then
+            if FarFromAll(p, chosen, size + 2) and brain:CanBuildStructureAt(id, p)
+                and Utils.HasClearance(brain, id, p, 2) then
                 table.insert(out, p); table.insert(chosen, p)
             end
         end
@@ -443,7 +449,11 @@ local function TryFactories(brain, ctx, u)
                 return true
             end
             local id = Utils.FactoryId(brain, kind, 1)
-            local spot = PickSpots(brain, id, 1, nil, BaseSite(ctx, 0))[1]
+            local site = BaseSite(ctx, 0)
+            if kind == 'Naval' then
+                site = ctx.yardPos or Utils.FindNearestWater(ctx.startPos, 1.5, 250)
+            end
+            local spot = site and PickSpots(brain, id, 1, nil, site)[1]
             if spot then IssueBuildMobile({ u }, spot, id, {}); return true end
         end
     end
@@ -472,7 +482,7 @@ end
 
 -- baseOnly: the ACU in base-builder mode never wanders off.
 local function GeneralTask(brain, ctx, u, baseOnly)
-    if ctx.role == 'ECO' and not baseOnly and Economy().TryRecruit(brain, ctx, u) then return end
+    if not baseOnly and Projects().Offer(brain, ctx, u) then return end
     if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end
     if TryPower(brain, ctx, u) then return end

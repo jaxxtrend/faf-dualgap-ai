@@ -1,4 +1,4 @@
--- Mex upgrades, ACU RAS (ECO) and ECO's late strategic projects.
+-- Mex upgrades and ACU RAS (ECO).
 -- Factory upgrades live in DualGapFactories.
 
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
@@ -7,16 +7,11 @@ local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 local Alive = Utils.Alive
 
 local CatMex = categories.MASSEXTRACTION * categories.STRUCTURE
-local CatEngineer = categories.ENGINEER - categories.COMMAND - categories.SUBCOMMANDER
 
 local function UpgradeTarget(u)
     local to = u:GetBlueprint().General.UpgradesTo
     if to and to ~= '' then return to end
     return nil
-end
-
-local function MassIncome(brain)
-    return brain:GetEconomyIncome('MASS') * 10
 end
 
 ---------------------------------------------------------------------------
@@ -121,67 +116,7 @@ function TryRAS(brain, ctx, acu)
 end
 
 ---------------------------------------------------------------------------
--- ECO strategic phase: >= Config.EcoStrategicMassIncome mass/s, then up to
--- Config.EcoStrategicShare of the engineers build T3 artillery / nuke /
--- faction experimental in rotation. Idle engineers are offered to the crew
--- by DualGapEngineers through TryRecruit.
----------------------------------------------------------------------------
-local StrategicRotation = { 'StratArtyT3', 'NukeSilo', 'StrategicT4' }
-
-function TryRecruit(brain, ctx, u)
-    local s = ctx.strategic
-    if not s then return false end
-    s.crew = Utils.FilterAlive(s.crew)
-    local total = Utils.Count(brain:GetListOfUnits(CatEngineer, false))
-    if Utils.Count(s.crew) >= math.floor(total * Config.EcoStrategicShare) then return false end
-    u.DualGapAssigned = true
-    table.insert(s.crew, u)
-    return true
-end
-
-local function StrategicStep(brain, ctx)
-    if not ctx.strategic then
-        if MassIncome(brain) < Config.EcoStrategicMassIncome then return end
-        ctx.strategic = { project = 0, crew = {} }
-        Utils.Log(brain, 'entering strategic phase')
-    end
-    local s = ctx.strategic
-    s.crew = Utils.FilterAlive(s.crew)
-    if Utils.Count(s.crew) == 0 then return end
-
-    if not (Alive(s.lead) and not s.lead:IsIdleState()) then
-        s.lead = nil
-        for _ = 1, table.getn(StrategicRotation) do
-            s.project = s.project + 1
-            if s.project > table.getn(StrategicRotation) then s.project = 1 end
-            local id = Utils.FactionId(brain, StrategicRotation[s.project])
-            for _, u in ipairs(s.crew) do
-                if id and u:CanBuild(id) then
-                    -- Behind the base, away from the enemy.
-                    local dir = (ctx.side == 'LEFT') and -1 or 1
-                    local site = { ctx.startPos[1] + dir * 25, ctx.startPos[2], ctx.startPos[3] }
-                    if Utils.BuildNear(brain, u, id, site, 60) then
-                        s.lead = u
-                        Utils.Log(brain, 'strategic project ' .. id)
-                    end
-                    break
-                end
-            end
-            if s.lead then break end
-        end
-    end
-
-    if s.lead then
-        for _, u in ipairs(s.crew) do
-            if u ~= s.lead and u:IsIdleState() then IssueGuard({ u }, s.lead) end
-        end
-    end
-end
-
----------------------------------------------------------------------------
+-- ECO's strategic phase and game ender live in DualGapProjects.
 function Start(brain, ctx)
     ForkThread(Utils.RunLoop, 'MexUpgrades', brain, ctx, 5, UpgradeStep)
-    if ctx.role == 'ECO' then
-        ForkThread(Utils.RunLoop, 'Strategic', brain, ctx, 5, StrategicStep)
-    end
 end

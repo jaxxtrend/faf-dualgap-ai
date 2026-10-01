@@ -29,16 +29,21 @@ ACU = {
     { 'Power', count = 2 },
     { 'UpgradeMexes', tech = 2 },
 }
--- GROUND leaves for the mid as soon as the mex upgrades are started.
-UpgradeMexesNoAssist = { GROUND = true }
+-- GROUND leaves for the mid and NAVAL for the coast as soon as the mex
+-- upgrades are started (the navy needs its yard early to contest the water).
+UpgradeMexesNoAssist = { GROUND = true, NAVAL = true }
 
 ---------------------------------------------------------------------------
 -- First factory. Steps:
 --   { 'Engineer', tech = t, count = n }  until n engineers of that tech exist
 --   { 'Upgrade' }                        HQ upgrade to the next tech
+--   { 'Scout', count = n }               land scout from a land factory,
+--                                        air scout from an air factory
 --   { 'Scout', count = n, factory = 'Air' }  only if this is an air factory
+-- Scout counts are totals alive, so the later step tops up to 3.
 ---------------------------------------------------------------------------
 Factory = {
+    { 'Scout', count = 1 },                    -- scout right at the start
     { 'Engineer', tech = 1, count = 10 },
     { 'Upgrade' },
     { 'Engineer', tech = 2, count = 5 },
@@ -98,6 +103,30 @@ Production = {
     },
 }
 
+-- Support units kept alive all game, built before army production by any
+-- factory of the right kind whatever its tech: scouting never stops.
+Keep = {
+    GROUND = { { 'LandScout', kind = 'Land', count = 2 }, { 'AirScout', kind = 'Air', count = 1 } },
+    AIR    = { { 'AirScout', kind = 'Air', count = 2 }, { 'SpyPlane', kind = 'Air', count = 1 } },
+    ECO    = { { 'AirScout', kind = 'Air', count = 1 }, { 'SpyPlane', kind = 'Air', count = 1 } },
+    NAVAL  = { { 'AirScout', kind = 'Air', count = 1 } },
+}
+
+-- Experimental each role builds once its T4 trigger fires (DualGapProjects):
+--   AIR    >= Config.AirT4MinFighters T3 fighters
+--   GROUND own mid zone pushed, or an enemy experimental was scouted
+--   NAVAL  water pushed, or an enemy experimental was scouted
+-- They keep coming one after another while the trigger holds.
+Experimental = {
+    GROUND = 'LandT4',
+    NAVAL  = 'NavalT4',
+    AIR    = 'AirT4',
+}
+
+-- ECO picks ONE game ender at random when its strategic phase starts and
+-- keeps building that kind. Entries the faction can't build are skipped.
+GameEnders = { 'StratArtyT3', 'NukeSilo', 'ArtilleryT4', 'AirT4' }
+
 -- Engineers kept alive after the opening (main factory refills them).
 EngineerTargets = {
     GROUND = { 10, 5, 10 },
@@ -111,5 +140,5 @@ ExtraFactories = {
     GROUND = { Land = 4 },
     AIR    = { Air = 10 },
     ECO    = {},
-    NAVAL  = {},           -- naval yards are built by the ACU
+    NAVAL  = { Naval = 3 },   -- placed on the water near the ACU's first yard
 }
