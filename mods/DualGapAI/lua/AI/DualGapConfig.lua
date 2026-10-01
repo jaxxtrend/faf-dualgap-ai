@@ -57,9 +57,21 @@ Routes = {
     },
 }
 
+-- Mex ownership (DualGapMexOwnership). Base mexes: within BaseRadius of a
+-- spawn. Land mexes with MidBand[1] <= nx <= MidBand[2] belong to the side's
+-- GROUND players: above MidSplitZ to the upper one (slot rank 2), below to
+-- the lower one (rank 3). Underwater mexes belong to the side's NAVAL player.
+-- Anything else goes to the nearest spawn of the same side.
+BaseRadius = 50
+MidBand    = { 0.30, 0.70 }
+MidSplitZ  = 0.40
+
 Points = {
-    Choke         = { 0.380, 0.370 }, -- where GROUND fortifies
-    ArtyStaging   = { 0.320, 0.385 }, -- behind the wall
+    -- Each GROUND player holds its own zone (upper / lower mid mex group).
+    ChokeUpper    = { 0.395, 0.345 },
+    ChokeLower    = { 0.405, 0.440 },
+    Choke         = { 0.380, 0.370 }, -- fallback for non-ranked spawns
+    ArtyStaging   = { 0.320, 0.385 }, -- fallback; normally 40 behind own choke
     NavalYardHint = { 0.200, 0.600 }, -- search for coastal water from here
     AirStaging    = { 0.100, 0.500 }, -- over the own-side river
     BasinCenter   = { 0.500, 0.720 },
@@ -67,11 +79,21 @@ Points = {
 }
 
 -- Behaviour numbers.
+-- End of the T2 phase: this long after this player's first T2 factory.
+T2PhaseLength          = 600
+-- Enemy air near the ACU (radius AirThreatRadius) after the T2 phase:
+--   >= BomberThreat bombers/gunships          -> hide at max depth in the rear
+--   >= TorpThreat torpedo bombers, < FewAir other aircraft -> stay on land and build
+AirThreatRadius        = 200
+BomberThreat           = 8
+TorpThreat             = 6
+FewAir                 = 4
+-- Reclaim: engineers look for props within this radius of the base.
+ReclaimRadius          = 120
+ReclaimMinValue        = 10     -- ignore clusters worth less (mass + energy/10)
 OverchargeRange        = 25
 OverchargeEnergyRatio  = 0.3
 ACURetreatHealth       = 0.35
-ACUSubmergeTime        = 1080   -- seconds; applies to GROUND / NAVAL ACUs only
-ACUOpeningEnd          = 150    -- builders own the ACU until this time
 StratArtyScanRadius    = 1000
 DeepWaterDepth         = 3
 

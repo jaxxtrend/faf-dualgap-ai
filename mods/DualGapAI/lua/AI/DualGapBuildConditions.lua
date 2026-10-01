@@ -20,6 +20,11 @@ function HaveAtLeast(aiBrain, num, cat)
     return CountCat(aiBrain, cat) >= num
 end
 
+-- Used by the placeholder builder that keeps the stock FactoryManager inert.
+function Never(aiBrain)
+    return false
+end
+
 function GameTimeBelow(aiBrain, seconds)
     return GetGameTimeSeconds() < seconds
 end

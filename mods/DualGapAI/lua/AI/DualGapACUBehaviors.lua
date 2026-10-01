@@ -1,12 +1,13 @@
 -- ACU lifecycle: overcharge, role-specific tasks, retreat / submerge.
 --
--- The legacy builders own the ACU during the opening (their conditions expire
--- at Config.ACUOpeningEnd). After that this module drives it, and only touches
--- it when it is idle or in an emergency, so the two never fight over orders.
+-- DualGapEngineers runs the ACU's opening build order (ctx.acuBODone). After
+-- that this module drives the GROUND / NAVAL ACU; AIR / ECO ACUs stay home as
+-- base builders. Orders are only given when the ACU is idle or in danger.
 
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
+local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 
 local Alive = Utils.Alive
 
@@ -51,12 +52,38 @@ local function OverchargeStep(brain, ctx)
 end
 
 ---------------------------------------------------------------------------
--- Safety evaluation (spec section 4, with the original's bugs fixed:
--- enemy-only artillery scan, no global time trigger for rear roles, loop
--- keeps running after the first retreat).
+-- Safety. GROUND / NAVAL ACUs hide at maximum depth in the rear at the end of
+-- the T2 phase (ctx.t2EndTime), on low HP, against enemy strategic artillery
+-- or when many bombers are around. If the air threat is mostly torpedo
+-- bombers, water is the dangerous place: stay on land and build in base.
+-- AIR / ECO ACUs never leave the base and only fall back to the start.
 ---------------------------------------------------------------------------
+local CatEnemyAir = categories.AIR * categories.MOBILE - categories.SCOUT
+local CatTorpAir = CatEnemyAir * categories.ANTINAVY
+local CatBomberAir = CatEnemyAir * (categories.BOMBER + categories.GROUNDATTACK) - categories.ANTINAVY
+
 local function EnemyStratArtyPresent(brain, pos)
     return Utils.CountAround(brain, CatStratArty, pos, Config.StratArtyScanRadius, 'Enemy') > 0
+end
+
+-- Returns torpedo bombers, bombers/gunships, all other aircraft near pos.
+function AirThreat(brain, pos)
+    local r = Config.AirThreatRadius
+    local torp = Utils.CountAround(brain, CatTorpAir, pos, r, 'Enemy')
+    local bombers = Utils.CountAround(brain, CatBomberAir, pos, r, 'Enemy')
+    local all = Utils.CountAround(brain, CatEnemyAir, pos, r, 'Enemy')
+    return torp, bombers, all - torp
+end
+
+-- Pure decision, exposed for tests. Returns 'DEEP', 'LAND' or nil.
+function SafetyDecision(hp, lateT2, stratArty, torp, bombers, otherAir)
+    local torpHeavy = torp >= Config.TorpThreat and otherAir < Config.FewAir
+    local airHeavy = bombers >= Config.BomberThreat
+    if airHeavy then return 'DEEP' end
+    local wantsWater = hp < Config.ACURetreatHealth or lateT2 or stratArty
+    if wantsWater and torpHeavy then return 'LAND' end
+    if wantsWater then return 'DEEP' end
+    return nil
 end
 
 local function SafetyStep(brain, ctx)
@@ -67,24 +94,31 @@ local function SafetyStep(brain, ctx)
     local role = ctx.role
 
     if role == 'GROUND' or role == 'NAVAL' then
-        local danger = hp < Config.ACURetreatHealth
-            or GetGameTimeSeconds() > Config.ACUSubmergeTime
-            or EnemyStratArtyPresent(brain, pos)
-        if danger and ctx.acuState ~= 'SUBMERGED' then
-            local water = Utils.FindNearestWater(pos, Config.DeepWaterDepth, 400)
+        local lateT2 = ctx.t2EndTime ~= nil and GetGameTimeSeconds() >= ctx.t2EndTime
+        local torp, bombers, otherAir = AirThreat(brain, pos)
+        local want = SafetyDecision(hp, lateT2, EnemyStratArtyPresent(brain, pos), torp, bombers, otherAir)
+
+        if want == 'DEEP' and ctx.acuState ~= 'SUBMERGED' then
+            local water = Utils.DeepestRearWater(ctx.side)
+                or Utils.FindNearestWater(pos, Config.DeepWaterDepth, 400)
             if water then
-                Utils.Log(brain, 'ACU submerging (hp=' .. string.format('%.2f', hp) .. ')')
+                Utils.Log(brain, string.format('ACU to max depth (hp=%.2f lateT2=%s bombers=%d)',
+                    hp, tostring(lateT2), bombers))
                 IssueClearCommands({ acu })
                 IssueMove({ acu }, water)
                 ctx.acuState = 'SUBMERGED'
                 ctx.submergePos = water
             end
-        elseif ctx.acuState == 'SUBMERGED' and not danger and hp > 0.8 then
-            -- Healed and the threat is gone: go back to work.
-            ctx.acuState = (role == 'GROUND') and 'MARCH' or 'NAVAL_LATE'
+        elseif want == 'LAND' and ctx.acuState ~= 'LANDBUILD' then
+            Utils.Log(brain, 'ACU stays on land: torpedo bombers (' .. torp .. '), little other air')
+            IssueClearCommands({ acu })
+            IssueMove({ acu }, ctx.startPos)
+            ctx.acuState = 'LANDBUILD'      -- DualGapEngineers uses it as a base builder
+        elseif want == nil and (ctx.acuState == 'SUBMERGED' or ctx.acuState == 'LANDBUILD') and hp > 0.8 then
+            -- Threat gone (only possible before the T2 phase ends): back to work.
+            ctx.acuState = (role == 'GROUND') and 'MARCH' or 'NAVAL'
         end
     else
-        -- AIR / ECO: never leave base; fall back to the start position.
         if hp < Config.ACURetreatHealth and Utils.Dist2D(pos, ctx.startPos) > 20 then
             IssueClearCommands({ acu })
             IssueMove({ acu }, ctx.startPos)
@@ -114,9 +148,8 @@ end
 
 local function GroundACUStep(brain, ctx)
     local acu = Utils.Commander(brain)
-    if not acu or ctx.acuState == 'SUBMERGED' then return end
-    local t = GetGameTimeSeconds()
-    if t < Config.ACUOpeningEnd then return end
+    if not acu or not ctx.acuBODone then return end
+    if ctx.acuState == 'SUBMERGED' or ctx.acuState == 'LANDBUILD' then return end
     if not Utils.IsIdle(acu) then return end
 
     local pos = acu:GetPosition()
@@ -127,7 +160,7 @@ local function GroundACUStep(brain, ctx)
             ctx.acuState = 'FORTIFY'
         else
             -- Walk the arc only up to the choke (drop waypoints past it).
-            local route = Routes.GetRoute('GroundArcNorth', ctx.side)
+            local route = Routes.GetRoute(ctx.groundArc, ctx.side)
             local trimmed = {}
             for _, wp in ipairs(route) do
                 table.insert(trimmed, wp)
@@ -173,7 +206,8 @@ local NavalLateStart = 600
 
 local function NavalACUStep(brain, ctx)
     local acu = Utils.Commander(brain)
-    if not acu or ctx.acuState == 'SUBMERGED' then return end
+    if not acu or not ctx.acuBODone then return end
+    if ctx.acuState == 'SUBMERGED' or ctx.acuState == 'LANDBUILD' then return end
     local t = GetGameTimeSeconds()
 
     if not ctx.yardPos then
@@ -194,13 +228,14 @@ local function NavalACUStep(brain, ctx)
         return
     end
 
-    if t < NavalLateStart then return end
-    ctx.acuState = 'NAVAL_LATE'
+    ctx.acuState = 'NAVAL'
 
     -- Re-plan every step when idle; when assisting, only interrupt for real work.
     local busyAssisting = (ctx.acuTask == 'ASSIST') and not Utils.IsIdle(acu)
     local work
-    if Utils.Count(navalFactories) < 3 then
+    if t < NavalLateStart then
+        work = nil                       -- early: just loop the first yard
+    elseif Utils.Count(navalFactories) < 3 then
         work = { id = Utils.FactionId(brain, 'NavalFactoryT1'), pos = ctx.yardPos }
     else
         local torps = Utils.CountAround(brain, CatTorpedo, ctx.yardPos, 40, 'Ally')
@@ -241,7 +276,19 @@ end
 ---------------------------------------------------------------------------
 function Start(brain, ctx)
     ctx.acuState = 'OPENING'
-    ctx.choke = Routes.GetPoint('Choke', ctx.side)
+    -- Each GROUND player holds its own zone: upper slot (rank 2) the upper
+    -- mid mex group via the north arc, lower slot (rank 3) the lower one.
+    local slot = RoleManager.GetSlots()[brain.Name]
+    if slot and slot.role == 'GROUND' and slot.rank == 3 then
+        ctx.choke = Routes.GetPoint('ChokeLower', ctx.side)
+        ctx.groundArc = 'GroundArcSouth'
+    elseif slot and slot.role == 'GROUND' then
+        ctx.choke = Routes.GetPoint('ChokeUpper', ctx.side)
+        ctx.groundArc = 'GroundArcNorth'
+    else
+        ctx.choke = Routes.GetPoint('Choke', ctx.side)
+        ctx.groundArc = 'GroundArcNorth'
+    end
     ForkThread(Utils.RunLoop, 'Overcharge', brain, ctx, 1, OverchargeStep)
     ForkThread(Utils.RunLoop, 'ACUSafety', brain, ctx, 2, SafetyStep)
     if ctx.role == 'GROUND' then
@@ -252,5 +299,5 @@ function Start(brain, ctx)
             if c.role == 'GROUND' then GroundACUStep(b, c) else NavalACUStep(b, c) end
         end)
     end
-    -- AIR and ECO ACUs stay with the builders (ECO's RAS lives in DualGapEconomy).
+    -- AIR and ECO ACUs are base builders (DualGapEngineers), ECO also does RAS.
 end

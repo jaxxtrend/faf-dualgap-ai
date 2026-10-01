@@ -17,7 +17,75 @@ UnitIds = {
     NukeSilo       = { 'ueb2305', 'uab2305', 'urb2305', 'xsb2305' },
     -- Faction experimental for ECO: Mavor, Paragon, Scathis, Yolona Oss.
     StrategicT4    = { 'ueb2401', 'xab1401', 'url0401', 'xsb2401' },
+
+    PowerT1        = { 'ueb1101', 'uab1101', 'urb1101', 'xsb1101' },
+    PowerT2        = { 'ueb1201', 'uab1201', 'urb1201', 'xsb1201' },
+    PowerT3        = { 'ueb1301', 'uab1301', 'urb1301', 'xsb1301' },
+    EnergyStorage  = { 'ueb1105', 'uab1105', 'urb1105', 'xsb1105' },
+
+    EngineerT1     = { 'uel0105', 'ual0105', 'url0105', 'xsl0105' },
+    EngineerT2     = { 'uel0208', 'ual0208', 'url0208', 'xsl0208' },
+    EngineerT3     = { 'uel0309', 'ual0309', 'url0309', 'xsl0309' },
+    AirScout       = { 'uea0101', 'uaa0101', 'ura0101', 'xsa0101' },
+
+    T1Tank         = { 'uel0201', 'ual0201', 'url0107', 'xsl0201' },
+    T1Artillery    = { 'uel0103', 'ual0103', 'url0103', 'xsl0103' },
+    T2Tank         = { 'uel0202', 'ual0202', 'url0202', 'xsl0202' },
+    T2MML          = { 'uel0111', 'ual0111', 'url0111', 'xsl0111' },
+    T3Assault      = { 'uel0303', 'ual0303', 'url0303', 'xsl0303' },
+    T1Interceptor  = { 'uea0102', 'uaa0102', 'ura0102', 'xsa0102' },
+    T1Bomber       = { 'uea0103', 'uaa0103', 'ura0103', 'xsa0103' },
+    T2TorpBomber   = { 'uea0204', 'uaa0204', 'ura0204', 'xsa0204' },
+    T3ASF          = { 'uea0303', 'uaa0303', 'ura0303', 'xsa0303' },
+    T3StratBomber  = { 'uea0304', 'uaa0304', 'ura0304', 'xsa0304' },
+    T1Frigate      = { 'ues0103', 'uas0103', 'urs0103', 'xss0103' },
+    T1Sub          = { 'ues0203', 'uas0203', 'urs0203', 'xss0203' },
+    T2Destroyer    = { 'ues0201', 'uas0201', 'urs0201', 'xss0201' },
+    T2Cruiser      = { 'ues0202', 'uas0202', 'urs0202', 'xss0202' },
+    T3Battleship   = { 'ues0302', 'uas0302', 'urs0302', 'xss0302' },
 }
+
+-- Factory blueprint IDs. kind: 'Land' | 'Air' | 'Naval'.
+-- T1 -> T2/T3 upgrades go to the HQ for the first factory of a kind and to
+-- the cheaper support factory once an HQ of that tech exists.
+local FactionPrefix = { 'ue', 'ua', 'ur', 'xs' }
+local SupportPrefix = { 'ze', 'za', 'zr', 'zs' }
+local KindDigit = { Land = '1', Air = '2', Naval = '3' }
+
+function FactoryId(brain, kind, tech)
+    local f = brain:GetFactionIndex()
+    if not FactionPrefix[f] or not KindDigit[kind] then return nil end
+    return FactionPrefix[f] .. 'b0' .. (tech or 1) .. '0' .. KindDigit[kind]
+end
+
+function SupportFactoryId(brain, kind, tech)
+    local f = brain:GetFactionIndex()
+    if not SupportPrefix[f] or not KindDigit[kind] then return nil end
+    return SupportPrefix[f] .. 'b9' .. (tech + 3) .. '0' .. KindDigit[kind]
+end
+
+local KindCategory = {
+    Land = categories.FACTORY * categories.LAND * categories.STRUCTURE,
+    Air = categories.FACTORY * categories.AIR * categories.STRUCTURE,
+    Naval = categories.FACTORY * categories.NAVAL * categories.STRUCTURE,
+}
+
+function FactoryCategory(kind)
+    return KindCategory[kind]
+end
+
+function FactoryKind(unit)
+    for kind, cat in pairs(KindCategory) do
+        if EntityCategoryContains(cat, unit) then return kind end
+    end
+    return nil
+end
+
+function TechOf(unit)
+    if EntityCategoryContains(categories.TECH3, unit) then return 3 end
+    if EntityCategoryContains(categories.TECH2, unit) then return 2 end
+    return 1
+end
 
 function FactionId(brain, key)
     local list = UnitIds[key]
@@ -128,6 +196,33 @@ function FindNearestWater(origin, minDepth, maxRadius)
         r = r + 8
     end
     return nil
+end
+
+-- Deepest water in the own rear (layout nx <= RearDepth for LEFT, mirrored
+-- for RIGHT), inside the current playable area. Sampled on an 8-unit grid;
+-- recomputed per call because the adaptive map can grow its playable area.
+RearDepth = 0.35
+
+function DeepestRearWater(side)
+    local x0, z0, x1, z1 = MapBounds()
+    local best, bestDepth
+    local x = x0 + 4
+    while x < x1 do
+        local nx = Normalise(x, z0)
+        local rear = (side == 'RIGHT' and nx >= 1 - RearDepth) or (side ~= 'RIGHT' and nx <= RearDepth)
+        if rear then
+            local z = z0 + 4
+            while z < z1 do
+                local d = WaterDepth(x, z)
+                if d >= Config.DeepWaterDepth and (not bestDepth or d > bestDepth) then
+                    best, bestDepth = { x, GetSurfaceHeight(x, z), z }, d
+                end
+                z = z + 8
+            end
+        end
+        x = x + 8
+    end
+    return best
 end
 
 -- Find a buildable spot for bpId near pos (spiral). Returns position or nil.
