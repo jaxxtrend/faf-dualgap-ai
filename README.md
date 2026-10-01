@@ -9,6 +9,11 @@ What it does: a strict opening build order, own-mex ownership (a fallen ally's m
 scouting with a shared team memory, waves that move in formation and air patrols along the front, a proxy base in the mid,
 experimentals on role-specific triggers, one shared anti-nuke per three players, and responses to scouted game enders.
 
+## Video
+Test match with DualGap AI bots: https://youtu.be/36RrrPkwhb8
+
+[![DualGap AI test match](https://img.youtube.com/vi/36RrrPkwhb8/hqdefault.jpg)](https://youtu.be/36RrrPkwhb8)
+
 ## Install
 1. Copy the [`mods/DualGapAI`](mods/DualGapAI) folder to
    `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.

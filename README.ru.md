@@ -8,6 +8,11 @@
 Что умеет: строгий дебют по билд-ордеру, «свои» мексы с разделом мексов погибшего союзника, разведка с общей памятью команды,
 волны строем и патрули вдоль фронта, прокси-база на миде, T4 по условиям роли, общая ПРО на трёх игроков и ответ на замеченные гейм-эндеры.
 
+## Видео
+Тестовый матч с ботами DualGap AI: https://youtu.be/36RrrPkwhb8
+
+[![Тестовый матч DualGap AI](https://img.youtube.com/vi/36RrrPkwhb8/hqdefault.jpg)](https://youtu.be/36RrrPkwhb8)
+
 ## Установка
 1. Скопировать папку [`mods/DualGapAI`](mods/DualGapAI) в
    `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
