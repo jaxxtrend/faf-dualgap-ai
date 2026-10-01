@@ -1,6 +1,6 @@
 -- Shared helpers. Written for FAF's Lua 5.0 (no '#', no '%', no varargs).
 
-local Config = import('/lua/AI/DualGapConfig.lua')
+local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 
 -- Structure / unit IDs per faction index (1 UEF, 2 Aeon, 3 Cybran, 4 Seraphim).
 UnitIds = {
@@ -60,14 +60,30 @@ function MapBounds()
     return 0, 0, size[1], size[2]
 end
 
+function IsDualGapMap()
+    if Config.ForceDualGapLayout then return true end
+    local name = string.lower(tostring(ScenarioInfo.name or '') .. ' ' .. tostring(ScenarioInfo.map or ''))
+    for _, token in ipairs(Config.MapNameTokens) do
+        if not string.find(name, token, 1, true) then return false end
+    end
+    return true
+end
+
+-- Rectangle the normalised layout refers to: fixed on Dual Gap, else the map.
+function LayoutBounds()
+    local r = Config.LayoutRect
+    if r and IsDualGapMap() then return r[1], r[2], r[3], r[4] end
+    return MapBounds()
+end
+
 function Normalise(x, z)
-    local x0, z0, x1, z1 = MapBounds()
+    local x0, z0, x1, z1 = LayoutBounds()
     return (x - x0) / (x1 - x0), (z - z0) / (z1 - z0)
 end
 
 -- Normalised left-team point -> world position for the given side.
 function ToWorld(np, side)
-    local x0, z0, x1, z1 = MapBounds()
+    local x0, z0, x1, z1 = LayoutBounds()
     local nx = np[1]
     if side == 'RIGHT' then nx = 1 - nx end
     local x = x0 + nx * (x1 - x0)

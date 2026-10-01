@@ -4,20 +4,15 @@
 -- be computed for every slot (including human allies). AIR uses that to know
 -- where its GROUND allies stand.
 
-local Config = import('/lua/AI/DualGapConfig.lua')
-local Utils = import('/lua/AI/DualGapUtils.lua')
+local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 local ScenarioUtils = import('/lua/sim/ScenarioUtilities.lua')
 
 local Roles = Config.Roles
 local slotCache = nil
 
 function IsDualGapMap()
-    if Config.ForceDualGapLayout then return true end
-    local name = string.lower(tostring(ScenarioInfo.name or '') .. ' ' .. tostring(ScenarioInfo.map or ''))
-    for _, token in ipairs(Config.MapNameTokens) do
-        if not string.find(name, token, 1, true) then return false end
-    end
-    return true
+    return Utils.IsDualGapMap()
 end
 
 local function GetStartMarkers()
@@ -65,6 +60,11 @@ function ClassifyMarkers(markers)
         end
     end
     return result
+end
+
+-- Slots are computed once per game; tests reset between marker sets.
+function ResetCache()
+    slotCache = nil
 end
 
 function GetSlots()

@@ -4,7 +4,7 @@
 
 local function FirstBase(templateName)
     return function(aiBrain)
-        return import('/lua/AI/DualGapInit.lua').FirstBasePriority(aiBrain, templateName)
+        return import('/mods/DualGapAI/lua/AI/DualGapInit.lua').FirstBasePriority(aiBrain, templateName)
     end
 end
 

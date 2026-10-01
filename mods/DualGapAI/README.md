@@ -4,7 +4,21 @@
 
 ## Установка
 1. Скопировать папку `DualGapAI` в `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
+   Папка должна называться именно `DualGapAI`: FAF монтирует мод как `/mods/DualGapAI/`, и все импорты внутри мода используют этот путь.
 2. В лобби FAF включить мод **DualGap AI** и поставить в слоты ИИ **AI: DualGap** (или **AIx: DualGap**, читерская версия).
+
+## Роли на Dual Gap Adaptive v14 (по маркерам карты)
+| Слот | Роль | Слот | Роль |
+|---|---|---|---|
+| ARMY_1 | AIR | ARMY_2 | AIR |
+| ARMY_9 | GROUND | ARMY_10 | GROUND |
+| ARMY_3 | GROUND | ARMY_4 | GROUND |
+| ARMY_5 | NAVAL | ARMY_6 | NAVAL |
+| ARMY_11 | ECO | ARMY_12 | ECO |
+| ARMY_7 | AIR | ARMY_8 | AIR |
+
+Координаты считаются от прямоугольника `AREA_1` (0, 200.5 → 1024, 830.5), в нём карта стартует.
+Он не меняется, когда адаптивная карта расширяет игровую область.
 
 ## Как назначаются роли
 Берутся все стартовые маркеры `ARMY_N`. Они делятся на левую и правую команду и сортируются сверху вниз.

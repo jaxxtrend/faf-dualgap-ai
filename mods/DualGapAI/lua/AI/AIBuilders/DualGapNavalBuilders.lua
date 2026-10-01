@@ -3,7 +3,7 @@
 -- exists. Mid-game (10:00+) the ACU leaves the builders and runs factory
 -- loops / torpedo launchers; naval factory upgrades are in DualGapEconomy.
 
-local DGBC = '/lua/AI/DualGapBuildConditions.lua'
+local DGBC = '/mods/DualGapAI/lua/AI/DualGapBuildConditions.lua'
 
 local NavalLateStart = 600
 local CatNavalFactory = categories.FACTORY * categories.NAVAL

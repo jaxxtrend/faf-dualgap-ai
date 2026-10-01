@@ -1,10 +1,10 @@
 -- All tunables for DualGap AI in one place.
 --
--- Coordinates are NORMALISED (0..1 of the playable area, x left->right,
--- z top->bottom) and written for the LEFT team. Right-team values are produced
--- by mirroring x (x -> 1 - x), since the map is left/right symmetric.
--- They were measured from the annotated map overview; calibrate in-game with
--- the log lines printed by DualGapRoleManager (search the log for "DualGap").
+-- Coordinates are NORMALISED (0..1 of LayoutRect, x left->right, z top->bottom)
+-- and written for the LEFT team. Right-team values are produced by mirroring x
+-- (x -> 1 - x), since the map is left/right symmetric.
+-- Spawn anchors come from the map's ARMY_n markers; routes were measured from
+-- the annotated overview (which shows exactly AREA_1).
 
 Roles = {
     GROUND = 'GROUND',
@@ -18,16 +18,21 @@ MapNameTokens = { 'dual', 'gap' }
 -- Set true to use the Dual Gap layout on any map (testing on renamed copies).
 ForceDualGapLayout = false
 
+-- Fixed rectangle the layout is normalised against: the map's starting
+-- playable area AREA_1 (x0, z0, x1, z1). Dual Gap Adaptive later grows the
+-- playable area (AREA_4 ...), so the live PlayableArea must NOT be used here.
+LayoutRect = { 0, 200.5, 1024, 830.5 }
+
 -- Spawn slots of one team, sorted top -> bottom (by z). When a team has exactly
 -- this many start markers the role is taken by rank, which is robust to small
 -- scale errors. Otherwise the nearest Anchor wins.
 SpawnSlots = {
-    { role = 'AIR',    anchor = { 0.111, 0.294 } }, -- top-left rear      (red A)
-    { role = 'GROUND', anchor = { 0.136, 0.373 } }, -- land front, upper  (orange G)
-    { role = 'GROUND', anchor = { 0.180, 0.421 } }, -- land front, lower  (orange G)
-    { role = 'NAVAL',  anchor = { 0.158, 0.640 } }, -- south coast        (blue N)
-    { role = 'ECO',    anchor = { 0.112, 0.691 } }, -- south rear         (green E)
-    { role = 'AIR',    anchor = { 0.150, 0.760 } }, -- bottom-left rear   (red A)
+    { role = 'AIR',    anchor = { 0.110, 0.302 } }, -- ARMY_1 / ARMY_2   (red A)
+    { role = 'GROUND', anchor = { 0.136, 0.375 } }, -- ARMY_9 / ARMY_10  (orange G)
+    { role = 'GROUND', anchor = { 0.180, 0.422 } }, -- ARMY_3 / ARMY_4   (orange G)
+    { role = 'NAVAL',  anchor = { 0.156, 0.649 } }, -- ARMY_5 / ARMY_6   (blue N)
+    { role = 'ECO',    anchor = { 0.112, 0.697 } }, -- ARMY_11 / ARMY_12 (green E)
+    { role = 'AIR',    anchor = { 0.145, 0.763 } }, -- ARMY_7 / ARMY_8   (red A)
 }
 
 -- Force a role for a given army name, e.g. { ARMY_3 = 'ECO' }.
