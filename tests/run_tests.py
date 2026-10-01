@@ -49,6 +49,19 @@ for path in all_lua_files():
            if re.search(pat, code)]
     check(not bad, 'Lua 5.0 safe: %s %s' % (rel, bad or ''))
 
+# ---------------------------------------------------------------- import paths
+print('\nImport paths (FAF mounts mods at /mods/<folder>/, not /lua/)')
+for path in all_lua_files():
+    src = open(path, encoding='utf-8').read()
+    rel = os.path.relpath(path, ROOT)
+    for target in re.findall(r"'(/[^']+\.lua)'", src):
+        low = target.lower()
+        if low.startswith('/mods/dualgapai/'):
+            on_disk = os.path.join(ROOT, *target.split('/')[3:])
+            check(os.path.isfile(on_disk), '%s -> %s exists' % (rel, target))
+        else:
+            check('dualgap' not in low, '%s -> %s is not a mod file under /lua' % (rel, target))
+
 # ---------------------------------------------------------------- stub sim
 lua.execute(r'''
 MOD_LUA_DIR = ...
@@ -73,11 +86,12 @@ GetGameTimeSeconds = function() return 0 end
 ForkThread = function() end
 WaitSeconds = function() end
 
-ScenarioInfo = { name = 'Dual Gap Adaptive', map = '/maps/dual_gap_adaptive.v0014/x.scmap', size = { 1024, 640 } }
+ScenarioInfo = { name = 'DualGap Adaptive', map = '/maps/dualgap_adaptive.v0014/DualGap_Adaptive.scmap', size = { 1024, 1024 },
+                 PlayableArea = { 0, 200.5, 1024, 830.5 } }
 
 -- Terrain: a river band (z 0.47..0.58) plus the southern basin.
 GetTerrainHeight = function(x, z)
-    local nx, nz = x / 1024, z / 640
+    local nx, nz = x / 1024, (z - 200.5) / 630
     if nz > 0.47 and nz < 0.58 then return 10 end
     if nz >= 0.58 and nz < 0.88 and nx > 0.30 and nx < 0.70 then return 10 end
     return 30
@@ -97,7 +111,9 @@ function import(path)
         modules[key] = m
         return m
     end
-    local file = MOD_LUA_DIR .. string.sub(path, 5)   -- drop leading '/lua'
+    local prefix = '/mods/dualgapai/lua'
+    assert(string.sub(key, 1, string.len(prefix)) == prefix, 'unexpected import ' .. path)
+    local file = MOD_LUA_DIR .. string.sub(path, string.len(prefix) + 1)
     local env = setmetatable({}, { __index = _G })
     modules[key] = env
     local f = assert(loadfile(file, 't', env))
@@ -121,13 +137,13 @@ function PlatoonTemplate(spec) PLATOON_TEMPLATES[spec.Name] = spec end
 for sub in ('AI/PlatoonTemplates', 'AI/AIBuilders', 'AI/AIBaseTemplates'):
     d = os.path.join(LUA_DIR, sub)
     for f in sorted(os.listdir(d)):
-        lua.globals()['import']('/lua/' + sub + '/' + f)
+        lua.globals()['import']('/mods/DualGapAI/lua/' + sub + '/' + f)
 
 # ---------------------------------------------------------------- cross refs
 print('\nBuilder / template cross-references')
 g = lua.globals()
 check(len(list(g.DUP_BUILDERS.values())) == 0, 'builder names are unique')
-cond = g['import']('/lua/AI/DualGapBuildConditions.lua')
+cond = g['import']('/mods/DualGapAI/lua/AI/DualGapBuildConditions.lua')
 for tname, t in g.BASE_TEMPLATES.items():
     for _, gname in t.Builders.items():
         check(g.BUILDER_GROUPS[gname] is not None, 'template %s -> group %s exists' % (tname, gname))
@@ -138,7 +154,7 @@ for gname, grp in g.BUILDER_GROUPS.items():
         check(g.PLATOON_TEMPLATES[b.PlatoonTemplate] is not None,
               '%s: platoon template %s exists' % (b.BuilderName, b.PlatoonTemplate))
         for _, c in (b.BuilderConditions or {}).items():
-            check(c[1] == '/lua/AI/DualGapBuildConditions.lua' and cond[c[2]] is not None,
+            check(c[1] == '/mods/DualGapAI/lua/AI/DualGapBuildConditions.lua' and cond[c[2]] is not None,
                   '%s: condition %s defined' % (b.BuilderName, c[2]))
 check(sorted(g.BASE_TEMPLATES.keys()) == ['DualGapAir', 'DualGapEco', 'DualGapGround', 'DualGapNaval'],
       'four role base templates')
@@ -156,14 +172,14 @@ return function(spawns, jitter)
     local function rnd() seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 - 0.5 end
     for i, s in ipairs(spawns) do
         local x = (s[1] + rnd() * jitter) * 1024
-        local z = (s[2] + rnd() * jitter) * 640
+        local z = 200.5 + (s[2] + rnd() * jitter) * 630
         MARKERS['ARMY_' .. i] = { position = { x, 25, z }, type = 'Blank Marker' }
     end
-    local RM = import('/lua/AI/DualGapRoleManager.lua')
+    local RM = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
     local slots = RM.ClassifyMarkers((function()
         local out = {}
         for name, m in pairs(MARKERS) do
-            local U = import('/lua/AI/DualGapUtils.lua')
+            local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
             local nx, nz = U.Normalise(m.position[1], m.position[3])
             table.insert(out, { name = name, nx = nx, nz = nz, pos = m.position })
         end
@@ -196,22 +212,75 @@ roles_of = lua.execute(r'''
 return function(x, z, name, mapname)
     ScenarioInfo.name = mapname
     ScenarioInfo.map = '/maps/' .. mapname .. '/x.scmap'
-    local RM = import('/lua/AI/DualGapRoleManager.lua')
+    local RM = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
     local brain = { Name = name, GetArmyStartPos = function() return x, z end }
     return RM.DetermineRoleBySpawn(brain)
 end
 ''')
-r = roles_of(0.158 * 1024, 0.640 * 640, 'ARMY_1', 'Dual Gap Adaptive')
+r = roles_of(0.158 * 1024, 200.5 + 0.640 * 630, 'ARMY_1', 'Dual Gap Adaptive')
 # ARMY_1 in the last marker set is the left NAVAL slot (order[0] == 3)
 check(tuple(r) == ('NAVAL', 'LEFT'), 'DetermineRoleBySpawn(ARMY_1) -> NAVAL, LEFT (got %s)' % (r,))
 r = roles_of(0.5, 0.5, 'ARMY_99', 'Seton\'s Clutch')
 check(r[0] == 'GROUND', 'non-Dual Gap map falls back to GROUND')
-lua.execute("ScenarioInfo.name = 'Dual Gap Adaptive'; ScenarioInfo.map = '/maps/dual_gap_adaptive.v0014/x.scmap'")
+lua.execute("ScenarioInfo.name = 'DualGap Adaptive'; ScenarioInfo.map = '/maps/dualgap_adaptive.v0014/DualGap_Adaptive.scmap'")
+
+# Real ARMY_n markers from dualgap_adaptive.v0014/DualGap_Adaptive_save.lua
+REAL = {
+    'ARMY_1': (112.5, 390.5, 'AIR:LEFT'),   'ARMY_9': (139.5, 436.5, 'GROUND:LEFT'),
+    'ARMY_3': (184.5, 466.5, 'GROUND:LEFT'), 'ARMY_5': (159.5, 609.5, 'NAVAL:LEFT'),
+    'ARMY_11': (114.5, 639.5, 'ECO:LEFT'),  'ARMY_7': (148.5, 681.5, 'AIR:LEFT'),
+    'ARMY_2': (911.5, 390.5, 'AIR:RIGHT'),  'ARMY_10': (884.5, 436.5, 'GROUND:RIGHT'),
+    'ARMY_4': (839.5, 466.5, 'GROUND:RIGHT'), 'ARMY_6': (864.5, 609.5, 'NAVAL:RIGHT'),
+    'ARMY_12': (909.5, 639.5, 'ECO:RIGHT'), 'ARMY_8': (875.5, 681.5, 'AIR:RIGHT'),
+}
+real_roles = lua.execute(r'''
+return function(markers, playable)
+    MARKERS = {}
+    for name, p in pairs(markers) do MARKERS[name] = { position = { p[1], 25, p[2] } } end
+    ScenarioInfo.PlayableArea = playable
+    local RM = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
+    RM.ResetCache()
+    local out = {}
+    for name, p in pairs(markers) do
+        local brain = { Name = name, GetArmyStartPos = function() return p[1], p[2] end }
+        local role, side = RM.DetermineRoleBySpawn(brain)
+        out[name] = role .. ':' .. side
+    end
+    return out
+end
+''')
+mk = lua.table_from({k: lua.table_from([v[0], v[1]]) for k, v in REAL.items()})
+exp = {k: v[2] for k, v in REAL.items()}
+for label, area in (('AREA_1', [0, 200.5, 1024, 830.5]), ('expanded map', [0, 0, 1024, 1024])):
+    got = dict(real_roles(mk, lua.table_from(area)).items())
+    check(got == exp, 'real map markers -> roles, playable area = %s' % label)
+    if got != exp:
+        print('    got', got)
+
+fb = lua.execute(r'''
+return function()
+    ScenarioInfo.ArmySetup = { ARMY_5 = { AIPersonality = 'dualgap' }, ARMY_13 = { AIPersonality = 'adaptive' } }
+    local Init = import('/mods/DualGapAI/lua/AI/DualGapInit.lua')
+    local brain = { Name = 'ARMY_5', GetArmyStartPos = function() return 159.5, 609.5 end }
+    local p1, t1 = Init.FirstBasePriority(brain, 'DualGapNaval')
+    local p2 = Init.FirstBasePriority(brain, 'DualGapGround')
+    -- SetupMainBase writes the 2nd return value into AIPersonality:
+    ScenarioInfo.ArmySetup.ARMY_5.AIPersonality = t1
+    local p3 = Init.FirstBasePriority(brain, 'DualGapNaval')
+    local other = { Name = 'ARMY_13', GetArmyStartPos = function() return 1, 1 end }
+    local p4 = Init.FirstBasePriority(other, 'DualGapNaval')
+    return p1, t1, p2, p3, p4
+end
+''')()
+check(fb[0] == 1000 and fb[1] == 'dualgap', 'FirstBase: NAVAL slot picks DualGapNaval, keeps personality')
+check(fb[2] == -1, 'FirstBase: other role templates rejected')
+check(fb[3] == 1000, 'FirstBase: still selected after personality rewrite')
+check(fb[4] == -1, 'FirstBase: non-DualGap AIs ignored')
 
 # ---------------------------------------------------------------- routes
 print('\nRoutes / movement / water')
 res = lua.execute(r'''
-local R = import('/lua/AI/DualGapRoutes.lua')
+local R = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
 local left = R.GetRoute('GroundArcNorth', 'LEFT')
 local right = R.GetRoute('GroundArcNorth', 'RIGHT')
 local mirrored = math.abs(left[1][1] + right[1][1] - 1024) < 1e-6 and left[1][3] == right[1][3]
@@ -228,10 +297,10 @@ R.ExecuteQueuedMovement({ unit }, route, true)
 local untouched = route[1][2] == -999
 local seqOk = CALLS[1] == 'clear' and CALLS[#CALLS] == 'amove' and #CALLS == #route + 1
 
-local U = import('/lua/AI/DualGapUtils.lua')
-local w = U.FindNearestWater({ 0.158 * 1024, 25, 0.640 * 640 }, 3, 300)
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local w = U.FindNearestWater({ 0.158 * 1024, 25, 200.5 + 0.640 * 630 }, 3, 300)
 local wOk = w ~= nil and U.WaterDepth(w[1], w[3]) >= 3
-local none = U.FindNearestWater({ 0.111 * 1024, 25, 0.294 * 640 }, 3, 20)
+local none = U.FindNearestWater({ 0.111 * 1024, 25, 200.5 + 0.294 * 630 }, 3, 20)
 return mirrored, untouched, seqOk, wOk, none == nil
 ''')
 check(res[0], 'right-team route is the x-mirror of the left-team route')
@@ -243,7 +312,7 @@ check(res[4], 'water search respects max radius')
 print('\nController modules load')
 for mod in ('DualGapInit', 'DualGapACUBehaviors', 'DualGapArmy', 'DualGapEconomy'):
     try:
-        m = g['import']('/lua/AI/%s.lua' % mod)
+        m = g['import']('/mods/DualGapAI/lua/AI/%s.lua' % mod)
         check(m.Start is not None, '%s loads and exports Start' % mod)
     except Exception as e:  # noqa: BLE001
         check(False, '%s loads: %s' % (mod, e))

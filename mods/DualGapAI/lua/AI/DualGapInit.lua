@@ -1,8 +1,8 @@
 -- Entry point. Called from the base templates' FirstBaseFunction, which the
 -- legacy skirmish brain evaluates once per AI during setup.
 
-local Utils = import('/lua/AI/DualGapUtils.lua')
-local RoleManager = import('/lua/AI/DualGapRoleManager.lua')
+local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 
 local TemplateForRole = {
     GROUND = 'DualGapGround',
@@ -11,9 +11,12 @@ local TemplateForRole = {
     ECO    = 'DualGapEco',
 }
 
+-- Personality is 'dualgap' (the brain strips 'cheat'). Once claimed, the brain
+-- carries brain.DualGap, so later re-evaluations don't depend on the string.
 function IsDualGapBrain(brain)
+    if brain.DualGap then return true end
     local setup = ScenarioInfo.ArmySetup and ScenarioInfo.ArmySetup[brain.Name]
-    local per = setup and setup.AIPersonality or ''
+    local per = string.lower(setup and setup.AIPersonality or '')
     return string.find(per, 'dualgap', 1, true) == 1
 end
 
@@ -44,19 +47,21 @@ function Start(brain)
     ForkThread(function()
         -- Let the builder managers and the ACU spawn first.
         WaitSeconds(1)
-        import('/lua/AI/DualGapACUBehaviors.lua').Start(brain, ctx)
-        import('/lua/AI/DualGapArmy.lua').Start(brain, ctx)
-        import('/lua/AI/DualGapEconomy.lua').Start(brain, ctx)
+        import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua').Start(brain, ctx)
+        import('/mods/DualGapAI/lua/AI/DualGapArmy.lua').Start(brain, ctx)
+        import('/mods/DualGapAI/lua/AI/DualGapEconomy.lua').Start(brain, ctx)
     end)
 end
 
 -- Shared FirstBaseFunction: high priority for the template matching our role,
 -- -1 for everything else and for non-DualGap personalities.
+-- The second return value is written into ArmySetup.AIPersonality by
+-- aiarchetype-managerloader.SetupMainBase, so it must stay 'dualgap'.
 function FirstBasePriority(brain, templateName)
-    if not IsDualGapBrain(brain) then return -1, templateName end
+    if not IsDualGapBrain(brain) then return -1, 'dualgap' end
     Start(brain)
     if TemplateNameFor(brain) == templateName then
-        return 1000, templateName
+        return 1000, 'dualgap'
     end
-    return -1, templateName
+    return -1, 'dualgap'
 end

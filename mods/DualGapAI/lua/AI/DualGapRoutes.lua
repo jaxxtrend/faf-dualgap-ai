@@ -1,7 +1,7 @@
 -- Waypoint routes (ground arcs, naval vector) resolved per team side.
 
-local Config = import('/lua/AI/DualGapConfig.lua')
-local Utils = import('/lua/AI/DualGapUtils.lua')
+local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 
 -- Returns a fresh list of world positions; callers may modify it.
 function GetRoute(name, side)

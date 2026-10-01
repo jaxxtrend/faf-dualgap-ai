@@ -3,10 +3,10 @@
 -- never re-tasked by two waves at once. No PlatoonFormBuilders are loaded by
 -- the DualGap base templates, so nothing else competes for these units.
 
-local Config = import('/lua/AI/DualGapConfig.lua')
-local Utils = import('/lua/AI/DualGapUtils.lua')
-local Routes = import('/lua/AI/DualGapRoutes.lua')
-local RoleManager = import('/lua/AI/DualGapRoleManager.lua')
+local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
+local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 
 local Alive = Utils.Alive
 

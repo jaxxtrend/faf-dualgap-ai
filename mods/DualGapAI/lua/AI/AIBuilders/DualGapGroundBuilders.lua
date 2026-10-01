@@ -2,8 +2,8 @@
 -- (DualGapACUBehaviors). Factories feed tanks along the arcs and
 -- artillery/MML to the staging point behind the wall (DualGapArmy).
 
-local Config = import('/lua/AI/DualGapConfig.lua')
-local DGBC = '/lua/AI/DualGapBuildConditions.lua'
+local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local DGBC = '/mods/DualGapAI/lua/AI/DualGapBuildConditions.lua'
 
 local CatLandFactory = categories.FACTORY * categories.LAND
 local CatEngineers = categories.ENGINEER - categories.COMMAND

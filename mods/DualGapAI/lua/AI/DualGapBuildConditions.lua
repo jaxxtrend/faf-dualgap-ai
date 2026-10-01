@@ -3,7 +3,7 @@
 -- first. Kept self-contained so the builders don't depend on the signatures of
 -- FAF's stock condition files.
 
-local Utils = import('/lua/AI/DualGapUtils.lua')
+local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 local ScenarioUtils = import('/lua/sim/ScenarioUtilities.lua')
 
 -- `cat` is a category object (preferred) or a category string.

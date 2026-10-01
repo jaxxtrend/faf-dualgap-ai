@@ -4,9 +4,9 @@
 -- at Config.ACUOpeningEnd). After that this module drives it, and only touches
 -- it when it is idle or in an emergency, so the two never fight over orders.
 
-local Config = import('/lua/AI/DualGapConfig.lua')
-local Utils = import('/lua/AI/DualGapUtils.lua')
-local Routes = import('/lua/AI/DualGapRoutes.lua')
+local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
 
 local Alive = Utils.Alive
 

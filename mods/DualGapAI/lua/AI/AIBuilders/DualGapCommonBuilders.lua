@@ -1,6 +1,6 @@
 -- Economy builders shared by every role: mex, hydro, power.
 
-local DGBC = '/lua/AI/DualGapBuildConditions.lua'
+local DGBC = '/mods/DualGapAI/lua/AI/DualGapBuildConditions.lua'
 
 BuilderGroup {
     BuilderGroupName = 'DualGapCommon_Economy',

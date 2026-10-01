@@ -2,8 +2,8 @@
 -- Done with direct engine orders instead of upgrade PlatoonFormBuilders so it
 -- doesn't depend on platoon template names that vary between FAF versions.
 
-local Config = import('/lua/AI/DualGapConfig.lua')
-local Utils = import('/lua/AI/DualGapUtils.lua')
+local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 
 local Alive = Utils.Alive
 

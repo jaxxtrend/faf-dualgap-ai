@@ -2,7 +2,7 @@
 -- factories. No ground defenses at all. Fighters patrol over the GROUND
 -- allies; bombers / torpedo bombers stage and raid (DualGapArmy).
 
-local DGBC = '/lua/AI/DualGapBuildConditions.lua'
+local DGBC = '/mods/DualGapAI/lua/AI/DualGapBuildConditions.lua'
 
 local MaxEngineers = 5
 local MaxAirFactories = 10

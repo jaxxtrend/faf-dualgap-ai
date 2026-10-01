@@ -2,7 +2,7 @@
 -- match. Mex upgrades, RAS and the 80% strategic phase (T3 artillery / nuke /
 -- experimental) are driven from DualGapEconomy. Never leaves the base.
 
-local DGBC = '/lua/AI/DualGapBuildConditions.lua'
+local DGBC = '/mods/DualGapAI/lua/AI/DualGapBuildConditions.lua'
 
 local CatLandFactory = categories.FACTORY * categories.LAND
 local CatEngineers = categories.ENGINEER - categories.COMMAND
