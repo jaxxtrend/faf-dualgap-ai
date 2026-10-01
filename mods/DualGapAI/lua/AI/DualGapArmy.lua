@@ -126,15 +126,23 @@ local function UpdateWaves(brain, ctx)
 end
 
 ---------------------------------------------------------------------------
+-- Behind this player's own wall: the choke pulled back toward the base.
+local function ArtyStaging(ctx)
+    local c = ctx.choke or Routes.GetPoint('ArtyStaging', ctx.side)
+    local dir = (ctx.side == 'LEFT') and 1 or -1
+    local x = c[1] - dir * 40
+    return { x, GetSurfaceHeight(x, c[3]), c[3] }
+end
+
 local function LandStep(brain, ctx)
     local df = FreeUnits(brain, CatLandDF)
     if Utils.Count(df) >= Config.GroundWaveSize then
-        ctx.nextArc = (ctx.nextArc == 'GroundArcNorth') and 'GroundArcSouth' or 'GroundArcNorth'
-        LaunchWave(ctx, df, ctx.nextArc)
+        -- Each GROUND player pushes through its own zone only.
+        LaunchWave(ctx, df, ctx.groundArc or 'GroundArcNorth')
     end
 
     -- Artillery / MML: gather behind the wall, then shell the centre together.
-    local staging = Routes.GetPoint('ArtyStaging', ctx.side)
+    local staging = ArtyStaging(ctx)
     local ready = {}
     for _, u in ipairs(FreeUnits(brain, CatLandArty)) do
         if Utils.Dist2D(u:GetPosition(), staging) > 15 then
@@ -146,7 +154,7 @@ local function LandStep(brain, ctx)
     if Utils.Count(ready) >= Config.ArtyWaveSize then
         Claim(ready)
         IssueAggressiveMove(ready, Routes.GetPoint('LandCenter', ctx.side))
-        table.insert(ctx.waves, { units = ready, routeName = 'GroundArcSouth', stage = 2 })
+        table.insert(ctx.waves, { units = ready, routeName = ctx.groundArc or 'GroundArcSouth', stage = 2 })
     end
 end
 

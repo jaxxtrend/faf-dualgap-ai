@@ -62,6 +62,29 @@ for path in all_lua_files():
         else:
             check('dualgap' not in low, '%s -> %s is not a mod file under /lua' % (rel, target))
 
+# ---------------------------------------------------------------- cross-module names
+print('\nCross-module references (Alias.Name must exist in the imported module)')
+AI_DIR = os.path.join(LUA_DIR, 'AI')
+def module_globals(path):
+    src = re.sub(r"--[^\n]*", '', open(path, encoding='utf-8').read())
+    names = set(re.findall(r'^function\s+([A-Za-z_]\w*)', src, re.M))
+    names |= set(re.findall(r'^([A-Za-z_]\w*)\s*=', src, re.M))
+    return names
+for path in all_lua_files():
+    src = open(path, encoding='utf-8').read()
+    rel = os.path.relpath(path, ROOT)
+    aliases = dict(re.findall(r"local\s+(\w+)\s*=\s*import\('/mods/DualGapAI/lua/AI/(\w+)\.lua'\)", src))
+    # function-wrapped lazy imports, e.g. local function Economy() return import(...) end
+    for alias, mod in re.findall(r"local function (\w+)\(\)\s*return import\('/mods/DualGapAI/lua/AI/(\w+)\.lua'\)", src):
+        aliases[alias + '()'] = mod
+    code = re.sub(r"--[^\n]*", '', src)
+    for alias, mod in aliases.items():
+        defined = module_globals(os.path.join(AI_DIR, mod + '.lua'))
+        pat = re.escape(alias) + r'\.([A-Za-z_]\w*)'
+        used = set(re.findall(r'(?<![\w.])' + pat, code))
+        missing = sorted(used - defined)
+        check(not missing, '%s: %s.* names exist %s' % (rel, alias, missing or ''))
+
 # ---------------------------------------------------------------- stub sim
 lua.execute(r'''
 MOD_LUA_DIR = ...
@@ -277,6 +300,109 @@ check(fb[2] == -1, 'FirstBase: other role templates rejected')
 check(fb[3] == 1000, 'FirstBase: still selected after personality rewrite')
 check(fb[4] == -1, 'FirstBase: non-DualGap AIs ignored')
 
+# ---------------------------------------------------------------- mex ownership
+print('\nMex ownership (real Dual Gap v14 markers)')
+import json
+FIX = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'dualgap_v14_markers.json')))
+spawn_tbl = lua.table_from({m['name']: lua.table_from([m['x'], m['z']]) for m in FIX if m['name'].startswith('ARMY_')})
+real_roles(spawn_tbl, lua.table_from([0, 200.5, 1024, 830.5]))   # loads the real slots
+classify = lua.execute(r"""
+return function(x, y, z)
+    local MO = import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua')
+    local owner, zone = MO.ClassifyMarker({ x, y, z }, y < 55)
+    return owner or '-', zone
+end
+""")
+own = {}
+for m in FIX:
+    if m['type'] != 'Mass':
+        continue
+    owner, zone = classify(m['x'], m['y'], m['z'])
+    own.setdefault(owner, {}).setdefault(zone, []).append(m)
+for i in range(1, 13):
+    n = len(own.get('ARMY_%d' % i, {}).get('BASE', []))
+    check(n == 8, 'ARMY_%d owns exactly 8 base mexes (got %d)' % (i, n))
+left_mid_up = own.get('ARMY_9', {}).get('MID', [])
+left_mid_dn = own.get('ARMY_3', {}).get('MID', [])
+check(len(left_mid_up) > 0 and all((m['z'] - 200.5) / 630 < 0.40 for m in left_mid_up),
+      'upper GROUND (ARMY_9) owns the upper mid group (%d mexes)' % len(left_mid_up))
+check(len(left_mid_dn) > 0 and all((m['z'] - 200.5) / 630 >= 0.40 for m in left_mid_dn),
+      'lower GROUND (ARMY_3) owns the lower mid group (%d mexes)' % len(left_mid_dn))
+# The centre column has 3 mexes at x=507.5/511.5/515.5; the middle one sits
+# just left of x=512, so the left side gets one extra. Allow that.
+check(abs(len(own.get('ARMY_10', {}).get('MID', [])) - len(left_mid_up)) <= 1
+      and abs(len(own.get('ARMY_4', {}).get('MID', [])) - len(left_mid_dn)) <= 1,
+      'mid split is mirrored on the right (within the odd centre mex)')
+water_l = own.get('ARMY_5', {}).get('WATER', [])
+check(len(water_l) > 0 and all(m['x'] <= 512 for m in water_l), 'NAVAL (ARMY_5) owns left underwater mexes (%d)' % len(water_l))
+cross = [m for o, zs in own.items() if o.startswith('ARMY_') for z, ms in zs.items() for m in ms
+         if (m['x'] <= 511.5) != (o in ('ARMY_1', 'ARMY_3', 'ARMY_5', 'ARMY_7', 'ARMY_9', 'ARMY_11'))]
+check(not cross, 'no mex is owned by the other team side (%d violations)' % len(cross))
+outside = own.get('-', {}).get('OUTSIDE', [])
+print('    (%d mexes outside AREA_1 left unowned until the map expands)' % len(outside))
+
+split = lua.execute(r"""
+local MO = import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua')
+local list = {}
+for i = 1, 9 do table.insert(list, { pos = { i * 10, 0, 0 } }) end
+local a, b = MO.SplitBetween(list, { 0, 0, 0 }, { 100, 0, 0 })
+local aNear = true
+for _, m in ipairs(a) do if m.pos[1] > 50 then aNear = false end end
+return table.getn(a), table.getn(b), aNear
+""")
+check(split[0] == 5 and split[1] == 4 and split[2], 'dead player mexes split in half, each ally takes its nearer half')
+
+# ---------------------------------------------------------------- ACU safety
+print('\nACU water / threat decisions')
+dec = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
+return function(hp, late, arty, torp, bomb, other) return A.SafetyDecision(hp, late, arty, torp, bomb, other) or 'none' end
+""")
+cases = [
+    ((1.0, False, False, 0, 0, 0), 'none', 'healthy, T2 phase running: stay at work'),
+    ((1.0, True, False, 0, 0, 0), 'DEEP', 'end of T2 phase: max depth'),
+    ((0.2, False, False, 0, 0, 0), 'DEEP', 'low HP: max depth'),
+    ((1.0, True, False, 8, 0, 2), 'LAND', 'many torpedo bombers, few planes: stay on land and build'),
+    ((1.0, False, False, 0, 10, 10), 'DEEP', 'many bombers: hide at depth'),
+    ((1.0, True, False, 8, 10, 12), 'DEEP', 'torpedo bombers plus many bombers: depth'),
+    ((1.0, True, False, 8, 0, 6), 'DEEP', 'torpedo bombers but plenty of other air: depth'),
+]
+for args, want, label in cases:
+    check(dec(*args) == want, label)
+
+# ---------------------------------------------------------------- production
+print('\nFactory production rules')
+prod = lua.execute(r"""
+local F = import('/mods/DualGapAI/lua/AI/DualGapFactories.lua')
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+EntityCategoryContains = function(cat, unit) return unit.cats and unit.cats[cat.name] or false end
+return function(role, kind, tech, counts)
+    local built = {}
+    IssueBuildFactory = function(units, id, n) table.insert(built, id) end
+    local brain = {
+        GetFactionIndex = function() return 1 end,
+        GetListOfUnits = function(self, cat) local out = {} for i = 1, (counts[cat.name] or 0) do out[i] = {} end return out end,
+    }
+    local f = { cats = { [U.FactoryCategory(kind).name] = true } }
+    if tech >= 2 then f.cats.TECH2 = true end
+    if tech >= 3 then f.cats.TECH3 = true; f.cats.TECH2 = nil end
+    local ctx = { role = role, mainFactory = nil }
+    local seen = {}
+    for i = 1, 6 do F.Produce(brain, ctx, f) end
+    return table.concat(built, ',')
+end
+""")
+t1 = prod('AIR', 'Air', 1, lua.table_from({}))
+check(set(t1.split(',')) == {'uea0102', 'uea0103'}, 'T1 air factory alternates interceptors / bombers (%s)' % t1)
+t2 = prod('AIR', 'Air', 2, lua.table_from({}))
+check(set(t2.split(',')) == {'uea0204'}, 'T2 air factory builds no T1 units (%s)' % t2)
+capped = prod('AIR', 'Air', 1, lua.table_from({'uea0102': 12, 'uea0103': 6}))
+check(capped == '', 'T1 air factory stops when T1 caps are reached (got %r)' % capped)
+t3 = prod('GROUND', 'Land', 3, lua.table_from({}))
+check(set(t3.split(',')) == {'uel0303'}, 'T3 land factory builds only T3 (%s)' % t3)
+none = prod('GROUND', 'Naval', 1, lua.table_from({}))
+check(none == '', 'role without a table for that factory kind builds nothing')
+
 # ---------------------------------------------------------------- routes
 print('\nRoutes / movement / water')
 res = lua.execute(r'''
@@ -310,12 +436,18 @@ check(res[3], 'NAVAL spawn finds deep water nearby')
 check(res[4], 'water search respects max radius')
 
 print('\nController modules load')
-for mod in ('DualGapInit', 'DualGapACUBehaviors', 'DualGapArmy', 'DualGapEconomy'):
+for mod in ('DualGapInit', 'DualGapACUBehaviors', 'DualGapArmy', 'DualGapEconomy',
+            'DualGapEngineers', 'DualGapFactories', 'DualGapMexOwnership'):
     try:
         m = g['import']('/mods/DualGapAI/lua/AI/%s.lua' % mod)
-        check(m.Start is not None, '%s loads and exports Start' % mod)
+        entry = 'StartWatcher' if mod == 'DualGapMexOwnership' else 'Start'
+        check(m[entry] is not None, '%s loads and exports %s' % (mod, entry))
     except Exception as e:  # noqa: BLE001
         check(False, '%s loads: %s' % (mod, e))
 
-print('\n%d failure(s)' % len(failures))
+import runpy
+sim = runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sim_opening.py'))
+failures.extend(sim['failures'])
+
+print('\nTOTAL: %d failure(s)' % len(failures))
 sys.exit(1 if failures else 0)

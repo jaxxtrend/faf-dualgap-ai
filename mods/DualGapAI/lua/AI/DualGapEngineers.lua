@@ -1,0 +1,529 @@
+-- ACU opening and all engineer work.
+--
+-- The stock EngineerManager gets no engineer builders, so it never orders
+-- an engineer around; this module owns the ACU (during its opening, and
+-- afterwards whenever the ACU is in "base builder" mode) and every engineer.
+--
+--   ACU opening   BuildOrders.ACU, strictly in order
+--   T1 eng 1..10  BuildOrders.T1Engineers roles (reclaim / hydro crew)
+--   everyone else GeneralTask: own mexes -> power -> role factories ->
+--                 reclaim -> assist
+
+local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
+local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local MexOwn = import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua')
+local ScenarioUtils = import('/lua/sim/ScenarioUtilities.lua')
+
+local Alive = Utils.Alive
+
+local CatEngineer = categories.ENGINEER - categories.COMMAND - categories.SUBCOMMANDER
+local CatPowerT1 = categories.ENERGYPRODUCTION * categories.TECH1 * categories.STRUCTURE - categories.HYDROCARBON
+local CatHydro = categories.HYDROCARBON * categories.STRUCTURE
+local CatStorage = categories.ENERGYSTORAGE * categories.STRUCTURE
+
+local function Economy()
+    return import('/mods/DualGapAI/lua/AI/DualGapEconomy.lua')
+end
+
+---------------------------------------------------------------------------
+-- Placement helpers
+---------------------------------------------------------------------------
+local function FootprintOf(id)
+    local bp = __blueprints[id]
+    return (bp and bp.Footprint and bp.Footprint.SizeX) or 2
+end
+
+-- Spots whose footprint touches the building at `center` (edge adjacency).
+local function AdjacentSpots(center, centerSize, size)
+    local spots = {}
+    local off = (centerSize + size) / 2
+    local span = (centerSize - size) / 2
+    if span < 0 then span = 0 end
+    local t = -span
+    while t <= span + 0.01 do
+        table.insert(spots, { center[1] + off, 0, center[3] + t })
+        table.insert(spots, { center[1] - off, 0, center[3] + t })
+        table.insert(spots, { center[1] + t, 0, center[3] + off })
+        table.insert(spots, { center[1] + t, 0, center[3] - off })
+        t = t + size
+    end
+    return spots
+end
+
+local function FarFromAll(p, chosen, minD)
+    for _, c in ipairs(chosen) do
+        if Utils.Dist2D(p, c) < minD then return false end
+    end
+    return true
+end
+
+-- Up to n buildable spots for id: adjacent to `anchor` unit first, then a
+-- spiral around `fallback`. `chosen` holds spots already queued this tick.
+local function PickSpots(brain, id, n, anchor, fallback, chosen)
+    local out = {}
+    chosen = chosen or {}
+    local size = FootprintOf(id)
+    if anchor and Alive(anchor) then
+        local bp = anchor:GetBlueprint()
+        for _, p in ipairs(AdjacentSpots(anchor:GetPosition(), bp.Footprint.SizeX, size)) do
+            if table.getn(out) >= n then break end
+            p[2] = GetSurfaceHeight(p[1], p[3])
+            if FarFromAll(p, chosen, size) and brain:CanBuildStructureAt(id, p) then
+                table.insert(out, p); table.insert(chosen, p)
+            end
+        end
+    end
+    local r = size
+    while table.getn(out) < n and r <= 50 do
+        for i = 0, 11 do
+            if table.getn(out) >= n then break end
+            local a = (i / 12) * 2 * math.pi
+            local p = { fallback[1] + math.cos(a) * r, 0, fallback[3] + math.sin(a) * r }
+            p[2] = GetSurfaceHeight(p[1], p[3])
+            if FarFromAll(p, chosen, size) and brain:CanBuildStructureAt(id, p) then
+                table.insert(out, p); table.insert(chosen, p)
+            end
+        end
+        r = r + size
+    end
+    return out
+end
+
+local function TowardEnemy(ctx)
+    return (ctx.side == 'LEFT') and 1 or -1
+end
+
+local function BaseSite(ctx, forward)
+    local p = ctx.startPos
+    return { p[1] + TowardEnemy(ctx) * forward, p[2], p[3] }
+end
+
+local function MainFactory(brain, ctx)
+    if Alive(ctx.mainFactory) then return ctx.mainFactory end
+    return nil
+end
+
+local function CountComplete(brain, cat)
+    local n = 0
+    for _, u in ipairs(brain:GetListOfUnits(cat, false)) do
+        if Alive(u) and u:GetFractionComplete() >= 1 then n = n + 1 end
+    end
+    return n
+end
+
+local function FirstUnfinished(brain, cat, near, radius)
+    for _, u in ipairs(brain:GetListOfUnits(cat, false)) do
+        if Alive(u) and u:GetFractionComplete() < 1
+            and (not near or Utils.Dist2D(u:GetPosition(), near) <= radius) then
+            return u
+        end
+    end
+    return nil
+end
+
+---------------------------------------------------------------------------
+-- ACU opening
+---------------------------------------------------------------------------
+local ACUSteps = {}
+
+ACUSteps.Factory = function(brain, ctx, acu, step)
+    local kind = BO.StartFactory[ctx.role] or 'Land'
+    local cat = Utils.FactoryCategory(kind)
+    for _, f in ipairs(brain:GetListOfUnits(cat, false)) do
+        if Alive(f) and f:GetFractionComplete() >= 1 then
+            ctx.mainFactory = f
+            return true
+        end
+    end
+    if not Utils.IsIdle(acu) then return false end
+    local unfinished = FirstUnfinished(brain, cat)
+    if unfinished then
+        IssueRepair({ acu }, unfinished)
+    else
+        Utils.BuildNear(brain, acu, Utils.FactoryId(brain, kind, 1), BaseSite(ctx, 12), 40)
+    end
+    return false
+end
+
+local function BaseMexCount(brain)
+    local n = 0
+    for _, m in ipairs(MexOwn.Owned(brain.Name, 'BASE')) do
+        if MexOwn.ExtractorAt(brain, m.pos) then n = n + 1 end
+    end
+    return n
+end
+
+ACUSteps.Mex = function(brain, ctx, acu, step)
+    local target = step.cumulative
+    local have = BaseMexCount(brain)
+    if have >= target then return true end
+    -- Collect free own base markers, nearest first.
+    local free = {}
+    for _, m in ipairs(MexOwn.Owned(brain.Name, 'BASE')) do
+        if MexOwn.IsFree(brain, m.pos) then table.insert(free, m) end
+    end
+    if table.getn(free) == 0 then return true end   -- nothing left to take
+    if not Utils.IsIdle(acu) then return false end
+    local from = acu:GetPosition()
+    local id = Utils.FactionId(brain, 'MassExtractorT1')
+    local need = target - have
+    -- Greedy nearest-neighbour chain so the ACU walks a short path.
+    local used = {}
+    for _ = 1, math.min(need, table.getn(free)) do
+        local best, bestD
+        for i, m in ipairs(free) do
+            if not used[i] then
+                local d = Utils.Dist2D(from, m.pos)
+                if not bestD or d < bestD then best, bestD = i, d end
+            end
+        end
+        used[best] = true
+        IssueBuildMobile({ acu }, free[best].pos, id, {})
+        from = free[best].pos
+    end
+    return false
+end
+
+ACUSteps.Power = function(brain, ctx, acu, step)
+    local have = Utils.Count(brain:GetListOfUnits(CatPowerT1, false))
+    if have >= step.cumulative then return true end
+    if not Utils.IsIdle(acu) then return false end
+    local id = Utils.FactionId(brain, 'PowerT1')
+    local spots = PickSpots(brain, id, step.cumulative - have, MainFactory(brain, ctx), ctx.startPos)
+    for _, p in ipairs(spots) do IssueBuildMobile({ acu }, p, id, {}) end
+    return table.getn(spots) == 0
+end
+
+ACUSteps.UpgradeMexes = function(brain, ctx, acu, step)
+    ctx.mexUpgradeTech = step.tech or 2
+    ctx.mexUpgradesAllowed = true
+    if BO.UpgradeMexesNoAssist[ctx.role] then return true end
+    local pending, upgrading = false, nil
+    for _, m in ipairs(MexOwn.Owned(brain.Name, 'BASE')) do
+        local e = MexOwn.ExtractorAt(brain, m.pos)
+        if e and Utils.TechOf(e) < ctx.mexUpgradeTech then
+            pending = true
+            if e:IsUnitState('Upgrading') then upgrading = e end
+        end
+    end
+    if not pending then return true end
+    if upgrading and Utils.IsIdle(acu) then IssueGuard({ acu }, upgrading) end
+    return false
+end
+
+-- Cumulative targets so steps are idempotent (re-issued after interruptions).
+local function PrepareSteps()
+    local mex, power = 0, 0
+    for _, step in ipairs(BO.ACU) do
+        if step[1] == 'Mex' then mex = mex + (step.count or 1); step.cumulative = mex end
+        if step[1] == 'Power' then power = power + (step.count or 1); step.cumulative = power end
+    end
+end
+
+-- Global (like EngineersStep) so the opening simulation test can tick it.
+function ACUOpeningStep(brain, ctx)
+    if ctx.acuBODone then return end
+    local acu = Utils.Commander(brain)
+    if not acu or ctx.acuState == 'SUBMERGED' then return end
+    local step = BO.ACU[ctx.acuStep]
+    if not step then
+        ctx.acuBODone = true
+        Utils.Log(brain, 'ACU opening done at ' .. math.floor(GetGameTimeSeconds()) .. 's')
+        return
+    end
+    local handler = ACUSteps[step[1]]
+    if not handler then
+        WARN('DualGap: unknown ACU step ' .. tostring(step[1]))
+        ctx.acuStep = ctx.acuStep + 1
+        return
+    end
+    if handler(brain, ctx, acu, step) then
+        ctx.acuStep = ctx.acuStep + 1
+    end
+end
+
+---------------------------------------------------------------------------
+-- Reclaim: pick the richest unclaimed 24x24 cell near the base and queue
+-- reclaim orders on its props (trees, rocks, wrecks), nearest first.
+---------------------------------------------------------------------------
+local CellSize = 24
+
+local function PropValue(e)
+    local left = e.ReclaimLeft or 1
+    return ((e.MaxMassReclaim or 0) + (e.MaxEnergyReclaim or 0) / 10) * left
+end
+
+local function ReclaimTask(brain, ctx, u)
+    local c = ctx.startPos
+    local r = Config.ReclaimRadius
+    local props = GetReclaimablesInRect(Rect(c[1] - r, c[3] - r, c[1] + r, c[3] + r)) or {}
+    local cells = {}
+    for _, e in ipairs(props) do
+        if e.IsProp and not e.Dead then
+            local v = PropValue(e)
+            if v > 0.2 then
+                local p = e:GetPosition()
+                local key = math.floor(p[1] / CellSize) .. ':' .. math.floor(p[3] / CellSize)
+                local cell = cells[key]
+                if not cell then cell = { value = 0, props = {} }; cells[key] = cell end
+                cell.value = cell.value + v
+                table.insert(cell.props, e)
+            end
+        end
+    end
+    local now = GetGameTimeSeconds()
+    ctx.reclaimClaims = ctx.reclaimClaims or {}
+    -- Richest unclaimed cell; if all are claimed, share the richest one.
+    local bestKey, best, sharedKey, shared
+    for key, cell in pairs(cells) do
+        if cell.value >= Config.ReclaimMinValue then
+            local claim = ctx.reclaimClaims[key]
+            local claimed = claim and claim.expires > now and claim.unit ~= u and Alive(claim.unit)
+            if not claimed and (not best or cell.value > best.value) then bestKey, best = key, cell end
+            if not shared or cell.value > shared.value then sharedKey, shared = key, cell end
+        end
+    end
+    if not best then bestKey, best = sharedKey, shared end
+    if not best then return false end
+    ctx.reclaimClaims[bestKey] = { unit = u, expires = now + 90 }
+
+    local from = u:GetPosition()
+    local left = best.props
+    local issued = 0
+    while table.getn(left) > 0 and issued < 20 do
+        local bi, bd
+        for i, e in ipairs(left) do
+            local d = Utils.Dist2D(from, e:GetPosition())
+            if not bd or d < bd then bi, bd = i, d end
+        end
+        local e = table.remove(left, bi)
+        IssueReclaim({ u }, e)
+        from = e:GetPosition()
+        issued = issued + 1
+    end
+    return issued > 0
+end
+
+---------------------------------------------------------------------------
+-- Hydro crew: build the hydro, then energy storages next to it, then assist
+---------------------------------------------------------------------------
+local function HydroMarker(ctx)
+    if ctx.hydroPos ~= nil then return ctx.hydroPos end
+    local best, bestD
+    for _, m in pairs(ScenarioUtils.GetMarkers() or {}) do
+        if m.type == 'Hydrocarbon' and m.position then
+            local d = Utils.Dist2D(m.position, ctx.startPos)
+            if d <= Config.BaseRadius * 1.5 and (not bestD or d < bestD) then best, bestD = m.position, d end
+        end
+    end
+    ctx.hydroPos = best or false
+    return ctx.hydroPos
+end
+
+local function OwnHydro(brain, ctx)
+    local pos = HydroMarker(ctx)
+    if not pos then return nil end
+    for _, u in ipairs(brain:GetUnitsAroundPoint(CatHydro, pos, 3, 'Ally') or {}) do
+        if Alive(u) and u:GetAIBrain() == brain then return u end
+    end
+    return nil
+end
+
+local function HydroTask(brain, ctx, u)
+    local pos = HydroMarker(ctx)
+    if not pos then u.DGRole = 'AssistACU'; return end
+    local hydro = OwnHydro(brain, ctx)
+    if hydro and hydro:GetFractionComplete() >= 1 then
+        u.DGRole = 'Storage'
+        return
+    end
+    if not u:IsIdleState() then return end
+    if hydro then
+        IssueRepair({ u }, hydro)
+    elseif brain:CanBuildStructureAt(Utils.FactionId(brain, 'HydroT1'), pos) then
+        IssueBuildMobile({ u }, pos, Utils.FactionId(brain, 'HydroT1'), {})
+    else
+        u.DGRole = 'AssistACU'   -- marker taken by someone else
+    end
+end
+
+local function StorageTask(brain, ctx, u)
+    local hydro = OwnHydro(brain, ctx)
+    if not hydro then u.DGRole = 'AssistACU'; return end
+    if not u:IsIdleState() then return end
+    local hp = hydro:GetPosition()
+    local unfinished = FirstUnfinished(brain, CatStorage, hp, 12)
+    if unfinished then IssueRepair({ u }, unfinished); return end
+    local have = Utils.Count(brain:GetUnitsAroundPoint(CatStorage, hp, 12, 'Ally'))
+    if have >= BO.HydroStorages then u.DGRole = 'AssistACU'; return end
+    local id = Utils.FactionId(brain, 'EnergyStorage')
+    local spot = PickSpots(brain, id, 1, hydro, hp)[1]
+    if spot then IssueBuildMobile({ u }, spot, id, {}) else u.DGRole = 'AssistACU' end
+end
+
+local function AssistACUTask(brain, ctx, u)
+    if not u:IsIdleState() then return end
+    local acu = Utils.Commander(brain)
+    -- Don't follow the ACU into the water.
+    if acu and ctx.acuState ~= 'SUBMERGED' then
+        IssueGuard({ u }, acu)
+    else
+        u.DGRole = nil
+    end
+end
+
+---------------------------------------------------------------------------
+-- General tasks
+---------------------------------------------------------------------------
+local function EnergyLow(brain)
+    local ratio = brain:GetEconomyStoredRatio('ENERGY')
+    return ratio < 0.25 or (ratio < 0.6 and brain:GetEconomyTrend('ENERGY') < 0)
+end
+
+local function BestPowerId(brain, u)
+    for _, key in ipairs({ 'PowerT3', 'PowerT2', 'PowerT1' }) do
+        local id = Utils.FactionId(brain, key)
+        if id and u:CanBuild(id) then return id end
+    end
+    return nil
+end
+
+local function PowerUnderConstruction(brain)
+    local n = 0
+    for _, e in ipairs(brain:GetListOfUnits(categories.ENERGYPRODUCTION * categories.STRUCTURE, false)) do
+        if Alive(e) and e:GetFractionComplete() < 1 then n = n + 1 end
+    end
+    return n
+end
+
+local function TryMex(brain, ctx, u, baseOnly)
+    ctx.mexClaims = ctx.mexClaims or {}
+    local now = GetGameTimeSeconds()
+    local exclude = {}
+    for m, c in pairs(ctx.mexClaims) do
+        if c.expires > now and c.unit ~= u and Alive(c.unit) then exclude[m] = true end
+    end
+    -- The ACU's opening builds all base mexes itself; engineers keep off them.
+    if not ctx.acuBODone and u ~= Utils.Commander(brain) then
+        for _, bm in ipairs(MexOwn.Owned(brain.Name, 'BASE')) do exclude[bm] = true end
+    end
+    local maxD = baseOnly and Config.BaseRadius or nil
+    local m = MexOwn.NearestFree(brain, baseOnly and ctx.startPos or u:GetPosition(), nil, maxD, exclude)
+    if not m then return false end
+    ctx.mexClaims[m] = { unit = u, expires = now + 90 }
+    IssueBuildMobile({ u }, m.pos, Utils.FactionId(brain, 'MassExtractorT1'), {})
+    return true
+end
+
+local function TryPower(brain, ctx, u)
+    if not EnergyLow(brain) or PowerUnderConstruction(brain) >= 2 then return false end
+    local id = BestPowerId(brain, u)
+    if not id then return false end
+    local site = BaseSite(ctx, -12)
+    local spot = PickSpots(brain, id, 1, nil, site)[1]
+    if not spot then return false end
+    IssueBuildMobile({ u }, spot, id, {})
+    return true
+end
+
+local function TryFactories(brain, ctx, u)
+    if brain:GetEconomyStoredRatio('MASS') < 0.1 or brain:GetEconomyStoredRatio('ENERGY') < 0.5 then
+        return false
+    end
+    local wanted = BO.ExtraFactories[ctx.role] or {}
+    -- The start factory is always wanted back if it died.
+    local startKind = BO.StartFactory[ctx.role]
+    for kind, max in pairs(wanted) do
+        local cat = Utils.FactoryCategory(kind)
+        if Utils.Count(brain:GetListOfUnits(cat, false)) < max then
+            local unfinished = FirstUnfinished(brain, cat)
+            if unfinished then
+                IssueRepair({ u }, unfinished)
+                return true
+            end
+            local id = Utils.FactoryId(brain, kind, 1)
+            local spot = PickSpots(brain, id, 1, nil, BaseSite(ctx, 0))[1]
+            if spot then IssueBuildMobile({ u }, spot, id, {}); return true end
+        end
+    end
+    if startKind and Utils.Count(brain:GetListOfUnits(Utils.FactoryCategory(startKind), false)) == 0 then
+        local id = Utils.FactoryId(brain, startKind, 1)
+        local spot = PickSpots(brain, id, 1, nil, BaseSite(ctx, 12))[1]
+        if spot then IssueBuildMobile({ u }, spot, id, {}); return true end
+    end
+    return false
+end
+
+local function TryAssist(brain, ctx, u)
+    local f = MainFactory(brain, ctx)
+    if f and not f:IsIdleState() then
+        IssueGuard({ u }, f)
+        return true
+    end
+    -- Anything of ours still under construction in the base.
+    local unfinished = FirstUnfinished(brain, categories.STRUCTURE, ctx.startPos, 60)
+    if unfinished then
+        IssueRepair({ u }, unfinished)
+        return true
+    end
+    return false
+end
+
+-- baseOnly: the ACU in base-builder mode never wanders off.
+local function GeneralTask(brain, ctx, u, baseOnly)
+    if ctx.role == 'ECO' and not baseOnly and Economy().TryRecruit(brain, ctx, u) then return end
+    if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
+    if TryMex(brain, ctx, u, baseOnly) then return end
+    if TryPower(brain, ctx, u) then return end
+    if TryFactories(brain, ctx, u) then return end
+    if not baseOnly and ReclaimTask(brain, ctx, u) then return end
+    TryAssist(brain, ctx, u)
+end
+
+---------------------------------------------------------------------------
+local RoleTasks = {
+    Reclaim = function(brain, ctx, u)
+        if u:IsIdleState() and not ReclaimTask(brain, ctx, u) then u.DGRole = nil end
+    end,
+    Hydro = HydroTask,
+    HydroAssist = HydroTask,
+    Storage = StorageTask,
+    AssistACU = AssistACUTask,
+}
+
+function EngineersStep(brain, ctx)
+    for _, u in ipairs(brain:GetListOfUnits(CatEngineer, false)) do
+        if Alive(u) and u:GetFractionComplete() >= 1 and not u.DualGapAssigned then
+            if not u.DGSeen then
+                u.DGSeen = true
+                if Utils.TechOf(u) == 1 and ctx.t1Seen < table.getn(BO.T1Engineers) then
+                    ctx.t1Seen = ctx.t1Seen + 1
+                    u.DGRole = BO.T1Engineers[ctx.t1Seen]
+                end
+            end
+            local task = u.DGRole and RoleTasks[u.DGRole]
+            if task then
+                task(brain, ctx, u)
+            elseif u:IsIdleState() then
+                GeneralTask(brain, ctx, u, false)
+            end
+        end
+    end
+
+    -- The ACU joins the base builders after its opening when its role keeps
+    -- it home (AIR / ECO), or when it was sent home to build (LANDBUILD).
+    local acu = Utils.Commander(brain)
+    if acu and ctx.acuBODone and Utils.IsIdle(acu)
+        and (ctx.role == 'AIR' or ctx.role == 'ECO' or ctx.acuState == 'LANDBUILD') then
+        GeneralTask(brain, ctx, acu, true)
+    end
+end
+
+function Start(brain, ctx)
+    PrepareSteps()
+    ctx.acuStep = 1
+    ctx.t1Seen = 0
+    ForkThread(Utils.RunLoop, 'ACUOpening', brain, ctx, 1, ACUOpeningStep)
+    ForkThread(Utils.RunLoop, 'Engineers', brain, ctx, 2, EngineersStep)
+end
