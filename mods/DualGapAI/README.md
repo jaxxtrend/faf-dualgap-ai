@@ -1,14 +1,16 @@
 # DualGap AI (FAF, Dual Gap Adaptive v14)
 
-ИИ с ролями по точке спавна: `GROUND`, `NAVAL`, `AIR`, `ECO`.
+**English** · [Русский](README.ru.md)
 
-## Установка
-1. Скопировать папку `DualGapAI` в `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
-   Папка должна называться именно `DualGapAI`: FAF монтирует мод как `/mods/DualGapAI/`, и все импорты внутри мода используют этот путь.
-2. В лобби FAF включить мод **DualGap AI** и поставить в слоты ИИ **AI: DualGap** (или **AIx: DualGap**, читерская версия).
+An AI whose role comes from its spawn point: `GROUND`, `NAVAL`, `AIR`, `ECO`.
 
-## Роли на Dual Gap Adaptive v14 (по маркерам карты)
-| Слот | Роль | Слот | Роль |
+## Install
+1. Copy the `DualGapAI` folder to `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
+   The folder must be named exactly `DualGapAI`: FAF mounts the mod as `/mods/DualGapAI/`, and every import inside the mod uses that path.
+2. In the FAF lobby, enable the **DualGap AI** mod and put **AI: DualGap** (or **AIx: DualGap**, the cheating version) in the AI slots.
+
+## Roles on Dual Gap Adaptive v14 (from the map markers)
+| Slot | Role | Slot | Role |
 |---|---|---|---|
 | ARMY_1 | AIR | ARMY_2 | AIR |
 | ARMY_9 | GROUND | ARMY_10 | GROUND |
@@ -17,88 +19,88 @@
 | ARMY_11 | ECO | ARMY_12 | ECO |
 | ARMY_7 | AIR | ARMY_8 | AIR |
 
-Координаты считаются от прямоугольника `AREA_1` (0, 200.5 → 1024, 830.5), в нём карта стартует.
-Он не меняется, когда адаптивная карта расширяет игровую область.
+Coordinates are measured against the `AREA_1` rectangle (0, 200.5 → 1024, 830.5), the map's starting playable area.
+It stays fixed when the adaptive map expands its playable area.
 
-## Как назначаются роли
-Берутся все стартовые маркеры `ARMY_N`. Они делятся на левую и правую команду и сортируются сверху вниз.
-Если в команде 6 спавнов, роль берётся по порядку: AIR, GROUND, GROUND, NAVAL, ECO, AIR (как на схеме карты).
-Иначе берётся ближайшая опорная точка из `DualGapConfig.SpawnSlots`.
-В `game.log` для каждого слота пишется строка `DualGap: ARMY_n side=... role=...`. По ней удобно проверить и откалибровать координаты.
-Принудительно задать роль: `RoleOverrides = { ARMY_3 = 'ECO' }` в `lua/AI/DualGapConfig.lua`.
+## How roles are assigned
+All `ARMY_N` start markers are split into the left and right team and sorted top to bottom.
+With 6 spawns per team, the role goes by position: AIR, GROUND, GROUND, NAVAL, ECO, AIR (as in the map layout).
+Otherwise the nearest anchor from `DualGapConfig.SpawnSlots` wins.
+`game.log` gets a `DualGap: ARMY_n side=... role=...` line per slot, which is handy for checking and calibrating coordinates.
+To force a role, set `RoleOverrides = { ARMY_3 = 'ECO' }` in `lua/AI/DualGapConfig.lua`.
 
-## Как бот строится
-Стандартные билдеры FAF не используются: стандартный мозг получает одну заглушку и сам ничего не строит.
-Командиром, инженерами и заводами управляют модули мода:
+## How the bot builds
+FAF's stock builders are not used: the stock brain gets a single placeholder and builds nothing on its own.
+The ACU, engineers and factories are driven by the mod's modules:
 
-1. **Дебют по билд-ордеру** ([DualGapBuildOrders.lua](lua/AI/DualGapBuildOrders.lua), строго по порядку):
-   - командир: стартовый завод роли → 2 мекса → 2 генератора → 6 мексов → 2 генератора → апгрейд мексов до T2 по одному
-     (GROUND запускает апгрейды и сразу уходит на мид, остальные ассистят);
-   - первый завод: 10 T1-инженеров → T2 → 5 T2-инженеров → 3 разведчика (если авиазавод) → T3 → 10 T3-инженеров;
-   - T1-инженеры 1–3 и 6–8 собирают реклейм (лес, камни, обломки), 4–5 строят гидро, 9–10 помогают,
-     потом эти четверо ставят 3 хранилища энергии рядом с гидро и идут ассистить командира.
-2. **После дебюта** каждый свободный инженер берёт первую подходящую задачу: свой мекс → энергия, если не хватает →
-   заводы роли → реклейм → помощь заводу или стройке. Заводы строят по таблице `Production` своей роли.
-   T1-юниты строятся только на T1-заводе и с лимитом, поэтому после апгрейда T1-спама нет.
-3. **Мексы:** каждый строит только свои (8 на базе плюс зона: мид делят верхний и нижний GROUND, подводные — NAVAL).
-   Мексы выбывшего игрока делятся пополам между двумя ближайшими живыми союзниками.
-4. **Конец T2-фазы** наступает через 10 минут после первого T2-завода. GROUND и NAVAL командиры уходят на максимальную глубину в тылу.
-   Если вокруг много торпедоносцев и мало другой авиации, командир остаётся на суше и строит на базе.
-   Если много бомбардировщиков, он прячется на глубине.
+1. **Opening build order** ([DualGapBuildOrders.lua](lua/AI/DualGapBuildOrders.lua), strictly in order):
+   - ACU: the role's start factory → 2 mexes → 2 power generators → 6 mexes → 2 power generators → mexes upgraded to T2 one at a time
+     (GROUND and NAVAL start the upgrades and leave right away, the others assist);
+   - first factory: scout → 10 T1 engineers → T2 → 5 T2 engineers → scouts up to 3 (air factory only) → T3 → 10 T3 engineers;
+   - T1 engineers 1–3 and 6–8 reclaim (trees, rocks, wrecks), 4–5 build the hydro, 9–10 help;
+     then those four build 3 energy storages next to the hydro and go assist the ACU.
+2. **After the opening**, every idle engineer takes the first task that fits: projects (experimentals, anti-nuke, shields, proxy) → own mex →
+   power if short → the role's factories → reclaim → assist a factory or a build. Factories build from their role's `Production` table.
+   T1 units are only built on a T1 factory and capped, so there is no T1 spam after the upgrade.
+3. **Mexes:** each bot builds only its own (8 at base plus a zone: the upper and lower GROUND split the mid, NAVAL takes the underwater ones).
+   A fallen player's mexes are split in half between the two nearest living allies.
+4. **End of the T2 phase** is 10 minutes after the first T2 factory. GROUND and NAVAL ACUs go to maximum depth in the rear.
+   If there are many torpedo bombers and little other air around, the ACU stays on land and builds in base.
+   If there are many bombers, it hides at depth.
 
-Стартовые заводы: GROUND — наземный, AIR — авиа, ECO и NAVAL — авиа (в FAF инженеров строят все заводы).
+Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factories build engineers in FAF).
 
-## Разведка, эндгейм, армия
-- **Разведка.** Первый юнит каждого завода — разведчик. Всю игру поддерживается запас разведчиков по ролям (`Keep`).
-  Самолёты облетают вражеские базы, воду и фронт, сухопутные разведчики стоят впереди своей стены.
-  Бот реагирует только на то, что команда реально видела: постройку, которую видели хоть раз, или юнит в поле зрения или на радаре.
-- **T4.** AIR — после 50 T3-истребителей. GROUND — когда пропушен свой мид (своих юнитов там 5+ и не осталось известных вражеских построек)
-  или замечен вражеский T4. NAVAL — то же самое для воды. Строят на маркерах «Protected Experimental Construction» у базы,
-  морские T4 — на воде. ECO в начале стратегической фазы случайно выбирает гейм-эндер (T3-арта, ядерка, T4-арта или T4-авиа)
-  и строит его раз за разом.
-- **Ответ на разведку.** Замечена вражеская ядерка → ПРО (одна на группу из трёх спавнов, в центре группы, её строит ECO > NAVAL > AIR > GROUND;
-  вторая — если ядерок 2+). Без ядерок ПРО ставится после конца T2-фазы. Замечена вражеская T3/T4-арта → по 2 тяжёлых щита на базах (кроме GROUND).
-  Бомбардировщики и T4-авиация в первую очередь бьют замеченные гейм-эндеры с наименьшим ПВО вокруг.
-  Свои ракеты в ядерке и ПРО заряжаются автоматически. Ядерка бьёт по замеченным целям, которые не прикрыты вражеской ПРО.
-  Арта сама выбирает замеченные цели в своём радиусе.
-- **Мид.** Каждый GROUND укрепляет точку обороны автора карты в своей зоне. Короткие стенки стоят только перед PD, проходы остаются открытыми.
-  С T2 командир делает апгрейд инженерии, вместе с T2-инженерами строит прокси-базу (2 T2-щита и 3 T2-арты в ~100 от вражеской точки обороны мида)
-  и держит мид. Когда мид пропушен, командир GROUND уходит помогать флоту.
-- **Армия.** Войска копятся за своей стеной (волна 10/16/20 по техе, T4 считается за 10) и уходят строем (AttackFormation).
-  Если враг подошёл к стене, уходят раньше. Флот собирается на морской точке сбора и выходит строем по 6/8/10.
-  Если впереди замечен заметно более сильный флот, ждёт или отступает.
-- **Авиация.** Патруль вдоль фронта (с севера на юг, со своей стороны). Точка, у которой замечено много вражеской ПВО, сдвигается назад.
-- **Командир под водой.** Помогает верфи или строящемуся T4 в пределах 150 от точки, где прячется.
-- **Расстановка.** Между постройками оставляются зазоры в 2 клетки, перед выездом заводов ничего не ставится,
-  генераторы не встают на выездную сторону завода. Это против застревания юнитов на базе.
+## Scouting, endgame, army
+- **Scouting.** Every factory's first unit is a scout, and each role keeps a stock of scouts all game (`Keep`).
+  Planes fly over the enemy bases, the water and the front; land scouts stand ahead of the own wall.
+  The bot only reacts to what the team has actually seen: a structure seen at least once, or a unit in sight or on radar.
+- **Experimentals.** AIR — after 50 T3 fighters. GROUND — when its own mid is pushed (5+ own units there and no known enemy structures left)
+  or an enemy experimental has been scouted. NAVAL — the same for the water. They are built on the map's "Protected Experimental Construction"
+  markers next to the base; naval experimentals on the water. At the start of its strategic phase ECO randomly picks a game ender
+  (T3 artillery, nuke, T4 artillery or T4 air) and keeps building it.
+- **Responses to scouting.** Enemy nuke spotted → anti-nuke (one per group of three spawns, at the group's centre, built by ECO > NAVAL > AIR > GROUND;
+  a second one at 2+ nukes). Without enemy nukes the anti-nuke goes up after the T2 phase ends. Enemy T3/T4 artillery spotted → 2 heavy shields per base (except GROUND).
+  Bombers and air experimentals hit scouted game enders first, picking the one with the least AA around.
+  Own nuke and anti-nuke missiles load automatically. Nukes hit scouted targets not covered by an enemy anti-nuke.
+  Artillery picks scouted targets within its range on its own.
+- **Mid.** Each GROUND fortifies the map author's defensive point in its zone. Short walls stand only in front of the point defences, so the gaps stay open.
+  At T2 the ACU takes the engineering upgrade, builds a proxy base with T2 engineers (2 T2 shields and 3 T2 artillery ~100 from the enemy's mid defensive point)
+  and holds the mid. Once the mid is pushed, the GROUND ACU goes to help the navy.
+- **Army.** Units mass behind the own wall (waves of 10/16/20 by tech, an experimental counts as 10) and leave in formation (AttackFormation).
+  If the enemy comes at the wall, they leave earlier. The fleet gathers at the naval rally point and sails in formation in groups of 6/8/10.
+  If a clearly stronger fleet has been scouted ahead, it waits or falls back.
+- **Air.** Patrols run along the front (north to south, on the own side). A point with a lot of scouted enemy AA steps back.
+- **ACU underwater.** Helps a naval factory or an experimental under construction within 150 of its hiding spot.
+- **Placement.** Structures keep 2-cell gaps, nothing is placed in front of factory exits,
+  and power generators never go on a factory's exit side. This keeps units from getting stuck in the base.
 
-## Файлы
-| Файл | Что делает |
+## Files
+| File | What it does |
 |---|---|
-| `lua/AI/DualGapBuildOrders.lua` | билд-ордеры и таблицы производства: правьте здесь |
-| `lua/AI/DualGapConfig.lua` | координаты, зоны мексов, пороги угроз, тайминги |
-| `lua/AI/DualGapEngineers.lua` | дебют командира, роли T1-инженеров, общие задачи инженеров, реклейм |
-| `lua/AI/DualGapFactories.lua` | дебют первого завода, производство, апгрейды заводов, отсчёт T2-фазы |
-| `lua/AI/DualGapMexOwnership.lua` | владение мексами и их раздел после гибели игрока |
-| `lua/AI/DualGapACUBehaviors.lua` | Overcharge, GROUND: свой проход и укрепления, NAVAL: верфи, вода и угрозы |
-| `lua/AI/DualGapArmy.lua` | накопление и строй, волны, арта, флот, патруль вдоль фронта, удары авиации |
-| `lua/AI/DualGapEconomy.lua` | апгрейд мексов, RAS для ECO |
-| `lua/AI/DualGapIntel.lua` | общая память разведки команды, управление разведчиками |
-| `lua/AI/DualGapProjects.lua` | бригады инженеров: T4, гейм-эндер ECO, общая ПРО, щиты, прокси-база, стрельба ядерок и арты |
-| `lua/AI/DualGapRoleManager.lua`, `DualGapRoutes.lua`, `DualGapUtils.lua`, `DualGapInit.lua` | роли, маршруты, утилиты, запуск |
+| `lua/AI/DualGapBuildOrders.lua` | build orders and production tables: edit here |
+| `lua/AI/DualGapConfig.lua` | coordinates, mex zones, threat thresholds, timings |
+| `lua/AI/DualGapEngineers.lua` | ACU opening, T1 engineer roles, general engineer tasks, reclaim |
+| `lua/AI/DualGapFactories.lua` | first factory opening, production, factory upgrades, T2 phase clock |
+| `lua/AI/DualGapMexOwnership.lua` | mex ownership and splitting a fallen player's mexes |
+| `lua/AI/DualGapACUBehaviors.lua` | overcharge; GROUND: own zone and fortifications; NAVAL: yards; water and threats |
+| `lua/AI/DualGapArmy.lua` | massing and formations, waves, artillery, fleet, front patrols, air strikes |
+| `lua/AI/DualGapEconomy.lua` | mex upgrades, RAS for ECO |
+| `lua/AI/DualGapIntel.lua` | the team's shared scouting memory, scout control |
+| `lua/AI/DualGapProjects.lua` | engineer crews: experimentals, ECO game ender, shared anti-nuke, shields, proxy base, nuke and artillery fire |
+| `lua/AI/DualGapRoleManager.lua`, `DualGapRoutes.lua`, `DualGapUtils.lua`, `DualGapInit.lua` | roles, routes, utilities, startup |
 
-## Отличия от исходного ТЗ
-- **Координаты ролей из ТЗ не совпадают со схемой карты.** По ТЗ ECO стоит в глубоком тылу по центру, но на схеме спавны идут колонками по краям.
-  Поэтому роль определяется по порядку спавна внутри команды, а не по жёстким прямоугольникам в координатах 1024×1024.
-- В ТЗ были ошибки, они исправлены: `platoon:GetGetCommander()` не существует; `GetNumUnitsAroundPoint` без `'Enemy'` считал и свою арту;
-  `ExecuteQueuedMovement` портил общую таблицу маршрута; цикл безопасности завершался после первого отступления.
-- Условие погружения по времени (18:00) действует только для GROUND и NAVAL. ECO и AIR по ТЗ базу не покидают и при низком HP отходят к старту.
-- Файлы билдеров переименованы с префиксом `DualGap`, чтобы мод не перекрыл одноимённые стандартные файлы FAF.
+## Differences from the original spec
+- **The spec's role coordinates don't match the map layout.** The spec puts ECO deep in the rear centre, but the spawns form columns along the edges.
+  So the role comes from the spawn's position within its team, not from fixed rectangles in 1024×1024 coordinates.
+- The spec had bugs, now fixed: `platoon:GetGetCommander()` doesn't exist; `GetNumUnitsAroundPoint` without `'Enemy'` also counted own artillery;
+  `ExecuteQueuedMovement` mutated the shared route table; the safety loop stopped after the first retreat.
+- Going underwater (end of the T2 phase, low HP, enemy artillery or many bombers) applies to GROUND and NAVAL only. Per the spec, ECO and AIR never leave the base and fall back to the start on low HP.
+- Builder files carry a `DualGap` prefix so the mod doesn't shadow FAF's stock files of the same name.
 
-## Что нужно проверить в игре
-Офлайн-тесты (`python tests/run_tests.py`) проверяют синтаксис, совместимость с Lua 5.0, пути импорта и ссылки между модулями.
-Они также проверяют роли и владение мексами на реальных маркерах карты, решения про воду, правила производства
-и прогоняют весь дебют на мини-симуляции. Сам движок они не запускают. В матче стоит проверить:
-- расстановку построек: сейчас это простая спираль вокруг базы с примыканием генераторов к заводу и хранилищ к гидро;
-- пороги угроз и лимиты производства, они подобраны на глаз;
-- координаты маршрутов и прохода: они сняты со скриншота с точностью около 2–3% размера карты.
+## What to check in game
+The offline tests (`python tests/run_tests.py`) check syntax, Lua 5.0 compatibility, import paths and cross-module references.
+They also check roles and mex ownership on the real map markers, the water decisions and production rules,
+and run the whole opening in a small simulation. They don't run the engine itself. In a match, check:
+- structure placement: a simple spiral around the base, with power next to the factory and storages next to the hydro;
+- threat thresholds and production caps, which were chosen by eye;
+- ground arcs and proxy bases: the mid defensive points and the naval rally come from the map markers, while the arcs and proxies were measured from a screenshot to within about 2–3% of the map size.

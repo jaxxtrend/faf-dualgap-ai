@@ -1,29 +1,32 @@
 # faf-dualgap-ai
 
-Мод ИИ для **Supreme Commander: Forged Alliance Forever (FAF)** под карту **Dual Gap Adaptive v14** (6 на 6).
-Каждый бот определяет роль по своему спавну и играет её: **GROUND** (мид по земле), **NAVAL** (вода), **AIR** (авиация) или **ECO** (экономика и гейм-эндеры).
+**English** · [Русский](README.ru.md)
 
-Что умеет: строгий дебют по билд-ордеру, «свои» мексы с разделом мексов погибшего союзника, разведка с общей памятью команды,
-волны строем и патрули вдоль фронта, прокси-база на миде, T4 по условиям роли, общая ПРО на трёх игроков и ответ на замеченные гейм-эндеры.
+An AI mod for **Supreme Commander: Forged Alliance Forever (FAF)** built for the **Dual Gap Adaptive v14** map (6v6).
+Each bot reads its spawn and plays a role: **GROUND** (land mid), **NAVAL** (water), **AIR** (air force) or **ECO** (economy and game enders).
 
-## Установка
-1. Скопировать папку [`mods/DualGapAI`](mods/DualGapAI) в
+What it does: a strict opening build order, own-mex ownership (a fallen ally's mexes are split between the two nearest allies),
+scouting with a shared team memory, waves that move in formation and air patrols along the front, a proxy base in the mid,
+experimentals on role-specific triggers, one shared anti-nuke per three players, and responses to scouted game enders.
+
+## Install
+1. Copy the [`mods/DualGapAI`](mods/DualGapAI) folder to
    `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
-   Папка должна называться именно `DualGapAI`.
-2. В лобби FAF включить мод **DualGap AI** и поставить ботов **AI: DualGap** или **AIx: DualGap** на карте Dual Gap Adaptive v14.
+   The folder must be named exactly `DualGapAI`.
+2. In the FAF lobby, enable the **DualGap AI** mod and put **AI: DualGap** or **AIx: DualGap** bots on Dual Gap Adaptive v14.
 
-Подробно про роли, билд-ордер и настройки — в [mods/DualGapAI/README.md](mods/DualGapAI/README.md).
-Билд-ордеры и таблицы производства правятся в [DualGapBuildOrders.lua](mods/DualGapAI/lua/AI/DualGapBuildOrders.lua),
-координаты и пороги — в [DualGapConfig.lua](mods/DualGapAI/lua/AI/DualGapConfig.lua).
+Roles, build order and settings are described in [mods/DualGapAI/README.md](mods/DualGapAI/README.md).
+Edit build orders and production tables in [DualGapBuildOrders.lua](mods/DualGapAI/lua/AI/DualGapBuildOrders.lua),
+coordinates and thresholds in [DualGapConfig.lua](mods/DualGapAI/lua/AI/DualGapConfig.lua).
 
-## Тесты
-Офлайн, без игры (нужен Python 3 и `pip install lupa`):
+## Tests
+Offline, no game needed (Python 3 and `pip install lupa`):
 
 ```bash
 python tests/run_tests.py
 ```
 
-Тесты проверяют синтаксис и совместимость с Lua 5.0, пути импорта и ссылки между модулями, роли и владение мексами на реальных маркерах карты,
-решения командира, правила производства и прогоняют весь дебют на мини-симуляции.
+The tests check syntax and Lua 5.0 compatibility, import paths and cross-module references, roles and mex ownership on the real map markers,
+ACU decisions and production rules, and run the whole opening in a small simulation.
 
-`tools/map_markers.py` выводит маркеры карты из `*_save.lua`, он пригодится для калибровки координат.
+`tools/map_markers.py` prints a map's markers from its `*_save.lua`, which is handy for calibrating coordinates.
