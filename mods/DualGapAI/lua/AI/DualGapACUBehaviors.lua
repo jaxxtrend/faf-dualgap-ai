@@ -23,6 +23,26 @@ local function Offset(p, dx, dz)
     return { p[1] + dx, GetSurfaceHeight(p[1] + dx, p[3] + dz), p[3] + dz }
 end
 
+local function Projects()
+    return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+end
+
+-- Order an ACU enhancement once (and its prerequisite first). Returns true
+-- if an order was given this tick.
+function TryEnhance(brain, acu, name)
+    local enh = acu:GetBlueprint().Enhancements or {}
+    local def = enh[name]
+    if not def or (acu.HasEnhancement and acu:HasEnhancement(name)) then return false end
+    if brain:GetEconomyStoredRatio('ENERGY') < 0.5 or brain:GetEconomyStoredRatio('MASS') < 0.1 then return false end
+    local pick = name
+    if def.Prerequisite and acu.HasEnhancement and not acu:HasEnhancement(def.Prerequisite) then
+        pick = def.Prerequisite
+    end
+    Utils.Log(brain, 'ACU enhancement ' .. pick)
+    IssueScript({ acu }, { TaskName = 'EnhanceTask', Enhancement = pick })
+    return true
+end
+
 local function HealthRatio(u)
     return u:GetHealth() / u:GetMaxHealth()
 end
@@ -138,10 +158,14 @@ local function FortifyPlan(brain, ctx)
     local plan = {
         { id = pd, cat = CatPD, want = 3, spots = { Offset(choke, dir * 4, -8), Offset(choke, dir * 4, 0), Offset(choke, dir * 4, 8) } },
         { id = Utils.FactionId(brain, 'ShieldT2'), cat = CatShield, want = 1, spots = { Offset(choke, -dir * 3, 0) } },
-        { id = Utils.FactionId(brain, 'Wall'), cat = CatWall, want = 10, spots = {} },
+        { id = Utils.FactionId(brain, 'Wall'), cat = CatWall, want = 9, spots = {} },
     }
-    for dz = -10, 8, 2 do
-        table.insert(plan[3].spots, Offset(choke, dir * 9, dz))
+    -- A short wall in front of each point defence only: the gaps between
+    -- them stay open so our own waves can walk through.
+    for _, pdz in ipairs({ -8, 0, 8 }) do
+        for _, dz in ipairs({ -1, 0, 1 }) do
+            table.insert(plan[3].spots, Offset(choke, dir * 7, pdz + dz))
+        end
     end
     return plan
 end
@@ -154,6 +178,10 @@ local function GroundACUStep(brain, ctx)
 
     local pos = acu:GetPosition()
     if ctx.acuState == 'OPENING' then ctx.acuState = 'MARCH' end
+    if ctx.acuState == 'JOINNAVAL' then
+        JoinNavalStep(brain, ctx, acu)
+        return
+    end
 
     if ctx.acuState == 'MARCH' then
         if Utils.Dist2D(pos, ctx.choke) < 12 then
@@ -178,7 +206,7 @@ local function GroundACUStep(brain, ctx)
                 local have = Utils.CountAround(brain, item.cat, ctx.choke, 25, 'Ally')
                 if have < item.want then
                     local spot = item.spots[have + 1] or item.spots[1]
-                    if Utils.BuildNear(brain, acu, item.id, spot, 10) then return end
+                    if Utils.BuildNear(brain, acu, item.id, spot, 10, 0) then return end
                 end
             end
         end
@@ -186,6 +214,15 @@ local function GroundACUStep(brain, ctx)
     end
 
     if ctx.acuState == 'HOLD' then
+        -- Mid pushed to the enemy bases: go help the navy.
+        if ctx.midPushed then
+            Utils.Log(brain, 'ACU leaves the mid to join the navy')
+            ctx.acuState = 'JOINNAVAL'
+            return
+        end
+        -- T2: engineering upgrade, then help build the proxy base.
+        if ctx.t2Time and TryEnhance(brain, acu, 'AdvancedEngineering') then return end
+        if Projects().HelpWith(brain, ctx, acu, { 'ProxyShield', 'ProxyArty' }) then return end
         if Utils.Dist2D(pos, ctx.choke) > 15 then
             IssueMove({ acu }, ctx.choke)
         else
@@ -197,6 +234,57 @@ local function GroundACUStep(brain, ctx)
             end
         end
     end
+end
+
+---------------------------------------------------------------------------
+-- Naval help: assist the best (own or allied) naval factory or a naval
+-- experimental under construction within `radius` of `around`. Used by the
+-- GROUND ACU that joined the navy and by any ACU hiding underwater.
+---------------------------------------------------------------------------
+function HelpNavy(brain, ctx, acu, around, radius)
+    local best, bestTech
+    for _, u in ipairs(brain:GetUnitsAroundPoint(categories.EXPERIMENTAL + CatNavalFactory, around, radius, 'Ally') or {}) do
+        if Alive(u) then
+            if EntityCategoryContains(categories.EXPERIMENTAL, u) and u:GetFractionComplete() < 1 then
+                IssueRepair({ acu }, u)
+                return true
+            end
+            if EntityCategoryContains(CatNavalFactory, u) and u:GetFractionComplete() >= 1 then
+                local tech = Utils.TechOf(u)
+                if not bestTech or tech > bestTech then best, bestTech = u, tech end
+            end
+        end
+    end
+    if best then
+        IssueGuard({ acu }, best)
+        return true
+    end
+    return false
+end
+
+function JoinNavalStep(brain, ctx, acu)
+    local spot = ctx.joinNavalPos
+    if not spot then
+        spot = Utils.FindNearestWater(Routes.GetPoint('NavalYardHint', ctx.side), 1.5, 200)
+            or Routes.GetPoint('NavalRally', ctx.side)
+        ctx.joinNavalPos = spot
+    end
+    if Utils.Dist2D(acu:GetPosition(), spot) > 40 then
+        IssueMove({ acu }, spot)
+        return
+    end
+    if HelpNavy(brain, ctx, acu, spot, 200) then return end
+    -- No naval factory around: build our own.
+    Utils.BuildNear(brain, acu, Utils.FactionId(brain, 'NavalFactoryT1'), spot, 40)
+end
+
+function SubmergedStep(brain, ctx)
+    local acu = Utils.Commander(brain)
+    if not acu or ctx.acuState ~= 'SUBMERGED' or not Utils.IsIdle(acu) then return end
+    local home = ctx.submergePos or acu:GetPosition()
+    -- Stay near the hiding spot: only help what is within reach of it.
+    if Utils.Dist2D(acu:GetPosition(), home) > 160 then return end
+    HelpNavy(brain, ctx, acu, home, 150)
 end
 
 ---------------------------------------------------------------------------
@@ -291,6 +379,7 @@ function Start(brain, ctx)
     end
     ForkThread(Utils.RunLoop, 'Overcharge', brain, ctx, 1, OverchargeStep)
     ForkThread(Utils.RunLoop, 'ACUSafety', brain, ctx, 2, SafetyStep)
+    ForkThread(Utils.RunLoop, 'ACUUnderwater', brain, ctx, 3, SubmergedStep)
     if ctx.role == 'GROUND' then
         ForkThread(Utils.RunLoop, 'GroundACU', brain, ctx, 2, GroundACUStep)
     elseif ctx.role == 'NAVAL' then

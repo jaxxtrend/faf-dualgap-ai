@@ -78,9 +78,13 @@ FactorySteps.Upgrade = function(brain, ctx, f, step)
     return false
 end
 
+local ScoutKey = { Air = 'AirScout', Land = 'LandScout' }
+
 FactorySteps.Scout = function(brain, ctx, f, step)
-    if step.factory and Utils.FactoryKind(f) ~= step.factory then return true end
-    local id = Utils.FactionId(brain, 'AirScout')
+    local kind = Utils.FactoryKind(f)
+    if step.factory and kind ~= step.factory then return true end
+    if not ScoutKey[kind] then return true end
+    local id = Utils.FactionId(brain, ScoutKey[kind])
     if CountId(brain, id) >= step.count then return true end
     if f:IsIdleState() then Build(f, id) end
     return false
@@ -118,9 +122,25 @@ local function RefillEngineers(brain, ctx, f)
     return false
 end
 
+-- Scouts and other support units (BuildOrders.Keep), any factory tech.
+local function KeepUnits(brain, ctx, f)
+    local kind = Utils.FactoryKind(f)
+    for _, k in ipairs(BO.Keep[ctx.role] or {}) do
+        if k.kind == kind then
+            local id = Utils.FactionId(brain, k[1])
+            if id and f:CanBuild(id) and CountId(brain, id) < (k.count or 1) then
+                Build(f, id)
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- Global so tests can drive it.
 function Produce(brain, ctx, f)
     if f == ctx.mainFactory and RefillEngineers(brain, ctx, f) then return end
+    if KeepUnits(brain, ctx, f) then return end
     local byKind = BO.Production[ctx.role]
     local list = byKind and byKind[Utils.FactoryKind(f)]
     if not list then return end
