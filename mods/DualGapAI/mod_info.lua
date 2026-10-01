@@ -1,0 +1,17 @@
+name = "DualGap AI"
+uid = "6d1f3a52-9c4e-4b8a-a2f7-d17e0c5b9a14"
+version = 1
+copyright = ""
+description = "Role-based skirmish AI for Dual Gap Adaptive v14. Each AI reads its spawn and plays GROUND, NAVAL, AIR or ECO. Pick 'AI: DualGap' in the lobby."
+author = "jaxxtrend"
+url = ""
+icon = ""
+selectable = true
+enabled = true
+exclusive = false
+ui_only = false
+requires = {}
+requiresNames = {}
+conflicts = {}
+before = {}
+after = {}
