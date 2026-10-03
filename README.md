@@ -21,7 +21,7 @@ If you like the project and want to see where it goes next, follow and support i
 1. Copy the [`mods/DualGapAI`](mods/DualGapAI) folder to
    `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
    The folder must be named exactly `DualGapAI`.
-2. In the FAF lobby, enable the **DualGap AI** mod and put **AI: DualGap** or **AIx: DualGap** bots on Dual Gap Adaptive v14.
+2. In the FAF lobby, enable the **DualGap AI** mod and put **AI: DualGap (beta)** or **AIx: DualGap (beta)** bots on Dual Gap Adaptive v14.
 
 Roles, build order and settings are described in [mods/DualGapAI/README.md](mods/DualGapAI/README.md).
 Edit build orders and production tables in [DualGapBuildOrders.lua](mods/DualGapAI/lua/AI/DualGapBuildOrders.lua),
