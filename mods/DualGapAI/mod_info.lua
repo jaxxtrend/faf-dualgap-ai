@@ -1,10 +1,12 @@
+-- FAF mod vault: every upload needs a NEW uid and a HIGHER version.
+-- For the next release: version = 2 and a fresh uid (any new GUID).
 name = "DualGap AI"
 uid = "6d1f3a52-9c4e-4b8a-a2f7-d17e0c5b9a14"
 version = 1
-copyright = ""
-description = "Role-based skirmish AI for Dual Gap Adaptive v14. Each AI reads its spawn and plays GROUND, NAVAL, AIR or ECO. Pick 'AI: DualGap' in the lobby."
+copyright = "2026 jaxxtrend"
+description = "Role-based skirmish AI for Dual Gap Adaptive v14 (6v6). Each bot reads its spawn and plays GROUND, NAVAL, AIR or ECO. Pick 'AI: DualGap' or 'AIx: DualGap' in the lobby. First test version."
 author = "jaxxtrend"
-url = ""
+url = "https://github.com/jaxxtrend/faf-dualgap-ai"
 icon = ""
 selectable = true
 enabled = true
