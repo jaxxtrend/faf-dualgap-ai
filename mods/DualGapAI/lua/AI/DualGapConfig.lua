@@ -180,6 +180,20 @@ BaseAA = {
     { count = 8, radius = 40 },
 }
 
+-- Shields over the base core (factories and power), every role: at T2 two
+-- T2 shields, at T3 a ring of heavy shields (more once enemy T3/T4
+-- artillery is scouted). Lost ones are rebuilt; shields also climb their
+-- upgrade chain when the economy allows.
+BaseShields = {
+    [2] = { count = 2, radius = 8 },
+    [3] = { count = 3, radius = 14 },
+}
+BaseShieldsVsArty = { count = 5, radius = 16 }
+
+-- Base upkeep: structures within UpkeepRadius of the start are remembered
+-- and rebuilt on the same spot when destroyed (DualGapEngineers).
+UpkeepRadius = 90
+
 -- Mex storages: four mass storages around every own mex once it is T2; a
 -- mex only goes to T3 when no free storage spot is left around it.
 -- Mass fabricators (T3) go next to T3 power when energy overflows.

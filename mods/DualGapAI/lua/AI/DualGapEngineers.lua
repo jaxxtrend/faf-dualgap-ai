@@ -6,10 +6,10 @@
 --
 --   ACU opening   BuildOrders.ACU, strictly in order
 --   T1 eng 1..10  BuildOrders.T1Engineers roles (reclaim / hydro crew)
---   everyone else GeneralTask: projects -> own mexes -> power -> mass
---                 storages around T2+ mexes -> mass fabricators -> role
---                 factories -> reclaim (base, then the own half of the mid)
---                 -> assist
+--   everyone else GeneralTask: projects -> own mexes -> power -> rebuild
+--                 what the base lost -> mass storages around T2+ mexes ->
+--                 mass fabricators -> role factories -> reclaim (base, then
+--                 the own half of the mid) -> assist
 --
 -- Grid: power goes next to air factories first (adjacency cuts their energy
 -- cost), then next to mass fabricators, then next to any factory; mass
@@ -530,6 +530,77 @@ local function TryMexStorage(brain, ctx, u)
     return true
 end
 
+---------------------------------------------------------------------------
+-- Base upkeep: every structure we own near the start is remembered by its
+-- spot; when one is destroyed, an engineer rebuilds it there. Mexes,
+-- factories, anti-air, shields, anti-nuke, artillery, nukes and
+-- experimentals have their own planners and are left to them.
+---------------------------------------------------------------------------
+local CatRebuildSkip = categories.MASSEXTRACTION + categories.FACTORY + categories.WALL + categories.ANTIAIR
+    + categories.SHIELD + categories.ANTIMISSILE + categories.ARTILLERY + categories.NUKE + categories.EXPERIMENTAL
+
+local function SpotKey(pos)
+    return math.floor(pos[1]) .. ':' .. math.floor(pos[3])
+end
+
+-- Exposed for tests: the first id down the upgrade chain (UpgradesFrom)
+-- that canBuild accepts, e.g. a lost T3 shield is rebuilt as its T2 base.
+function BuildableRoot(id, canBuild, bps)
+    local guard = 0
+    while id and id ~= '' and id ~= 'none' and guard < 8 do
+        if canBuild(id) then return id end
+        local bp = bps[id]
+        id = bp and bp.General and bp.General.UpgradesFrom
+        guard = guard + 1
+    end
+    return nil
+end
+
+local function UpkeepScan(brain, ctx)
+    ctx.layout = ctx.layout or {}
+    for _, u in ipairs(brain:GetListOfUnits(categories.STRUCTURE - CatRebuildSkip, false)) do
+        if Alive(u) and u:GetFractionComplete() >= 1 then
+            local p = u:GetPosition()
+            if Utils.Dist2D(p, ctx.startPos) <= Config.UpkeepRadius then
+                ctx.layout[SpotKey(p)] = { id = u:GetBlueprint().BlueprintId, pos = { p[1], p[2], p[3] }, unit = u }
+            end
+        end
+    end
+end
+
+local function TryRebuild(brain, ctx, u)
+    if not ctx.layout or brain:GetEconomyStoredRatio('MASS') < 0.05 then return false end
+    ctx.rebuildClaims = ctx.rebuildClaims or {}
+    local now = GetGameTimeSeconds()
+    local from = u:GetPosition()
+    local canBuild = function(x) return u:CanBuild(x) end
+    local best, bestD, bestId, bestKey
+    for key, r in pairs(ctx.layout) do
+        if not Alive(r.unit) then
+            local c = ctx.rebuildClaims[key]
+            if not (c and c.expires > now and c.unit ~= u and Alive(c.unit)) then
+                local id = BuildableRoot(r.id, canBuild, __blueprints)
+                if id and brain:CanBuildStructureAt(id, r.pos) then
+                    if not Unsafe(brain, r.pos) then
+                        local d = Utils.Dist2D(from, r.pos)
+                        if not bestD or d < bestD then best, bestD, bestId, bestKey = r, d, id, key end
+                    end
+                elseif id then
+                    -- The spot is taken: forget it once something of ours stands there.
+                    for _, x in ipairs(brain:GetUnitsAroundPoint(categories.STRUCTURE, r.pos, 2, 'Ally') or {}) do
+                        if Alive(x) and x:GetAIBrain() == brain then ctx.layout[key] = nil; break end
+                    end
+                end
+            end
+        end
+    end
+    if not best then return false end
+    ctx.rebuildClaims[bestKey] = { unit = u, expires = now + 60 }
+    Utils.Log(brain, 'rebuilding ' .. bestId)
+    IssueBuildMobile({ u }, best.pos, bestId, {})
+    return true
+end
+
 -- Mass fabricators next to T3 power while energy overflows.
 local function TryMassFab(brain, ctx, u)
     local id = Utils.FactionId(brain, 'MassFabT3')
@@ -600,6 +671,7 @@ local function GeneralTask(brain, ctx, u, baseOnly)
     if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end
     if TryPower(brain, ctx, u) then return end
+    if TryRebuild(brain, ctx, u) then return end
     if TryMexStorage(brain, ctx, u) then return end
     if TryMassFab(brain, ctx, u) then return end
     if TryFactories(brain, ctx, u) then return end
@@ -619,6 +691,11 @@ local RoleTasks = {
 }
 
 function EngineersStep(brain, ctx)
+    ctx.upkeepTick = (ctx.upkeepTick or 0) + 1
+    if ctx.upkeepTick >= 5 then
+        ctx.upkeepTick = 0
+        UpkeepScan(brain, ctx)
+    end
     for _, u in ipairs(brain:GetListOfUnits(CatEngineer, false)) do
         if Alive(u) and u:GetFractionComplete() >= 1 and not u.DualGapAssigned then
             if not u.DGSeen then

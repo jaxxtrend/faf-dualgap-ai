@@ -40,7 +40,7 @@ The ACU, engineers and factories are driven by the mod's modules:
    - T1 engineers 1–3 and 6–8 reclaim (trees, rocks, wrecks), 4–5 build the hydro, 9–10 help;
      then those four build 3 energy storages next to the hydro and go assist the ACU.
 2. **After the opening**, every idle engineer takes the first task that fits: projects (anti-nuke, shields, proxy, base anti-air,
-   experimentals) → own mex → power if short → mass storages around T2 mexes → mass fabricators when energy overflows →
+   experimentals) → own mex → power if short → rebuild what the base lost → mass storages around T2 mexes → mass fabricators when energy overflows →
    the role's factories → reclaim (the base, then the own half of the mid when no known enemy army is there) → assist a factory or a build. Factories build from their role's `Production` table.
    T1 units are only built on a T1 factory and capped, so there is no T1 spam after the upgrade.
 3. **Grid.** Power generators go right next to air factories (the adjacency bonus cuts their energy cost), then next to mass fabricators,
@@ -69,13 +69,17 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   (T3 artillery, nuke, T4 artillery or T4 air) and keeps building it.
 - **Responses to scouting.** Enemy nuke spotted → anti-nuke right away (one per group of three spawns, at the group's centre, built by ECO > NAVAL > AIR > GROUND;
   a second one at 2+ nukes). Without enemy nukes the anti-nuke goes up after the first T3 power generator.
-  The anti-nuke is first in the project queue, so ECO's game ender can't hold it up. Enemy T3/T4 artillery spotted → 2 heavy shields per base (except GROUND).
+  The anti-nuke is first in the project queue, so ECO's game ender can't hold it up. Enemy T3/T4 artillery spotted → the heavy shield ring grows from 3 to 5.
   Bombers and air experimentals hit scouted game enders first, picking the one with the least AA around.
   Own nuke and anti-nuke missiles load automatically. Nukes hit scouted targets not covered by an enemy anti-nuke.
   Artillery (T2 at the proxy, T3, T4) and Novax satellites (anywhere on the map) pick targets by priority: game enders (T3/T4 artillery, nukes, Yolona Oss, Paragon, the Novax satellite centre and any other experimental structure) → the enemy anti-nuke while we own a nuke →
   the ACU if it is in sight, not underwater and not under a shield → mexes and power → factories.
   A target under enemy shields that are up is worth 1 + 2×(shields) times less, so the guns hit something unshielded instead of pounding a shield.
   Targets are re-picked every 10 seconds, so an ACU walking into range becomes the target at once.
+- **Base shields.** Every base gets two T2 shields over its core at T2 and a ring of 3 heavy shields at T3 (5 once enemy artillery is scouted).
+  Lost shields are rebuilt; shields climb their upgrade chain when the economy allows.
+- **Base upkeep.** Every structure near the start is remembered by its spot; when one is destroyed, an engineer rebuilds it there
+  (an upgraded one from the bottom of its chain). Mexes, factories, AA, shields, anti-nuke and artillery are rebuilt by their own planners.
 - **Base anti-air.** Each base gets one T1 AA from the start, three T2 flak around it at T2 and a full ring of 8 T3 SAMs at T3. Lost ones are rebuilt.
 - **Mid.** Each GROUND fortifies the map author's defensive point in its zone. Short walls stand only in front of the point defences, so the gaps stay open.
   At T2 the ACU takes the engineering upgrade, builds a proxy base with T2 engineers (2 T2 shields and 3 T2 artillery ~100 from the enemy's mid defensive point)

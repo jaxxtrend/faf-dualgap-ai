@@ -1456,6 +1456,27 @@ check(ring[1], 'three T2 flak spread around the base')
 check(ring[2], 'T3 SAMs ring the whole base')
 check((ring[3], ring[4], ring[5]) == (1, 3, 8), 'base AA by tech: 1 x T1, 3 x T2, 8 x T3')
 
+sh = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+local t1, t2, t3, t3a = P.ShieldPlan(1, false), P.ShieldPlan(2, false), P.ShieldPlan(3, false), P.ShieldPlan(3, true)
+return #t1, #t2, t2[1].spec.count, #t3, t3[2].spec.count, t3a[2].spec.count
+""")
+check(sh[0] == 0, 'no base shields at T1')
+check(sh[1] == 1 and sh[2] == 2, 'two T2 shields over the base at T2')
+check(sh[3] == 2 and sh[4] == 3 and sh[5] == 5, 'T3: heavy shield ring (3, or 5 once enemy artillery is scouted)')
+
+root = lua.execute(r"""
+local E = import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua')
+local bps = { urb4207 = { General = { UpgradesFrom = 'urb4206' } }, urb4206 = { General = { UpgradesFrom = 'urb4205' } },
+              urb4205 = { General = { UpgradesFrom = 'urb4204' } }, urb4204 = { General = { UpgradesFrom = 'urb4202' } },
+              urb4202 = { General = {} }, ueb1301 = { General = {} } }
+local t1 = function(id) return id == 'urb4202' or id == 'ueb1301' end
+return E.BuildableRoot('urb4207', t1, bps), E.BuildableRoot('ueb1301', t1, bps),
+       E.BuildableRoot('ueb1301', function() return false end, bps)
+""")
+check(root[0] == 'urb4202', 'a lost upgraded shield is rebuilt from the bottom of its chain')
+check(root[1] == 'ueb1301' and root[2] is None, 'a lost structure is rebuilt as is, or skipped if nobody can build it')
+
 halves = lua.execute(r"""
 local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
 local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')

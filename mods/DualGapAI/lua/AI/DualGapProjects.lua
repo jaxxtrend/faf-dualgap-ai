@@ -12,7 +12,9 @@
 --           GROUND builds it) as soon as an enemy nuke is scouted or the
 --           builder has its first T3 power generator; a second one once
 --           2+ enemy nukes are scouted. Priority 1: nothing starves it.
---   team    enemy T3/T4 artillery scouted -> T3 shields over each base
+--   all     shields over the base core: two T2 shields at T2, a ring of
+--           heavy shields at T3, a bigger ring once enemy T3/T4 artillery
+--           is scouted (Config.BaseShields); lost ones are rebuilt
 --   GROUND  after the first T2 factory: proxy base (T2 shields + T2 arty)
 --   all     anti-air around the base: one T1 AA from the start, three T2
 --           flak at T2, a full ring of T3 SAMs at T3 (Config.BaseAA);
@@ -353,17 +355,6 @@ local function PlanAntiNuke(brain, ctx)
     end
 end
 
-local function PlanShields(brain, ctx)
-    if ctx.role == 'GROUND' then return end
-    local arty = table.getn(Intel.Enders(ctx.side, 'ARTY'))
-    if arty == 0 or not HasT3Engineer(brain) or Find(ctx, 'BaseShield') then return end
-    local have = Utils.CountAround(brain, categories.SHIELD * categories.STRUCTURE * (categories.TECH3 + categories.TECH2),
-        ctx.startPos, 40, 'Ally')
-    if have < 2 then
-        Add(brain, ctx, { name = 'BaseShield', key = 'ShieldT3', site = ctx.startPos, crewMax = 3,
-            count = 2 - have, minCrewTech = 2, gap = 1, priority = 2 })
-    end
-end
 
 local function PlanProxy(brain, ctx)
     if ctx.role ~= 'GROUND' or not ctx.t2Time or ctx.proxyPlanned then return end
@@ -396,29 +387,60 @@ local function TopFactoryTech(brain)
     return best
 end
 
--- Anti-air ring per tech tier: plan the points that have no AA of that
--- tier yet (first build and rebuilds alike).
-local function PlanBaseAA(brain, ctx)
-    local tech = TopFactoryTech(brain)
+-- A ring of structures around the base: plan the points that have nothing
+-- of `have` (category) within `near` yet. Used for the first build and for
+-- rebuilds alike.
+local function PlanRing(brain, ctx, name, key, have, spec, near, minCrewTech, priority)
+    if Find(ctx, name) then return end
     local dir = (ctx.side == 'LEFT') and 1 or -1
     ctx.badSites = ctx.badSites or {}
+    local sites = {}
+    for _, p in ipairs(Ring(ctx.startPos, spec.radius, spec.count, dir)) do
+        p[2] = GetSurfaceHeight(p[1], p[3])
+        if not ctx.badSites[SiteKey(p)] and Utils.CountAround(brain, have, p, near, 'Ally') == 0 then
+            table.insert(sites, p)
+        end
+    end
+    local n = table.getn(sites)
+    if n > 0 then
+        Add(brain, ctx, { name = name, key = key, sites = sites, count = n, crewMax = 2,
+            minCrewTech = minCrewTech, gap = 1, maxRadius = 10, priority = priority })
+    end
+end
+
+-- Anti-air ring per tech tier.
+local function PlanBaseAA(brain, ctx)
+    local tech = TopFactoryTech(brain)
     for t = 1, 3 do
         local spec = Config.BaseAA[t]
-        local name = 'BaseAA' .. t
-        if spec and tech >= t and not Find(ctx, name) then
-            local cat = categories.ANTIAIR * categories.STRUCTURE * categories['TECH' .. t]
-            local sites = {}
-            for _, p in ipairs(Ring(ctx.startPos, spec.radius, spec.count, dir)) do
-                p[2] = GetSurfaceHeight(p[1], p[3])
-                if not ctx.badSites[SiteKey(p)] and Utils.CountAround(brain, cat, p, 12, 'Ally') == 0 then
-                    table.insert(sites, p)
-                end
-            end
-            local n = table.getn(sites)
-            if n > 0 then
-                Add(brain, ctx, { name = name, key = 'AntiAirT' .. t, sites = sites, count = n, crewMax = 2,
-                    minCrewTech = t, gap = 1, maxRadius = 10, priority = 4 })
-            end
+        if spec and tech >= t then
+            PlanRing(brain, ctx, 'BaseAA' .. t, 'AntiAirT' .. t,
+                categories.ANTIAIR * categories.STRUCTURE * categories['TECH' .. t], spec, 12, t, 4)
+        end
+    end
+end
+
+-- Exposed for tests: the shield rings a base wants at this tech.
+function ShieldPlan(tech, enemyArty)
+    local out = {}
+    if tech >= 2 then table.insert(out, { tier = 2, spec = Config.BaseShields[2] }) end
+    if tech >= 3 then
+        table.insert(out, { tier = 3, spec = (enemyArty and Config.BaseShieldsVsArty) or Config.BaseShields[3] })
+    end
+    return out
+end
+
+local function PlanBaseShields(brain, ctx)
+    local arty = table.getn(Intel.Enders(ctx.side, 'ARTY')) > 0
+    for _, s in ipairs(ShieldPlan(TopFactoryTech(brain), arty)) do
+        -- T2 points count any shield (an upgraded one is still there),
+        -- T3 points want a heavy one.
+        -- Cybran builds its heavy shield as ED1 and upgrades it, so there
+        -- any shield on the point counts (no endless new ED1s).
+        local have = categories.SHIELD * categories.STRUCTURE
+        if s.tier == 3 and brain:GetFactionIndex() ~= 3 then have = have * categories.TECH3 end
+        if s.tier == 2 or HasT3Engineer(brain) then
+            PlanRing(brain, ctx, 'BaseShield' .. s.tier, 'ShieldT' .. s.tier, have, s.spec, 8, 2, 2)
         end
     end
 end
@@ -619,7 +641,7 @@ local function PlannerStep(brain, ctx)
     PlanProxy(brain, ctx)
     PlanBaseAA(brain, ctx)
     PlanAntiNuke(brain, ctx)
-    PlanShields(brain, ctx)
+    PlanBaseShields(brain, ctx)
     PlanExperimentals(brain, ctx)
     WeaponsStep(brain, ctx)
     UpgradeShields(brain, ctx)
