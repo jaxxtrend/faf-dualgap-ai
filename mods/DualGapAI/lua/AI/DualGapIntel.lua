@@ -102,7 +102,8 @@ local function Scan(side, brain)
             t.t4Units[key] = true
             t.t4Seen = true
             Utils.Log(brain, 'scouted an enemy experimental unit')
-            Comms.Say(brain, side, 't4:' .. key, 'Enemy experimental: ' .. Comms.UnitName(e) .. '!',
+            -- One callout per experimental type a minute, not one per unit.
+            Comms.Say(brain, side, 't4:' .. tostring(e:GetBlueprint().BlueprintId), 'Enemy experimental: ' .. Comms.UnitName(e) .. '!',
                 e:GetPosition(), 'alert')
         end
     end

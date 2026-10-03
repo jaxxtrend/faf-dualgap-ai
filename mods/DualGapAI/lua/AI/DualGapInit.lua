@@ -55,8 +55,18 @@ function Start(brain)
         import('/mods/DualGapAI/lua/AI/DualGapFactories.lua').Start(brain, ctx)
         import('/mods/DualGapAI/lua/AI/DualGapArmy.lua').Start(brain, ctx)
         import('/mods/DualGapAI/lua/AI/DualGapEconomy.lua').Start(brain, ctx)
+        -- The stock brain runs BaseManagersDistressAI on the ArmyPool: when
+        -- the base is threatened it clears the orders of every mobile unit
+        -- around it (engineers included) and sends them at the enemy, which
+        -- overrides this mod. It skips bases flagged DistressCall, so keep
+        -- the flag up (that also stops its error once a brain is defeated).
+        while not Utils.BrainDefeated(brain) do
+            for _, loc in pairs(brain.BuilderManagers or {}) do loc.DistressCall = true end
+            WaitSeconds(5)
+        end
     end)
 end
+
 
 -- Shared FirstBaseFunction: high priority for the template matching our role,
 -- -1 for everything else and for non-DualGap personalities.
