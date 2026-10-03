@@ -105,11 +105,23 @@ Production = {
 
 -- Support units kept alive all game, built before army production by any
 -- factory of the right kind whatever its tech: scouting never stops.
+-- `late`: a T3 factory builds this instead (T3 spy planes replace T1 air
+-- scouts); both count toward `count`.
 Keep = {
-    GROUND = { { 'LandScout', kind = 'Land', count = 2 }, { 'AirScout', kind = 'Air', count = 1 } },
-    AIR    = { { 'AirScout', kind = 'Air', count = 2 }, { 'SpyPlane', kind = 'Air', count = 1 } },
-    ECO    = { { 'AirScout', kind = 'Air', count = 1 }, { 'SpyPlane', kind = 'Air', count = 1 } },
-    NAVAL  = { { 'AirScout', kind = 'Air', count = 1 } },
+    GROUND = { { 'LandScout', kind = 'Land', count = 2 }, { 'AirScout', kind = 'Air', count = 1, late = 'SpyPlane' } },
+    AIR    = { { 'AirScout', kind = 'Air', count = 3, late = 'SpyPlane' } },
+    ECO    = { { 'AirScout', kind = 'Air', count = 2, late = 'SpyPlane' } },
+    NAVAL  = { { 'AirScout', kind = 'Air', count = 1, late = 'SpyPlane' } },
+}
+
+-- Extra units kept while the team has lost the enemy (DualGapIntel.Stale):
+-- torpedo bombers and spy planes carry sonar and search the enemy's deep
+-- water for a hidden ACU.
+HuntKeep = {
+    AIR    = { { 'T2TorpBomber', kind = 'Air', count = 10 }, { 'SpyPlane', kind = 'Air', count = 2 } },
+    NAVAL  = { { 'T2TorpBomber', kind = 'Air', count = 4 } },
+    ECO    = { { 'SpyPlane', kind = 'Air', count = 1 } },
+    GROUND = {},
 }
 
 -- Experimental each role builds once its T4 trigger fires (DualGapProjects):

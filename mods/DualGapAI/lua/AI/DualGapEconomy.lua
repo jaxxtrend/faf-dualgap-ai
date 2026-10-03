@@ -17,8 +17,27 @@ end
 ---------------------------------------------------------------------------
 -- Mex upgrades. Nothing happens until the ACU reaches its UpgradeMexes step.
 -- Then own mexes go to ctx.mexUpgradeTech strictly one at a time (closest to
--- base first). Once all are there, T2 -> T3 runs in parallel (capped).
+-- base first). Once all are there, T2 -> T3 runs in parallel (capped), but
+-- only for mexes with all their mass storages built (StorageSpots empty):
+-- adjacent storages raise a mex's output, so they come first.
 ---------------------------------------------------------------------------
+local CatMassStorage = categories.MASSSTORAGE * categories.STRUCTURE
+
+-- Free buildable storage spots touching the mex (up to four, one per side).
+-- Spots taken by anything else count as done.
+function StorageSpots(brain, mex)
+    local id = Utils.FactionId(brain, 'MassStorage')
+    if not id then return {} end
+    local p = mex:GetPosition()
+    local off = (Utils.SizeOfBp(mex:GetBlueprint()) + Utils.FootprintOf(id)) / 2
+    local out = {}
+    for _, d in ipairs({ { off, 0 }, { -off, 0 }, { 0, off }, { 0, -off } }) do
+        local s = { p[1] + d[1], 0, p[3] + d[2] }
+        s[2] = GetSurfaceHeight(s[1], s[3])
+        if brain:CanBuildStructureAt(id, s) then table.insert(out, s) end
+    end
+    return out
+end
 local function MexStats(brain, ctx)
     local belowTarget, upgrading = {}, 0
     for _, u in ipairs(brain:GetListOfUnits(CatMex, false)) do
@@ -61,7 +80,8 @@ local function UpgradeStep(brain, ctx)
     if upgrading >= cap then return end
     local t2 = {}
     for _, u in ipairs(brain:GetListOfUnits(CatMex * categories.TECH2, false)) do
-        if Alive(u) and u:GetFractionComplete() >= 1 and not u:IsUnitState('Upgrading') and UpgradeTarget(u) then
+        if Alive(u) and u:GetFractionComplete() >= 1 and not u:IsUnitState('Upgrading') and UpgradeTarget(u)
+            and table.getn(StorageSpots(brain, u)) == 0 then
             table.insert(t2, u)
         end
     end

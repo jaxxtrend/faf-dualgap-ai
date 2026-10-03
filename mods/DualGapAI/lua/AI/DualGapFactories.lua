@@ -5,6 +5,7 @@
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
 local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
 
 local Alive = Utils.Alive
 local TechOf = Utils.TechOf
@@ -122,18 +123,41 @@ local function RefillEngineers(brain, ctx, f)
     return false
 end
 
--- Scouts and other support units (BuildOrders.Keep), any factory tech.
-local function KeepUnits(brain, ctx, f)
-    local kind = Utils.FactoryKind(f)
-    for _, k in ipairs(BO.Keep[ctx.role] or {}) do
+-- Exposed for tests: which id a Keep entry builds on a factory of `tech`
+-- (the `late` replacement on T3 when the factory can build it).
+function KeepPick(entry, tech, idOf, canBuild)
+    local id = idOf(entry[1])
+    local lateId = entry.late and idOf(entry.late)
+    if lateId and tech >= 3 and canBuild(lateId) then return lateId end
+    if id and canBuild(id) then return id end
+    return nil
+end
+
+local function KeepList(brain, ctx, list, f, kind)
+    for _, k in ipairs(list or {}) do
         if k.kind == kind then
-            local id = Utils.FactionId(brain, k[1])
-            if id and f:CanBuild(id) and CountId(brain, id) < (k.count or 1) then
-                Build(f, id)
-                return true
+            local idOf = function(key) return Utils.FactionId(brain, key) end
+            local have = 0
+            if idOf(k[1]) then have = have + CountId(brain, idOf(k[1])) end
+            if k.late and idOf(k.late) then have = have + CountId(brain, idOf(k.late)) end
+            if have < (k.count or 1) then
+                local id = KeepPick(k, TechOf(f), idOf, function(x) return f:CanBuild(x) end)
+                if id then
+                    Build(f, id)
+                    return true
+                end
             end
         end
     end
+    return false
+end
+
+-- Scouts and other support units (BuildOrders.Keep), any factory tech;
+-- plus the search units (BuildOrders.HuntKeep) while the enemy is lost.
+local function KeepUnits(brain, ctx, f)
+    local kind = Utils.FactoryKind(f)
+    if KeepList(brain, ctx, BO.Keep[ctx.role], f, kind) then return true end
+    if Intel.Stale(ctx.side) and KeepList(brain, ctx, BO.HuntKeep[ctx.role], f, kind) then return true end
     return false
 end
 

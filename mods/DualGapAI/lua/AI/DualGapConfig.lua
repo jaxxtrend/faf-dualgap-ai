@@ -136,3 +136,49 @@ AirStrikeSize    = 8
 EcoStrategicMassIncome = 100    -- mass/sec before ECO goes all-in on T3/T4
 EcoStrategicShare      = 0.8    -- share of engineers sent to strategic builds
 MaxConcurrentUpgrades  = 3
+
+-- Experimentals walk apart: a dying T4 explodes and hurts whatever stands
+-- next to it. Each one keeps this distance from the wave and from the others.
+T4Spacing = 40
+
+-- Mid reclaim: engineers also reclaim wrecks in the own half of the mid
+-- (both mid defensive points of the side), if a cell there is worth at least
+-- MidReclaimMinValue and no known enemy army stands within MidReclaimSafeRadius.
+MidReclaimRadius     = 70
+MidReclaimMinValue   = 80
+MidReclaimSafeRadius = 50
+
+-- Fighters leave the front patrol to intercept known enemy aircraft behind
+-- the front line: at least InterceptMin fighters, InterceptPerEnemy per enemy.
+InterceptMin       = 4
+InterceptPerEnemy  = 2
+InterceptSeconds   = 30
+
+-- Bomber strikes: fighters escort them and engage the enemy fighters on the
+-- direct line, the bombers fly a flank route (BomberFlankShare of the strike
+-- distance to the side) and leave BomberDelay seconds after the escort.
+-- A strike waits while the escort can't match EscortRatio x the known enemy
+-- fighters around the target.
+EscortRatio        = 1.2
+EscortMin          = 4
+BomberFlankShare   = 0.35
+BomberDelay        = 6
+StrikeTimeout      = 150
+
+-- Base defence: T2 point defences on the enemy-facing half circle around
+-- each base, built after the first T2 factory.
+BaseDefenseCount  = 4
+BaseDefenseRadius = 35
+
+-- Mex storages: four mass storages around every own mex once it is T2; a
+-- mex only goes to T3 when no free storage spot is left around it.
+-- Mass fabricators (T3) go next to T3 power when energy overflows.
+MassFabEnergySurplus = 1500     -- energy/s trend needed before a fabricator
+
+-- Stalemate: if the team has known nothing about the enemy (no structure,
+-- no unit) for this long, it starts searching the enemy's deep water.
+StaleSeconds = 90
+
+-- Team chat and map pings (DualGapComms): the same alert is repeated no more
+-- often than this.
+PingCooldown = 60

@@ -11,15 +11,27 @@
 --          -> basin -> enemy waters; falls back when a clearly stronger
 --          scouted fleet is ahead
 --   Air    fighters patrol ALONG the front (north-south); each patrol point
---          steps back while scouted enemy AA is near it. Bombers stage and
---          strike scouted game enders first, then ships / economy, always
---          the target with the least AA around.
+--          steps back while scouted enemy AA is near it. Known enemy
+--          aircraft behind the front line are intercepted by the nearest
+--          patrol fighters, who return to the patrol afterwards.
+--          Bombers stage and strike scouted game enders first, then ships /
+--          economy, always the target with the least AA around. Fighters go
+--          first on the direct line and tie up the enemy fighters; the
+--          bombers follow a few seconds later on a flank route. A strike
+--          waits while the escort can't match the known enemy fighters.
+--   T4     experimentals never walk inside the wave: each keeps
+--          Config.T4Spacing from the wave and from the others, so a dying
+--          one doesn't take its neighbours with it.
+--   Search when the team has lost the enemy (Intel.Stale): fleets and
+--          torpedo bombers sweep the enemy's deep water (an ACU hiding
+--          underwater), land waves walk the enemy bases.
 
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
 local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
 local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
+local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
 
 local Alive = Utils.Alive
 
@@ -37,6 +49,8 @@ local CatTorpBomber = categories.AIR * categories.MOBILE * categories.ANTINAVY
 local CatAirT4    = categories.AIR * categories.MOBILE * categories.EXPERIMENTAL
 
 local CatNavalTargets = categories.NAVAL - categories.WALL
+local CatEnemyAir     = categories.AIR * categories.MOBILE
+local CatEnemyFighter = categories.AIR * categories.MOBILE * categories.ANTIAIR - categories.BOMBER - categories.GROUNDATTACK
 local CatEcoTargets   = categories.STRUCTURE * (categories.MASSEXTRACTION + categories.ENERGYPRODUCTION
                         + categories.MASSFABRICATION + categories.FACTORY)
 local CatEnemyLand    = categories.LAND * categories.MOBILE
@@ -119,16 +133,55 @@ local function Weight(units)
     return w
 end
 
+-- Exposed for tests: sideways offsets for n experimentals, alternating
+-- sides of the path: +s, -s, +2s, -2s ...
+function SpreadOffsets(n, spacing)
+    local out = {}
+    for i = 1, n do
+        local k = math.floor((i + 1) / 2)
+        local odd = (i - 2 * math.floor(i / 2)) == 1
+        table.insert(out, (odd and 1 or -1) * k * spacing)
+    end
+    return out
+end
+
+-- Unit vector perpendicular to from -> to (x, z).
+local function Perp(from, to)
+    local dx, dz = to[1] - from[1], to[3] - from[3]
+    local len = math.sqrt(dx * dx + dz * dz)
+    if len < 0.01 then return 1, 0 end
+    return -dz / len, dx / len
+end
+
 -- Formation attack-move through waypoints, facing along the path.
+-- Experimentals don't join the formation: each walks its own copy of the
+-- path shifted sideways by SpreadOffsets.
 function FormationPath(units, path, from)
     units = Utils.FilterAlive(units)
     if table.getn(units) == 0 or table.getn(path) == 0 then return end
     IssueClearCommands(units)
-    local prev = from or Centroid(units)
-    for _, wp in ipairs(path) do
-        local p = { wp[1], GetSurfaceHeight(wp[1], wp[3]), wp[3] }
-        IssueFormAggressiveMove(units, p, 'AttackFormation', Utils.FacingDegrees(prev, p))
-        prev = p
+    local exps, rest = {}, {}
+    for _, u in ipairs(units) do
+        if EntityCategoryContains(categories.EXPERIMENTAL, u) then table.insert(exps, u) else table.insert(rest, u) end
+    end
+    local start = from or Centroid(units)
+    if table.getn(rest) > 0 then
+        local prev = start
+        for _, wp in ipairs(path) do
+            local p = { wp[1], GetSurfaceHeight(wp[1], wp[3]), wp[3] }
+            IssueFormAggressiveMove(rest, p, 'AttackFormation', Utils.FacingDegrees(prev, p))
+            prev = p
+        end
+    end
+    local offsets = SpreadOffsets(table.getn(exps), Config.T4Spacing)
+    for i, u in ipairs(exps) do
+        local prev = start
+        for _, wp in ipairs(path) do
+            local px, pz = Perp(prev, wp)
+            local x, z = wp[1] + px * offsets[i], wp[3] + pz * offsets[i]
+            IssueAggressiveMove({ u }, { x, GetSurfaceHeight(x, z), z })
+            prev = wp
+        end
     end
 end
 
@@ -154,15 +207,32 @@ end
 -- Waves: { units, kind = 'LAND'|'NAVAL', stage }
 --   stage 1: following its path; 2: hunting; 'retreat': falling back
 ---------------------------------------------------------------------------
+local function EnemySlots(ctx)
+    local out = {}
+    for _, s in pairs(RoleManager.GetSlots()) do
+        if s.side ~= ctx.side then table.insert(out, s.pos) end
+    end
+    return out
+end
+
 local function HuntTarget(brain, ctx, wave, c)
     -- Scouted game enders first if any are within reach, then anything known.
     for _, rec in ipairs(Intel.Enders(ctx.side)) do
         if Utils.Dist2D(rec.pos, c) < 300 then return rec.pos end
     end
-    local cat = (wave.kind == 'NAVAL') and (categories.NAVAL + categories.STRUCTURE)
+    local cat = (wave.kind == 'NAVAL') and (categories.NAVAL + categories.STRUCTURE + categories.COMMAND)
         or (categories.ALLUNITS - categories.AIR - categories.WALL)
     local t = NearestKnown(brain, cat, c, MapRadius())
-    return t and t:GetPosition()
+    if t then return t:GetPosition() end
+    -- Nothing known: search. Fleets sweep the enemy's deep water (sonar finds
+    -- a hidden ACU), land waves walk to a random enemy base.
+    if Intel.Stale(ctx.side) then
+        if wave.kind == 'NAVAL' then return Intel.DeepWater(OtherSide(ctx.side)) end
+        local slots = EnemySlots(ctx)
+        local n = table.getn(slots)
+        if n > 0 then return slots[Random and Random(1, n) or 1] end
+    end
+    return nil
 end
 
 local function NavalStrength(units)
@@ -222,6 +292,9 @@ local function LandStep(brain, ctx)
         end
     end
     local enemyAtWall = table.getn(KnownNear(brain, CatEnemyLand, ctx.choke, 70)) >= 5
+    if enemyAtWall then
+        Comms.Say(brain, ctx.side, 'wall:' .. brain.Name, 'Enemy army at my wall, need help here!', ctx.choke, 'alert')
+    end
     local size = Config.WaveSize[TopTech(brain)] or 10
     if Weight(ready) >= size or (enemyAtWall and Utils.Count(ready) >= 4) then
         local enemy = OtherSide(ctx.side)
@@ -232,6 +305,11 @@ local function LandStep(brain, ctx)
         FormationPath(ready, path, rally)
         table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1 })
         Utils.Log(brain, 'land wave of ' .. Utils.Count(ready) .. (enemyAtWall and ' (defending)' or ''))
+        if not enemyAtWall then
+            local where = (zone == 'ChokeLower') and 'lower' or 'upper'
+            Comms.Say(brain, ctx.side, 'wave:' .. brain.Name, 'Attacking the ' .. where .. ' mid with '
+                .. Utils.Count(ready) .. ' units.', Routes.GetPoint(zone, enemy), 'attack')
+        end
     end
 
     -- Artillery / MML: behind the wall, then follow the last wave out.
@@ -259,6 +337,8 @@ local function NavalStep(brain, ctx)
         else table.insert(ready, u) end
     end
     local size = Config.NavalFleetSize[TopTech(brain)] or 6
+    -- Searching for a hidden ACU: any two ships go.
+    if Intel.Stale(ctx.side) then size = math.min(size, 2) end
     if Weight(ready) >= size then
         local enemy = OtherSide(ctx.side)
         local ahead = KnownNear(brain, categories.NAVAL * categories.MOBILE, Routes.GetPoint('BasinCenter', ctx.side), 200)
@@ -267,6 +347,8 @@ local function NavalStep(brain, ctx)
         FormationPath(ready, { Routes.GetPoint('BasinCenter', ctx.side), Routes.GetPoint('NavalRally', enemy) }, rally)
         table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1 })
         Utils.Log(brain, 'fleet of ' .. Utils.Count(ready) .. ' sails')
+        Comms.Say(brain, ctx.side, 'fleet:' .. brain.Name, 'Fleet of ' .. Utils.Count(ready) .. ' moving out.',
+            Routes.GetPoint('NavalRally', enemy), 'attack')
     end
 end
 
@@ -297,21 +379,166 @@ local function LineKey(pts)
     return s
 end
 
-local function AirStep(brain, ctx)
+-- Is pos behind the own front line (the own side of the patrol line)?
+local function BehindFront(ctx, pos)
+    local nx = Utils.Normalise(pos[1], pos[3])
+    if ctx.side == 'RIGHT' then nx = 1 - nx end
+    return nx < Config.AirFrontX
+end
+
+local function FreeFighters(ctx)
+    local out = {}
+    for _, u in ipairs(ctx.fighters) do
+        if not u.DGIntercept and not u.DGEscort then table.insert(out, u) end
+    end
+    return out
+end
+
+local function Nearest(units, pos, n)
+    local list = {}
+    for _, u in ipairs(units) do table.insert(list, { u = u, d = Utils.Dist2D(u:GetPosition(), pos) }) end
+    table.sort(list, function(a, b) return a.d < b.d end)
+    local out = {}
+    for i = 1, math.min(n, table.getn(list)) do table.insert(out, list[i].u) end
+    return out
+end
+
+-- Known enemy aircraft behind our front: the nearest free patrol fighters
+-- go after them (several per enemy), then return to the patrol.
+local function Intercept(brain, ctx, now)
+    local threats = {}
+    for _, e in ipairs(KnownNear(brain, CatEnemyAir, ctx.startPos, MapRadius())) do
+        if BehindFront(ctx, e:GetPosition()) then table.insert(threats, e) end
+    end
+    for _, e in ipairs(threats) do
+        local p = e:GetPosition()
+        local covered = false
+        for _, u in ipairs(ctx.fighters) do
+            if u.DGIntercept and u.DGInterceptPos and Utils.Dist2D(u.DGInterceptPos, p) < 60 then covered = true; break end
+        end
+        if not covered then
+            local group = 0
+            for _, o in ipairs(threats) do
+                if Utils.Dist2D(o:GetPosition(), p) < 40 then group = group + 1 end
+            end
+            local want = math.max(Config.InterceptMin, Config.InterceptPerEnemy * group)
+            local units = Nearest(FreeFighters(ctx), p, want)
+            if table.getn(units) > 0 then
+                IssueClearCommands(units)
+                IssueAttack(units, e)
+                IssueAggressiveMove(units, p)
+                for _, u in ipairs(units) do
+                    u.DGIntercept, u.DGInterceptPos, u.DGLine = now + Config.InterceptSeconds, p, nil
+                end
+                Utils.Log(brain, table.getn(units) .. ' fighters intercept ' .. group .. ' aircraft behind the front')
+            end
+        end
+    end
+end
+
+local function FightersStep(brain, ctx, now)
     local line = FrontLine(ctx.side, Utils.ToWorld, function(p) return Intel.AAThreat(ctx.side, p) end)
     local key = LineKey(line)
+    if ctx.airLineKey and key ~= ctx.airLineKey then Utils.Log(brain, 'air patrol line moved (enemy AA)') end
+    ctx.airLineKey = key
     local fresh = FreeUnits(brain, CatFighter)
     Claim(fresh)
     ctx.fighters = Utils.FilterAlive(ctx.fighters or {})
     for _, u in ipairs(fresh) do table.insert(ctx.fighters, u) end
-    if key ~= ctx.airLineKey or table.getn(fresh) > 0 then
-        if key ~= ctx.airLineKey and ctx.airLineKey then Utils.Log(brain, 'air patrol line moved (enemy AA)') end
-        ctx.airLineKey = key
-        if Utils.Count(ctx.fighters) > 0 then
-            IssueClearCommands(ctx.fighters)
-            for _, p in ipairs(line) do IssuePatrol(ctx.fighters, p) end
+
+    Intercept(brain, ctx, now)
+
+    -- Back to the patrol: interceptors that are done, new fighters, and
+    -- everyone when the line moved.
+    local patrol = {}
+    for _, u in ipairs(ctx.fighters) do
+        if u.DGIntercept and (now > u.DGIntercept or u:IsIdleState()) then
+            u.DGIntercept, u.DGInterceptPos = nil, nil
+        end
+        if not u.DGIntercept and not u.DGEscort and u.DGLine ~= key then
+            u.DGLine = key
+            table.insert(patrol, u)
         end
     end
+    if table.getn(patrol) > 0 then
+        IssueClearCommands(patrol)
+        for _, p in ipairs(line) do IssuePatrol(patrol, p) end
+    end
+end
+
+local function Clamp(p)
+    local x0, z0, x1, z1 = Utils.MapBounds()
+    local x = math.max(x0 + 20, math.min(x1 - 20, p[1]))
+    local z = math.max(z0 + 20, math.min(z1 - 20, p[3]))
+    return { x, GetSurfaceHeight(x, z), z }
+end
+
+-- Bombers' detour: to the side of the direct line with less known AA.
+local function FlankPoint(ctx, from, to)
+    local mid = { (from[1] + to[1]) / 2, 0, (from[3] + to[3]) / 2 }
+    local px, pz = Perp(from, to)
+    local off = Utils.Dist2D(from, to) * Config.BomberFlankShare
+    local a = Clamp({ mid[1] + px * off, 0, mid[3] + pz * off })
+    local b = Clamp({ mid[1] - px * off, 0, mid[3] - pz * off })
+    if Intel.AAThreat(ctx.side, b, 120) < Intel.AAThreat(ctx.side, a, 120) then return b end
+    return a
+end
+
+-- Exposed for tests: escort size for a strike, or nil to hold it.
+function EscortSize(enemyFighters, available)
+    local need = math.ceil(enemyFighters * Config.EscortRatio)
+    if enemyFighters > 0 and available < need then return nil end
+    return math.min(available, math.max(Config.EscortMin, need))
+end
+
+local function LaunchStrike(brain, ctx, units, target, staging, now)
+    local tpos = target:GetPosition()
+    local mid = { (staging[1] + tpos[1]) / 2, 0, (staging[3] + tpos[3]) / 2 }
+    local enemyF = table.getn(KnownNear(brain, CatEnemyFighter, tpos, 120))
+        + table.getn(KnownNear(brain, CatEnemyFighter, mid, 120))
+    local free = FreeFighters(ctx)
+    local n = EscortSize(enemyF, table.getn(free))
+    if not n then
+        if not ctx.strikeHeldAt or now - ctx.strikeHeldAt > 60 then
+            ctx.strikeHeldAt = now
+            Utils.Log(brain, 'strike held: ' .. enemyF .. ' known enemy fighters, ' .. table.getn(free) .. ' escorts')
+        end
+        return false
+    end
+    local escort = Nearest(free, staging, n)
+    for _, u in ipairs(escort) do u.DGEscort, u.DGLine = true, nil end
+    if table.getn(escort) > 0 then
+        -- The escort flies the direct line and draws the enemy fighters.
+        IssueClearCommands(escort)
+        IssueAggressiveMove(escort, Clamp(mid))
+        IssueAggressiveMove(escort, tpos)
+    end
+    Claim(units)
+    IssueClearCommands(units)
+    local flank = FlankPoint(ctx, staging, tpos)
+    ForkThread(function()
+        WaitSeconds(Config.BomberDelay)
+        local alive = Utils.FilterAlive(units)
+        if table.getn(alive) == 0 or not Alive(target) then return end
+        IssueMove(alive, flank)
+        IssueAttack(alive, target)
+        IssueMove(alive, staging)
+    end)
+    table.insert(ctx.strikes, { units = units, escort = escort, started = now })
+    Utils.Log(brain, 'air strike: ' .. table.getn(units) .. ' bombers, ' .. table.getn(escort) .. ' escorts')
+    Comms.Say(brain, ctx.side, 'strike:' .. brain.Name, 'Air strike going in here.', tpos, 'attack')
+    return true
+end
+
+local function TorpTargetOk(e)
+    -- Torpedoes only reach ships and units under water (a submerged ACU).
+    if EntityCategoryContains(categories.COMMAND, e) then return Utils.IsUnderwater(e) end
+    return true
+end
+
+local function AirStep(brain, ctx)
+    local now = GetGameTimeSeconds()
+    FightersStep(brain, ctx, now)
 
     -- Bombers stage, then strike the target with the least AA around it.
     local staging = Routes.GetPoint('AirStaging', ctx.side)
@@ -320,52 +547,78 @@ local function AirStep(brain, ctx)
         if Utils.Dist2D(u:GetPosition(), staging) > 25 then IssueMove({ u }, staging)
         else table.insert(ready, u) end
     end
-    if Utils.Count(ready) >= Config.AirStrikeSize then
-        local torps, bombers = {}, {}
-        for _, u in ipairs(ready) do
-            if EntityCategoryContains(CatTorpBomber, u) then table.insert(torps, u) else table.insert(bombers, u) end
-        end
-        for _, g in ipairs({ { torps, CatNavalTargets }, { bombers, CatEcoTargets } }) do
-            local units, cat = g[1], g[2]
-            if Utils.Count(units) > 0 then
-                local target = PickStrikeTarget(brain, ctx, cat, staging)
-                if target then
-                    Claim(units)
-                    IssueClearCommands(units)
-                    IssueAttack(units, target)
-                    IssueMove(units, staging)
-                    table.insert(ctx.strikes, units)
-                end
+    local torps, bombers = {}, {}
+    for _, u in ipairs(ready) do
+        if EntityCategoryContains(CatTorpBomber, u) then table.insert(torps, u) else table.insert(bombers, u) end
+    end
+    local stale = Intel.Stale(ctx.side)
+    -- Torpedo bombers always go after a known submerged ACU; while the enemy
+    -- is lost they sweep its deep water with their sonar.
+    if Utils.Count(torps) >= Config.AirStrikeSize or (stale and Utils.Count(torps) > 0) then
+        local target = PickStrikeTarget(brain, ctx, CatNavalTargets + categories.COMMAND, staging, false, TorpTargetOk)
+        if target then
+            LaunchStrike(brain, ctx, torps, target, staging, now)
+        elseif stale then
+            local deep = Intel.DeepWater(OtherSide(ctx.side))
+            if deep then
+                Claim(torps)
+                IssueClearCommands(torps)
+                IssuePatrol(torps, deep)
+                IssuePatrol(torps, Shift(deep, Toward(ctx) * 60))
+                table.insert(ctx.strikes, { units = torps, escort = {}, started = now, search = true })
+                Utils.Log(brain, Utils.Count(torps) .. ' torpedo bombers search the enemy deep water')
             end
         end
     end
+    if Utils.Count(bombers) >= Config.AirStrikeSize then
+        local target = PickStrikeTarget(brain, ctx, CatEcoTargets, staging, true)
+        if target then LaunchStrike(brain, ctx, bombers, target, staging, now) end
+    end
+
+    -- Strikes end when the bombers are back (idle), gone or out of time;
+    -- the escort returns to the patrol.
     local keep = {}
-    for _, units in ipairs(ctx.strikes) do
-        units = Utils.FilterAlive(units)
-        if Utils.Count(units) > 0 then
-            if AllIdle(units) then Release(units) else table.insert(keep, units) end
+    for _, st in ipairs(ctx.strikes) do
+        st.units = Utils.FilterAlive(st.units)
+        local timeout = st.search and 120 or Config.StrikeTimeout
+        local idle = now - st.started > Config.BomberDelay + 5 and AllIdle(st.units)
+        if Utils.Count(st.units) == 0 or idle or now - st.started > timeout then
+            Release(st.units)
+            for _, u in ipairs(Utils.FilterAlive(st.escort)) do u.DGEscort, u.DGLine = nil, nil end
+        else
+            table.insert(keep, st)
         end
     end
     ctx.strikes = keep
 
-    -- Air experimentals hunt game enders, else the best economy target.
+    -- Air experimentals hunt game enders, else the best economy target;
+    -- each picks a different target, so they don't crash onto each other.
+    local taken = {}
     for _, u in ipairs(FreeUnits(brain, CatAirT4)) do
-        local t = PickStrikeTarget(brain, ctx, CatEcoTargets, u:GetPosition())
-        if t then IssueAttack({ u }, t) end
+        local t = PickStrikeTarget(brain, ctx, CatEcoTargets, u:GetPosition(), true, function(e) return not taken[e] end)
+        if t then
+            taken[t] = true
+            IssueAttack({ u }, t)
+        end
     end
 end
 
--- Scouted game enders first, then `cat`; among them the least AA-covered.
-function PickStrikeTarget(brain, ctx, cat, from)
+-- Scouted game enders first (if endersOk), then `cat`; among them the
+-- least AA-covered. ok(e), when given, filters candidates.
+function PickStrikeTarget(brain, ctx, cat, from, endersOk, ok)
     local best, bestAA
-    for _, rec in ipairs(Intel.Enders(ctx.side)) do
-        local aa = Intel.AAThreat(ctx.side, rec.pos, 50)
-        if aa < Config.AAThreat and (not bestAA or aa < bestAA) then best, bestAA = rec.unit, aa end
+    if endersOk then
+        for _, rec in ipairs(Intel.Enders(ctx.side)) do
+            local aa = Intel.AAThreat(ctx.side, rec.pos, 50)
+            if aa < Config.AAThreat and (not ok or ok(rec.unit)) and (not bestAA or aa < bestAA) then
+                best, bestAA = rec.unit, aa
+            end
+        end
+        if best then return best end
     end
-    if best then return best end
     for _, e in ipairs(KnownNear(brain, cat, from, MapRadius())) do
         local aa = Intel.AAThreat(ctx.side, e:GetPosition(), 50)
-        if aa < Config.AAThreat and (not bestAA or aa < bestAA) then best, bestAA = e, aa end
+        if aa < Config.AAThreat and (not ok or ok(e)) and (not bestAA or aa < bestAA) then best, bestAA = e, aa end
     end
     return best
 end

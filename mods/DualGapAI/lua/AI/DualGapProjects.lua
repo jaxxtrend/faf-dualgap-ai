@@ -1,20 +1,28 @@
 -- Big builds done by an engineer crew: experimentals, ECO's game ender, the
 -- team anti-nuke, shields against artillery, the GROUND proxy base.
 --
--- A project: { name, key (UnitIds key), site, crewMax, count (nil = repeat
--- forever), gap, built, crew = {}, lead, unit }. Idle engineers are offered
--- to projects first (DualGapEngineers.GeneralTask -> Offer). One engineer
--- that can build it starts the structure; the rest repair it.
+-- A project: { name, key (UnitIds key), site (or sites, one per item),
+-- crewMax, count (nil = repeat forever), gap, priority, built, crew = {},
+-- lead, unit }. Idle engineers are offered to projects first, lowest
+-- priority number first (DualGapEngineers.GeneralTask -> Offer). One
+-- engineer that can build it starts the structure; the rest repair it.
 --
 -- The planner (every 10 s) decides which projects exist:
+--   team    one anti-nuke per group of three spawns (ECO > NAVAL > AIR >
+--           GROUND builds it) as soon as an enemy nuke is scouted or the
+--           builder has its first T3 power generator; a second one once
+--           2+ enemy nukes are scouted. Priority 1: nothing starves it.
+--   team    enemy T3/T4 artillery scouted -> T3 shields over each base
+--   GROUND  after the first T2 factory: proxy base (T2 shields + T2 arty)
+--   all     after the first T2 factory: T2 point defences on the
+--           enemy-facing half circle around the base
 --   ECO     strategic phase -> one random game ender, built over and over
 --   AIR     >= Config.AirT4MinFighters T3 fighters -> air experimental
 --   GROUND  own mid zone pushed, or enemy experimental scouted -> land T4
 --   NAVAL   water pushed, or enemy experimental scouted -> naval T4
---   team    one anti-nuke per group of three spawns (ECO > NAVAL > AIR >
---           GROUND builds it), a second one once 2+ enemy nukes are scouted
---   team    enemy T3/T4 artillery scouted -> T3 shields over each base
---   GROUND  after the first T2 factory: proxy base (T2 shields + T2 arty)
+--
+-- Artillery we own (T2 proxy artillery, T3 and T4 artillery) picks targets
+-- by priority, see ArtilleryScore.
 
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
@@ -22,6 +30,7 @@ local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
 local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
 local ScenarioUtils = import('/lua/sim/ScenarioUtilities.lua')
 
 local Alive = Utils.Alive
@@ -50,7 +59,14 @@ function Add(brain, ctx, spec)
     spec.crew = {}
     spec.built = 0
     spec.crewMax = spec.crewMax or 6
-    table.insert(ctx.projects, spec)
+    spec.priority = spec.priority or 5
+    if spec.sites then spec.site = spec.sites[1] end
+    -- Keep the list sorted by priority (stable: equal ones keep their order).
+    local at = table.getn(ctx.projects) + 1
+    for i, q in ipairs(ctx.projects) do
+        if spec.priority < q.priority then at = i; break end
+    end
+    table.insert(ctx.projects, at, spec)
     Utils.Log(brain, 'project ' .. spec.name .. ' (' .. spec.id .. ')')
     return spec
 end
@@ -126,6 +142,7 @@ local function ProjectTick(brain, ctx, p)
         Utils.Log(brain, 'project ' .. p.name .. ' finished #' .. p.built)
         p.unit, p.lead, p.startedAt = nil, nil, nil
         if p.count and p.built >= p.count then Remove(ctx, p); return end
+        if p.sites then p.site = p.sites[p.built + 1] or p.sites[table.getn(p.sites)] end
     end
 
     -- Lost the lead before anything appeared: start over.
@@ -276,20 +293,40 @@ local function IsGroupBuilder(brain, members)
     return best == brain
 end
 
+local CatPowerT3 = categories.ENERGYPRODUCTION * categories.TECH3 * categories.STRUCTURE
+
+local function HasT3Power(brain)
+    for _, u in ipairs(brain:GetListOfUnits(CatPowerT3, false)) do
+        if Alive(u) and u:GetFractionComplete() >= 1 then return true end
+    end
+    return false
+end
+
+-- Exposed for tests: does the group want an anti-nuke now, and how many?
+function AntiNukeWanted(enemyNukes, hasT3Power)
+    if enemyNukes >= 2 then return 2 end
+    if enemyNukes > 0 or hasT3Power then return 1 end
+    return 0
+end
+
 local function PlanAntiNuke(brain, ctx)
     local slot = RoleManager.GetSlots()[brain.Name]
     if not slot then return end
     local members, center = GroupInfo(ctx.side, GroupOf(slot.rank))
     if not members or not IsGroupBuilder(brain, members) then return end
     local nukes = table.getn(Intel.Enders(ctx.side, 'NUKE'))
-    local late = ctx.t2EndTime and GetGameTimeSeconds() >= ctx.t2EndTime
-    if not (late or nukes > 0) or not HasT3Engineer(brain) then return end
-    local want = (nukes >= 2) and 2 or 1
+    local want = AntiNukeWanted(nukes, HasT3Power(brain))
+    if want == 0 or not HasT3Engineer(brain) then return end
     local have = Utils.CountAround(brain, categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE,
         center, 40, 'Ally')
     if have < want and not Find(ctx, 'AntiNuke') then
-        Add(brain, ctx, { name = 'AntiNuke', key = 'AntiNuke', site = center, crewMax = 4,
-            count = want - have, minCrewTech = 2 })
+        local p = Add(brain, ctx, { name = 'AntiNuke', key = 'AntiNuke', site = center, crewMax = 4,
+            count = want - have, minCrewTech = 2, priority = 1 })
+        if p then
+            local why = (nukes > 0) and 'enemy nuke scouted' or 'T3 power is up'
+            Comms.Say(brain, ctx.side, 'antinuke:' .. GroupOf(slot.rank), 'Building anti-nuke here (' .. why .. ').',
+                center, 'move')
+        end
     end
 end
 
@@ -301,7 +338,7 @@ local function PlanShields(brain, ctx)
         ctx.startPos, 40, 'Ally')
     if have < 2 then
         Add(brain, ctx, { name = 'BaseShield', key = 'ShieldT3', site = ctx.startPos, crewMax = 3,
-            count = 2 - have, minCrewTech = 2, gap = 1 })
+            count = 2 - have, minCrewTech = 2, gap = 1, priority = 2 })
     end
 end
 
@@ -312,9 +349,31 @@ local function PlanProxy(brain, ctx)
     local site = Routes.GetPoint(name, ctx.side)
     ctx.proxy = site
     Add(brain, ctx, { name = 'ProxyShield', key = 'ShieldT2', site = site, crewMax = 3, count = 2,
-        minCrewTech = 2, gap = 0 })
+        minCrewTech = 2, gap = 0, priority = 3 })
     Add(brain, ctx, { name = 'ProxyArty', key = 'ArtilleryT2', site = site, crewMax = 3, count = 3,
-        minCrewTech = 2, gap = 0 })
+        minCrewTech = 2, gap = 0, priority = 3 })
+end
+
+-- Exposed for tests: n points on the half circle of radius r around center
+-- that faces the enemy (dir = +1: enemy to the +x side, -1: to the -x side).
+function DefenseRing(center, r, n, dir)
+    local out = {}
+    for i = 1, n do
+        -- Spread over -70..+70 degrees around the enemy direction.
+        local a = (-70 + 140 * (i - 0.5) / n) * math.pi / 180
+        table.insert(out, { center[1] + dir * math.cos(a) * r, center[2], center[3] + math.sin(a) * r })
+    end
+    return out
+end
+
+local function PlanBaseDefense(brain, ctx)
+    if not ctx.t2Time or ctx.baseDefensePlanned then return end
+    ctx.baseDefensePlanned = true
+    local dir = (ctx.side == 'LEFT') and 1 or -1
+    local sites = DefenseRing(ctx.startPos, Config.BaseDefenseRadius, Config.BaseDefenseCount, dir)
+    for _, p in ipairs(sites) do p[2] = GetSurfaceHeight(p[1], p[3]) end
+    Add(brain, ctx, { name = 'BaseDefense', key = 'PointDefenseT2', sites = sites, crewMax = 2,
+        count = Config.BaseDefenseCount, minCrewTech = 2, gap = 1, priority = 4 })
 end
 
 local function PlanExperimentals(brain, ctx)
@@ -332,7 +391,7 @@ local function PlanExperimentals(brain, ctx)
         if ctx.enderKey and HasT3Engineer(brain) then
             local behind = T4Site(ctx)
             Add(brain, ctx, { name = 'GameEnder', key = ctx.enderKey, site = behind,
-                share = Config.EcoStrategicShare, minCrewTech = 2 })
+                share = Config.EcoStrategicShare, minCrewTech = 2, priority = 5 })
         end
         return
     end
@@ -342,7 +401,7 @@ local function PlanExperimentals(brain, ctx)
     if T4Trigger(role, fighters, ctx.midPushed, ctx.waterPushed, Intel.EnemyT4Seen(ctx.side)) then
         local id = Utils.FactionId(brain, key)
         local site = (role == 'NAVAL') and NavalT4Site(brain, ctx, id) or T4Site(ctx)
-        Add(brain, ctx, { name = 'Experimental', key = key, site = site, crewMax = 8, minCrewTech = 2 })
+        Add(brain, ctx, { name = 'Experimental', key = key, site = site, crewMax = 8, minCrewTech = 2, priority = 5 })
     end
 end
 
@@ -363,27 +422,80 @@ end
 
 ---------------------------------------------------------------------------
 -- Silos and artillery we own: load missiles, fire at scouted targets.
+--
+-- Artillery priorities (ArtilleryScore), highest first:
+--   100 enemy game enders: T3/T4 artillery, satellite centre and other
+--       experimental structures, nuke launchers
+--    80 enemy anti-nuke, but only while we own a nuke launcher (kill the
+--       anti-nuke, then the nuke gets through)
+--    60 enemy ACU, if it is in sight, not underwater and not under a shield
+--    40 mexes, power, mass fabricators
+--    20 factories
+-- A target under N enemy shields that are up is worth score / (1 + 2N):
+-- the guns hit something unshielded instead of pounding a shield for
+-- nothing, and only go for shielded targets when nothing else is in range.
 ---------------------------------------------------------------------------
 local CatOwnSilos = categories.STRUCTURE * (categories.NUKE + categories.ANTIMISSILE * categories.TECH3)
-local CatOwnArty = categories.STRUCTURE * categories.ARTILLERY * (categories.TECH3 + categories.EXPERIMENTAL)
-local CatTargets = categories.STRUCTURE * (categories.NUKE + categories.ARTILLERY + categories.EXPERIMENTAL
-    + categories.FACTORY + categories.ENERGYPRODUCTION * categories.TECH3 + categories.MASSFABRICATION)
+local CatOwnNukes = categories.STRUCTURE * categories.NUKE
+local CatOwnArty = categories.STRUCTURE * categories.ARTILLERY * (categories.TECH2 + categories.TECH3 + categories.EXPERIMENTAL)
+local CatEnders = categories.STRUCTURE * (categories.ARTILLERY * (categories.TECH3 + categories.EXPERIMENTAL)
+    + categories.EXPERIMENTAL + categories.NUKE)
+local CatAntiNuke = categories.STRUCTURE * categories.ANTIMISSILE * categories.TECH3
+local CatEco = categories.STRUCTURE * (categories.MASSEXTRACTION + categories.ENERGYPRODUCTION + categories.MASSFABRICATION)
+local CatTargets = CatEnders + CatAntiNuke + categories.COMMAND + CatEco + categories.STRUCTURE * categories.FACTORY
 
+-- Exposed for tests. kind: 'ENDER' | 'ANTINUKE' | 'ACU' | 'ECO' | 'FACTORY'.
+function ArtilleryScore(kind, shields, haveNuke, underwater)
+    local base = 0
+    if kind == 'ENDER' then base = 100
+    elseif kind == 'ANTINUKE' then base = haveNuke and 80 or 0
+    elseif kind == 'ACU' then
+        if underwater or shields > 0 then return 0 end
+        base = 60
+    elseif kind == 'ECO' then base = 40
+    elseif kind == 'FACTORY' then base = 20 end
+    return base / (1 + 2 * shields)
+end
+
+local function TargetKind(e)
+    if EntityCategoryContains(CatEnders, e) then return 'ENDER' end
+    if EntityCategoryContains(CatAntiNuke, e) then return 'ANTINUKE' end
+    if EntityCategoryContains(categories.COMMAND, e) then return 'ACU' end
+    if EntityCategoryContains(CatEco, e) then return 'ECO' end
+    return 'FACTORY'
+end
+
+local function OwnsNuke(brain)
+    for _, u in ipairs(brain:GetListOfUnits(CatOwnNukes, false)) do
+        if Alive(u) and u:GetFractionComplete() >= 1 then return true end
+    end
+    return false
+end
+
+-- Best target for artillery (shields matter) or a nuke (avoidAntiNuke:
+-- skip anything an enemy anti-nuke covers; a nuke ignores shields).
 local function BestTarget(brain, ctx, from, range, avoidAntiNuke)
     local army = brain:GetArmyIndex()
+    local haveNuke = OwnsNuke(brain)
     local best, bestScore
     for _, e in ipairs(brain:GetUnitsAroundPoint(CatTargets, from, range, 'Enemy') or {}) do
         if Intel.Known(e, army) then
             local p = e:GetPosition()
-            if not (avoidAntiNuke and Intel.UnderEnemyAntiNuke(ctx.side, p)) then
-                local score = 1
-                if EntityCategoryContains(categories.NUKE + categories.ARTILLERY + categories.EXPERIMENTAL, e) then score = 10 end
-                if EntityCategoryContains(categories.FACTORY, e) then score = 3 end
-                if not bestScore or score > bestScore then best, bestScore = e, score end
+            local kind = TargetKind(e)
+            local score
+            if avoidAntiNuke then
+                score = 0
+                if not Intel.UnderEnemyAntiNuke(ctx.side, p) then
+                    score = ArtilleryScore(kind, 0, false, Utils.IsUnderwater(e))
+                    if kind == 'ANTINUKE' then score = 0 end
+                end
+            else
+                score = ArtilleryScore(kind, Intel.ShieldsOver(ctx.side, p), haveNuke, Utils.IsUnderwater(e))
             end
+            if score > 0 and (not bestScore or score > bestScore) then best, bestScore = e, score end
         end
     end
-    return best
+    return best, bestScore
 end
 
 local function WeaponsStep(brain, ctx)
@@ -401,13 +513,22 @@ local function WeaponsStep(brain, ctx)
             end
         end
     end
+    -- Artillery re-picks every planner tick: a better target (an ACU walking
+    -- into range, a shield going down) takes over from the current one.
     for _, a in ipairs(brain:GetListOfUnits(CatOwnArty, false)) do
-        if Alive(a) and a:GetFractionComplete() >= 1 and a:IsIdleState() then
+        if Alive(a) and a:GetFractionComplete() >= 1 then
             local range = 4000
             local w = a:GetBlueprint().Weapon
             if w and w[1] and w[1].MaxRadius then range = w[1].MaxRadius end
-            local t = BestTarget(brain, ctx, a:GetPosition(), range, false)
-            if t then IssueAttack({ a }, t) end
+            local t, score = BestTarget(brain, ctx, a:GetPosition(), range, false)
+            local current = Alive(a.DGTarget) and a.DGTarget or nil
+            if t and t ~= current and (not current or a:IsIdleState() or score > (a.DGScore or 0)) then
+                IssueClearCommands({ a })
+                IssueAttack({ a }, t)
+                a.DGTarget, a.DGScore = t, score
+            elseif not t and current then
+                a.DGTarget, a.DGScore = nil, nil
+            end
         end
     end
 end
@@ -434,6 +555,7 @@ local function PlannerStep(brain, ctx)
     UpdateStrategic(brain, ctx)
     UpdatePushState(brain, ctx)
     PlanProxy(brain, ctx)
+    PlanBaseDefense(brain, ctx)
     PlanAntiNuke(brain, ctx)
     PlanShields(brain, ctx)
     PlanExperimentals(brain, ctx)

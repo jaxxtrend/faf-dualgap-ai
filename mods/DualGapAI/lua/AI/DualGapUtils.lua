@@ -22,6 +22,8 @@ UnitIds = {
     PowerT2        = { 'ueb1201', 'uab1201', 'urb1201', 'xsb1201' },
     PowerT3        = { 'ueb1301', 'uab1301', 'urb1301', 'xsb1301' },
     EnergyStorage  = { 'ueb1105', 'uab1105', 'urb1105', 'xsb1105' },
+    MassStorage    = { 'ueb1106', 'uab1106', 'urb1106', 'xsb1106' },
+    MassFabT3      = { 'ueb1303', 'uab1303', 'urb1303', 'xsb1303' },
 
     EngineerT1     = { 'uel0105', 'ual0105', 'url0105', 'xsl0105' },
     EngineerT2     = { 'uel0208', 'ual0208', 'url0208', 'xsl0208' },
@@ -254,9 +256,18 @@ function DeepestRearWater(side)
     return best
 end
 
+-- Size of a structure's skirt (the cells it really occupies). Adjacency
+-- bonuses and placement both work on the skirt, not on the smaller
+-- Footprint: a T1 factory has Footprint 5 but Skirt 8.
+function SizeOfBp(bp)
+    if not bp then return 2 end
+    local skirt = bp.Physics and bp.Physics.SkirtSizeX
+    if skirt and skirt > 0 then return skirt end
+    return (bp.Footprint and bp.Footprint.SizeX) or 2
+end
+
 function FootprintOf(id)
-    local bp = __blueprints[id]
-    return (bp and bp.Footprint and bp.Footprint.SizeX) or 2
+    return SizeOfBp(__blueprints[id])
 end
 
 -- Placement rule that keeps bases walkable: every structure keeps `gap` free
@@ -272,8 +283,9 @@ function HasClearance(brain, id, pos, gap)
     for _, u in ipairs(near) do
         if Alive(u) then
             local up = u:GetPosition()
-            local us = u:GetBlueprint().Footprint.SizeX or 2
-            local half = (us + size) / 2 + gap
+            local us = SizeOfBp(u:GetBlueprint())
+            -- 0.01 slack: exactly touching (adjacency) is allowed.
+            local half = (us + size) / 2 + gap - 0.01
             if math.abs(up[1] - pos[1]) < half and math.abs(up[3] - pos[3]) < half then return false end
             if EntityCategoryContains(categories.FACTORY, u) then
                 local laneHalfX = us / 2 + 2 + size / 2
@@ -348,6 +360,19 @@ function RunLoop(name, brain, ctx, interval, step)
         end
         WaitSeconds(interval)
     end
+end
+
+-- Is the unit below the water surface (a submerged ACU, a sub)?
+function IsUnderwater(unit)
+    local p = unit:GetPosition()
+    return p[2] < GetSurfaceHeight(p[1], p[3]) - 1
+end
+
+-- Which side of the map a position is on ('LEFT' / 'RIGHT').
+function SideOf(pos)
+    local nx = Normalise(pos[1], pos[3])
+    if nx < 0.5 then return 'LEFT' end
+    return 'RIGHT'
 end
 
 function Log(brain, msg)

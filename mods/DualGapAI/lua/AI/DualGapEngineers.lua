@@ -6,8 +6,14 @@
 --
 --   ACU opening   BuildOrders.ACU, strictly in order
 --   T1 eng 1..10  BuildOrders.T1Engineers roles (reclaim / hydro crew)
---   everyone else GeneralTask: own mexes -> power -> role factories ->
---                 reclaim -> assist
+--   everyone else GeneralTask: projects -> own mexes -> power -> mass
+--                 storages around T2+ mexes -> mass fabricators -> role
+--                 factories -> reclaim (base, then the own half of the mid)
+--                 -> assist
+--
+-- Grid: power goes next to air factories first (adjacency cuts their energy
+-- cost), then next to mass fabricators, then next to any factory; mass
+-- fabricators go next to T3 power.
 
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
@@ -21,6 +27,9 @@ local CatEngineer = categories.ENGINEER - categories.COMMAND - categories.SUBCOM
 local CatPowerT1 = categories.ENERGYPRODUCTION * categories.TECH1 * categories.STRUCTURE - categories.HYDROCARBON
 local CatHydro = categories.HYDROCARBON * categories.STRUCTURE
 local CatStorage = categories.ENERGYSTORAGE * categories.STRUCTURE
+local CatMex = categories.MASSEXTRACTION * categories.STRUCTURE
+local CatMassFab = categories.MASSFABRICATION * categories.STRUCTURE
+local CatPowerT3 = categories.ENERGYPRODUCTION * categories.TECH3 * categories.STRUCTURE
 
 local function Economy()
     return import('/mods/DualGapAI/lua/AI/DualGapEconomy.lua')
@@ -60,25 +69,29 @@ local function FarFromAll(p, chosen, minD)
 end
 
 -- Up to n buildable spots for id: adjacent to `anchor` unit first, then a
--- spiral around `fallback`. `chosen` holds spots already queued this tick.
+-- spiral around `fallback` (none when fallback is nil). `chosen` holds spots
+-- already queued this tick.
 local function PickSpots(brain, id, n, anchor, fallback, chosen)
     local out = {}
     chosen = chosen or {}
     local size = FootprintOf(id)
     if anchor and Alive(anchor) then
-        local bp = anchor:GetBlueprint()
         local ap = anchor:GetPosition()
         local isFactory = EntityCategoryContains(categories.FACTORY, anchor)
-        for _, p in ipairs(AdjacentSpots(ap, bp.Footprint.SizeX, size)) do
+        for _, p in ipairs(AdjacentSpots(ap, Utils.SizeOfBp(anchor:GetBlueprint()), size)) do
             if table.getn(out) >= n then break end
             p[2] = GetSurfaceHeight(p[1], p[3])
             -- Never on a factory's exit side (+z), units roll out there.
             local blocksExit = isFactory and p[3] > ap[3] + 0.5
-            if not blocksExit and FarFromAll(p, chosen, size) and brain:CanBuildStructureAt(id, p) then
+            -- Gap 0: touching the anchor is the point, but other factories'
+            -- exit lanes still stay free.
+            if not blocksExit and FarFromAll(p, chosen, size) and brain:CanBuildStructureAt(id, p)
+                and Utils.HasClearance(brain, id, p, 0) then
                 table.insert(out, p); table.insert(chosen, p)
             end
         end
     end
+    if not fallback then return out end
     local r = size
     while table.getn(out) < n and r <= 70 do
         for i = 0, 11 do
@@ -260,33 +273,63 @@ local function PropValue(e)
     return ((e.MaxMassReclaim or 0) + (e.MaxEnergyReclaim or 0) / 10) * left
 end
 
+-- Known enemy army near pos (engineers don't walk into a fight to reclaim).
+local CatEnemyArmy = categories.MOBILE * (categories.LAND + categories.NAVAL) * categories.DIRECTFIRE
+
+local function Unsafe(brain, pos)
+    local army = brain:GetArmyIndex()
+    local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+    for _, e in ipairs(brain:GetUnitsAroundPoint(CatEnemyArmy, pos, Config.MidReclaimSafeRadius, 'Enemy') or {}) do
+        if Intel.Known(e, army) then return true end
+    end
+    return false
+end
+
+-- Reclaim zones: the base, then both mid defensive points of the own side
+-- (wrecks pile up there after every fight).
+local function ReclaimZones(ctx)
+    local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
+    local zones = { { center = ctx.startPos, r = Config.ReclaimRadius, min = Config.ReclaimMinValue } }
+    for _, name in ipairs({ 'ChokeUpper', 'ChokeLower' }) do
+        table.insert(zones, { center = Routes.GetPoint(name, ctx.side), r = Config.MidReclaimRadius,
+            min = Config.MidReclaimMinValue, mid = true })
+    end
+    return zones
+end
+
 local function ReclaimTask(brain, ctx, u)
-    local c = ctx.startPos
-    local r = Config.ReclaimRadius
-    local props = GetReclaimablesInRect(Rect(c[1] - r, c[3] - r, c[1] + r, c[3] + r)) or {}
     local cells = {}
-    for _, e in ipairs(props) do
-        if e.IsProp and not e.Dead then
-            local v = PropValue(e)
-            if v > 0.2 then
-                local p = e:GetPosition()
-                local key = math.floor(p[1] / CellSize) .. ':' .. math.floor(p[3] / CellSize)
-                local cell = cells[key]
-                if not cell then cell = { value = 0, props = {} }; cells[key] = cell end
-                cell.value = cell.value + v
-                table.insert(cell.props, e)
+    for _, z in ipairs(ReclaimZones(ctx)) do
+        local c, r = z.center, z.r
+        for _, e in ipairs(GetReclaimablesInRect(Rect(c[1] - r, c[3] - r, c[1] + r, c[3] + r)) or {}) do
+            if e.IsProp and not e.Dead then
+                local v = PropValue(e)
+                if v > 0.2 then
+                    local p = e:GetPosition()
+                    local key = math.floor(p[1] / CellSize) .. ':' .. math.floor(p[3] / CellSize)
+                    local cell = cells[key]
+                    if not cell then
+                        cell = { value = 0, props = {}, min = z.min, mid = z.mid, pos = p }
+                        cells[key] = cell
+                    end
+                    cell.value = cell.value + v
+                    table.insert(cell.props, e)
+                end
             end
         end
     end
     local now = GetGameTimeSeconds()
     ctx.reclaimClaims = ctx.reclaimClaims or {}
-    -- Richest unclaimed cell; if all are claimed, share the richest one.
-    local bestKey, best, sharedKey, shared
+    -- Richest unclaimed cell (worth less the further it is); if all are
+    -- claimed, share the richest one. Mid cells must be safe.
+    local from0 = u:GetPosition()
+    local bestKey, best, bestScore, sharedKey, shared
     for key, cell in pairs(cells) do
-        if cell.value >= Config.ReclaimMinValue then
+        if cell.value >= cell.min and not (cell.mid and Unsafe(brain, cell.pos)) then
+            local score = cell.value / (1 + Utils.Dist2D(from0, cell.pos) / 200)
             local claim = ctx.reclaimClaims[key]
             local claimed = claim and claim.expires > now and claim.unit ~= u and Alive(claim.unit)
-            if not claimed and (not best or cell.value > best.value) then bestKey, best = key, cell end
+            if not claimed and (not bestScore or score > bestScore) then bestKey, best, bestScore = key, cell, score end
             if not shared or cell.value > shared.value then sharedKey, shared = key, cell end
         end
     end
@@ -422,12 +465,83 @@ local function TryMex(brain, ctx, u, baseOnly)
     return true
 end
 
+-- Grid anchors for a power generator, best first: air factories (their
+-- production costs a lot of energy), mass fabricators, then the rest of
+-- the factories.
+local function PowerAnchors(brain)
+    local out = {}
+    for _, cat in ipairs({ categories.FACTORY * categories.AIR * categories.STRUCTURE, CatMassFab,
+        categories.FACTORY * categories.STRUCTURE - categories.AIR }) do
+        for _, f in ipairs(brain:GetListOfUnits(cat, false)) do
+            if Alive(f) and f:GetFractionComplete() >= 1 then table.insert(out, f) end
+        end
+    end
+    return out
+end
+
+-- First free spot touching one of the anchors, or nil.
+local function GridSpot(brain, id, anchors)
+    for _, a in ipairs(anchors) do
+        local spot = PickSpots(brain, id, 1, a, nil)[1]
+        if spot then return spot end
+    end
+    return nil
+end
+
 local function TryPower(brain, ctx, u)
     if not EnergyLow(brain) or PowerUnderConstruction(brain) >= 2 then return false end
     local id = BestPowerId(brain, u)
     if not id then return false end
-    local site = BaseSite(ctx, -12)
-    local spot = PickSpots(brain, id, 1, nil, site)[1]
+    local spot = GridSpot(brain, id, PowerAnchors(brain))
+        or PickSpots(brain, id, 1, nil, BaseSite(ctx, -12))[1]
+    if not spot then return false end
+    IssueBuildMobile({ u }, spot, id, {})
+    return true
+end
+
+-- Four mass storages around every own T2+ mex (they raise its output);
+-- the mex waits for them before its T3 upgrade (DualGapEconomy).
+local function TryMexStorage(brain, ctx, u)
+    if brain:GetEconomyStoredRatio('MASS') < 0.05 and brain:GetEconomyTrend('MASS') <= 0 then return false end
+    local id = Utils.FactionId(brain, 'MassStorage')
+    if not id or not u:CanBuild(id) then return false end
+    ctx.storageClaims = ctx.storageClaims or {}
+    local now = GetGameTimeSeconds()
+    local from = u:GetPosition()
+    local best, bestD
+    for _, m in ipairs(brain:GetListOfUnits(CatMex * (categories.TECH2 + categories.TECH3), false)) do
+        if Alive(m) and m:GetFractionComplete() >= 1 then
+            local d = Utils.Dist2D(from, m:GetPosition())
+            if d <= 250 and (not bestD or d < bestD) then
+                for _, s in ipairs(Economy().StorageSpots(brain, m)) do
+                    local key = math.floor(s[1]) .. ':' .. math.floor(s[3])
+                    local c = ctx.storageClaims[key]
+                    if not (c and c.expires > now and c.unit ~= u and Alive(c.unit)) then
+                        best, bestD = { spot = s, key = key }, d
+                        break
+                    end
+                end
+            end
+        end
+    end
+    if not best then return false end
+    ctx.storageClaims[best.key] = { unit = u, expires = now + 60 }
+    IssueBuildMobile({ u }, best.spot, id, {})
+    return true
+end
+
+-- Mass fabricators next to T3 power while energy overflows.
+local function TryMassFab(brain, ctx, u)
+    local id = Utils.FactionId(brain, 'MassFabT3')
+    if not id or not u:CanBuild(id) then return false end
+    if brain:GetEconomyStoredRatio('ENERGY') < 0.9 or brain:GetEconomyStoredRatio('MASS') > 0.5 then return false end
+    if brain:GetEconomyTrend('ENERGY') * 10 < Config.MassFabEnergySurplus then return false end
+    if FirstUnfinished(brain, CatMassFab) then return false end
+    local anchors = {}
+    for _, g in ipairs(brain:GetListOfUnits(CatPowerT3, false)) do
+        if Alive(g) and g:GetFractionComplete() >= 1 then table.insert(anchors, g) end
+    end
+    local spot = GridSpot(brain, id, anchors)
     if not spot then return false end
     IssueBuildMobile({ u }, spot, id, {})
     return true
@@ -486,6 +600,8 @@ local function GeneralTask(brain, ctx, u, baseOnly)
     if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end
     if TryPower(brain, ctx, u) then return end
+    if TryMexStorage(brain, ctx, u) then return end
+    if TryMassFab(brain, ctx, u) then return end
     if TryFactories(brain, ctx, u) then return end
     if not baseOnly and ReclaimTask(brain, ctx, u) then return end
     TryAssist(brain, ctx, u)

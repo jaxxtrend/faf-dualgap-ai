@@ -6,12 +6,21 @@
 -- has seen triggers no anti-nuke, no shields and no strike mission.
 --
 -- Memory is per map side (the two teams of Dual Gap) and shared by all
--- DualGap brains on that side.
+-- DualGap brains on that side. What a scout finds is also called out to the
+-- team (DualGapComms): a ping on the map and a team chat line.
+--
+-- Stalemate: when the team has known nothing about the enemy for
+-- Config.StaleSeconds (typically the last enemy ACU hiding underwater, out
+-- of everyone's sight), Stale(side) turns true and scouts, torpedo bombers
+-- and fleets search the enemy's deep water. Submerged units are only found
+-- by sonar (air scouts, torpedo bombers and ships carry it).
 
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
+local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
+local ScenarioUtils = import('/lua/sim/ScenarioUtilities.lua')
 
 local Alive = Utils.Alive
 
@@ -22,12 +31,21 @@ local CatEnemyT4 = categories.EXPERIMENTAL * categories.MOBILE
 local CatAA = categories.ANTIAIR * (categories.LAND + categories.NAVAL + categories.STRUCTURE) - categories.AIR
 local CatNaval = categories.NAVAL * (categories.MOBILE + categories.STRUCTURE)
 local CatEnemyAntiNuke = categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE
+local CatShields = categories.SHIELD * categories.STRUCTURE
+-- Anything worth hunting: when none of it is known, the team is stuck.
+local CatHuntable = categories.STRUCTURE + categories.LAND + categories.NAVAL + categories.COMMAND - categories.WALL
 
 local teams = {}
 
+local function OtherSide(side)
+    if side == 'LEFT' then return 'RIGHT' end
+    return 'LEFT'
+end
+
 local function Team(side)
     if not teams[side] then
-        teams[side] = { enders = {}, t4Seen = false, aa = {}, naval = {}, antiNukes = {} }
+        teams[side] = { enders = {}, t4Seen = false, aa = {}, naval = {}, antiNukes = {}, shields = {},
+            t4Units = {}, lastKnownAt = 0, stale = false }
     end
     return teams[side]
 end
@@ -38,7 +56,11 @@ function Known(e, army)
     local ok, blip = pcall(e.GetBlip, e, army)
     if not ok or not blip then return false end
     if EntityCategoryContains(categories.STRUCTURE, e) then return blip:IsSeenEver(army) end
-    return blip:IsSeenNow(army) or blip:IsOnRadar(army)
+    if blip:IsSeenNow(army) or blip:IsOnRadar(army) then return true end
+    -- Submerged units only show up on sonar (or omni).
+    if blip.IsOnSonar and blip:IsOnSonar(army) then return true end
+    if blip.IsOnOmni and blip:IsOnOmni(army) then return true end
+    return false
 end
 
 local function EnderKind(e)
@@ -66,20 +88,45 @@ local function Scan(side, brain)
             t.enders[key] = { unit = e, kind = EnderKind(e), pos = e:GetPosition() }
             Utils.Log(brain, 'scouted enemy game ender: ' .. EnderKind(e) .. ' '
                 .. tostring(e:GetBlueprint().BlueprintId))
+            local what = (EnderKind(e) == 'NUKE') and 'Enemy NUKE' or ('Enemy ' .. Comms.UnitName(e))
+            local state = (e:GetFractionComplete() < 1) and ' under construction' or ''
+            Comms.Say(brain, side, 'ender:' .. key, what .. state .. ' spotted here!', e:GetPosition(), 'alert')
         end
     end
     for key, rec in pairs(t.enders) do
         if not Alive(rec.unit) then t.enders[key] = nil end
     end
-    if not t.t4Seen and table.getn(KnownEnemies(brain, CatEnemyT4)) > 0 then
-        t.t4Seen = true
-        Utils.Log(brain, 'scouted an enemy experimental unit')
+    for _, e in ipairs(KnownEnemies(brain, CatEnemyT4)) do
+        local key = e.EntityId or tostring(e)
+        if not t.t4Units[key] then
+            t.t4Units[key] = true
+            t.t4Seen = true
+            Utils.Log(brain, 'scouted an enemy experimental unit')
+            Comms.Say(brain, side, 't4:' .. key, 'Enemy experimental: ' .. Comms.UnitName(e) .. '!',
+                e:GetPosition(), 'alert')
+        end
     end
     t.aa = {}
     for _, e in ipairs(KnownEnemies(brain, CatAA)) do table.insert(t.aa, e:GetPosition()) end
     t.naval = KnownEnemies(brain, CatNaval)
     t.antiNukes = {}
     for _, e in ipairs(KnownEnemies(brain, CatEnemyAntiNuke)) do table.insert(t.antiNukes, e:GetPosition()) end
+    t.shields = KnownEnemies(brain, CatShields)
+
+    -- Stalemate watch.
+    local now = GetGameTimeSeconds()
+    if table.getn(KnownEnemies(brain, CatHuntable)) > 0 then
+        t.lastKnownAt = now
+        if t.stale then
+            t.stale = false
+            Utils.Log(brain, 'enemy found again, search mode off')
+        end
+    elseif not t.stale and now - t.lastKnownAt >= Config.StaleSeconds and now > 600 then
+        t.stale = true
+        Utils.Log(brain, 'no known enemy for ' .. Config.StaleSeconds .. 's: searching the deep water')
+        Comms.Say(brain, side, 'stale', 'Lost the enemy. Searching their deep water, send sonar and torpedo bombers.',
+            DeepWater(OtherSide(side)), 'move')
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -109,6 +156,45 @@ end
 
 function KnownNaval(side)
     return Utils.FilterAlive(Team(side).naval)
+end
+
+-- Known enemy structure shields whose bubble covers pos and is up right now.
+function ShieldsOver(side, pos)
+    local n = 0
+    for _, s in ipairs(Team(side).shields) do
+        if Alive(s) and s:GetFractionComplete() >= 1 then
+            local bp = s:GetBlueprint()
+            local size = bp.Defense and bp.Defense.Shield and bp.Defense.Shield.ShieldSize
+            if size and Utils.Dist2D(s:GetPosition(), pos) <= size / 2 then
+                local up = true
+                if s.MyShield and s.MyShield.IsUp then
+                    local ok, res = pcall(s.MyShield.IsUp, s.MyShield)
+                    if ok then up = res end
+                end
+                if up then n = n + 1 end
+            end
+        end
+    end
+    return n
+end
+
+-- True while the team has lost track of the enemy (see the header).
+function Stale(side)
+    if not side then return false end
+    return Team(side).stale
+end
+
+-- Deepest water in `side`'s rear: where an ACU hides. Map knowledge every
+-- player has; cached for two minutes (the playable area can grow).
+local deepCache = {}
+function DeepWater(side)
+    local c = deepCache[side]
+    local now = GetGameTimeSeconds()
+    if not c or now - c.at > 120 then
+        c = { at = now, pos = Utils.DeepestRearWater(side) }
+        deepCache[side] = c
+    end
+    return c.pos
 end
 
 -- Is pos covered by a known enemy anti-nuke (SMD range 90)?
@@ -162,19 +248,24 @@ end
 local CatAirScout = categories.AIR * categories.SCOUT * categories.MOBILE
 local CatLandScout = categories.LAND * categories.SCOUT * categories.MOBILE
 
-local function OtherSide(side)
-    if side == 'LEFT' then return 'RIGHT' end
-    return 'LEFT'
-end
-
 local function AirScoutRoute(ctx, offset)
     local pts = {}
     local enemy = OtherSide(ctx.side)
     for _, s in pairs(RoleManager.GetSlots()) do
         if s.side == enemy then table.insert(pts, s.pos) end
     end
+    -- Where experimentals and game enders get built: the map's protected
+    -- construction spots next to the enemy bases.
+    for _, m in pairs(ScenarioUtils.GetMarkers() or {}) do
+        if m.type == 'Protected Experimental Construction' and m.position and Utils.SideOf(m.position) == enemy then
+            table.insert(pts, m.position)
+        end
+    end
     table.sort(pts, function(a, b) return a[3] < b[3] end)
     table.insert(pts, Routes.GetPoint('NavalRally', enemy))
+    -- The enemy's deepest water, where an ACU hides late in the game.
+    local deep = DeepWater(enemy)
+    if deep then table.insert(pts, deep) end
     table.insert(pts, Routes.GetPoint('BasinCenter', ctx.side))
     table.insert(pts, Routes.GetPoint('LandCenter', ctx.side))
     -- Rotate so several scouts don't fly in a bunch.
