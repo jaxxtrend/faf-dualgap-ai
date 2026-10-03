@@ -7,7 +7,7 @@ An AI whose role comes from its spawn point: `GROUND`, `NAVAL`, `AIR`, `ECO`.
 ## Install
 1. Copy the `DualGapAI` folder to `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
    The folder must be named exactly `DualGapAI`: FAF mounts the mod as `/mods/DualGapAI/`, and every import inside the mod uses that path.
-2. In the FAF lobby, enable the **DualGap AI** mod and put **AI: DualGap** (or **AIx: DualGap**, the cheating version) in the AI slots.
+2. In the FAF lobby, enable the **DualGap AI** mod and put **AI: DualGap (beta)** (or **AIx: DualGap (beta)**, the cheating version) in the AI slots.
 
 ## Roles on Dual Gap Adaptive v14 (from the map markers)
 | Slot | Role | Slot | Role |

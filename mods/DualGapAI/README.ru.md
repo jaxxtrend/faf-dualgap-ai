@@ -7,7 +7,7 @@
 ## Установка
 1. Скопировать папку `DualGapAI` в `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
    Папка должна называться именно `DualGapAI`: FAF монтирует мод как `/mods/DualGapAI/`, и все импорты внутри мода используют этот путь.
-2. В лобби FAF включить мод **DualGap AI** и поставить в слоты ИИ **AI: DualGap** (или **AIx: DualGap**, читерская версия).
+2. В лобби FAF включить мод **DualGap AI** и поставить в слоты ИИ **AI: DualGap (beta)** (или **AIx: DualGap (beta)**, читерская версия).
 
 ## Роли на Dual Gap Adaptive v14 (по маркерам карты)
 | Слот | Роль | Слот | Роль |

@@ -4,9 +4,9 @@ AI = {
     Name = "DualGap AI",
     Version = "1",
     AIList = {
-        { key = 'dualgap', name = "AI: DualGap" },
+        { key = 'dualgap', name = "AI: DualGap (beta)" },
     },
     CheatAIList = {
-        { key = 'dualgapcheat', name = "AIx: DualGap" },
+        { key = 'dualgapcheat', name = "AIx: DualGap (beta)" },
     },
 }
