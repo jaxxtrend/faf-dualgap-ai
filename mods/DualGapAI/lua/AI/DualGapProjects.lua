@@ -14,15 +14,16 @@
 --           2+ enemy nukes are scouted. Priority 1: nothing starves it.
 --   team    enemy T3/T4 artillery scouted -> T3 shields over each base
 --   GROUND  after the first T2 factory: proxy base (T2 shields + T2 arty)
---   all     after the first T2 factory: T2 point defences on the
---           enemy-facing half circle around the base
+--   all     anti-air around the base: one T1 AA from the start, three T2
+--           flak at T2, a full ring of T3 SAMs at T3 (Config.BaseAA);
+--           lost ones are rebuilt
 --   ECO     strategic phase -> one random game ender, built over and over
 --   AIR     >= Config.AirT4MinFighters T3 fighters -> air experimental
 --   GROUND  own mid zone pushed, or enemy experimental scouted -> land T4
 --   NAVAL   water pushed, or enemy experimental scouted -> naval T4
 --
--- Artillery we own (T2 proxy artillery, T3 and T4 artillery) picks targets
--- by priority, see ArtilleryScore.
+-- Artillery we own (T2 proxy artillery, T3 and T4 artillery) and Novax
+-- satellites pick targets by priority, see ArtilleryScore.
 
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
@@ -126,6 +127,10 @@ function HelpWith(brain, ctx, u, names)
     return false
 end
 
+function SiteKey(pos)
+    return math.floor(pos[1]) .. ':' .. math.floor(pos[3])
+end
+
 local function ProjectTick(brain, ctx, p)
     p.crew = Utils.FilterAlive(p.crew)
     local now = GetGameTimeSeconds()
@@ -152,10 +157,28 @@ local function ProjectTick(brain, ctx, p)
     end
 
     if not p.startedAt then
+        local tried = false
         for _, u in ipairs(p.crew) do
-            if u:CanBuild(p.id) and Utils.BuildNear(brain, u, p.id, p.site, 60, p.gap) then
-                p.lead, p.startedAt = u, now
-                break
+            if u:CanBuild(p.id) then
+                tried = true
+                if Utils.BuildNear(brain, u, p.id, p.site, p.maxRadius or 60, p.gap) then
+                    p.lead, p.startedAt = u, now
+                    break
+                end
+            end
+        end
+        -- A builder tried and found no spot: give up this site (multi-site
+        -- projects move on, the planner won't offer it again).
+        if not p.startedAt and tried and p.sites then
+            p.failed = (p.failed or 0) + 1
+            if p.failed >= 3 then
+                p.failed = 0
+                ctx.badSites = ctx.badSites or {}
+                ctx.badSites[SiteKey(p.site)] = true
+                table.remove(p.sites, p.built + 1)
+                p.count = math.min(p.count or 0, p.built + table.getn(p.sites))
+                if p.built >= p.count then Remove(ctx, p); return end
+                p.site = p.sites[p.built + 1]
             end
         end
         if not p.startedAt then return end
@@ -354,26 +377,50 @@ local function PlanProxy(brain, ctx)
         minCrewTech = 2, gap = 0, priority = 3 })
 end
 
--- Exposed for tests: n points on the half circle of radius r around center
--- that faces the enemy (dir = +1: enemy to the +x side, -1: to the -x side).
-function DefenseRing(center, r, n, dir)
+-- Exposed for tests: n points evenly on the circle of radius r around
+-- center, the first one toward the enemy (dir = +1: enemy to the +x side).
+function Ring(center, r, n, dir)
     local out = {}
     for i = 1, n do
-        -- Spread over -70..+70 degrees around the enemy direction.
-        local a = (-70 + 140 * (i - 0.5) / n) * math.pi / 180
+        local a = 2 * math.pi * (i - 1) / n
         table.insert(out, { center[1] + dir * math.cos(a) * r, center[2], center[3] + math.sin(a) * r })
     end
     return out
 end
 
-local function PlanBaseDefense(brain, ctx)
-    if not ctx.t2Time or ctx.baseDefensePlanned then return end
-    ctx.baseDefensePlanned = true
+local function TopFactoryTech(brain)
+    local best = 1
+    for _, f in ipairs(brain:GetListOfUnits(categories.FACTORY * categories.STRUCTURE, false)) do
+        if Alive(f) and f:GetFractionComplete() >= 1 and Utils.TechOf(f) > best then best = Utils.TechOf(f) end
+    end
+    return best
+end
+
+-- Anti-air ring per tech tier: plan the points that have no AA of that
+-- tier yet (first build and rebuilds alike).
+local function PlanBaseAA(brain, ctx)
+    local tech = TopFactoryTech(brain)
     local dir = (ctx.side == 'LEFT') and 1 or -1
-    local sites = DefenseRing(ctx.startPos, Config.BaseDefenseRadius, Config.BaseDefenseCount, dir)
-    for _, p in ipairs(sites) do p[2] = GetSurfaceHeight(p[1], p[3]) end
-    Add(brain, ctx, { name = 'BaseDefense', key = 'PointDefenseT2', sites = sites, crewMax = 2,
-        count = Config.BaseDefenseCount, minCrewTech = 2, gap = 1, priority = 4 })
+    ctx.badSites = ctx.badSites or {}
+    for t = 1, 3 do
+        local spec = Config.BaseAA[t]
+        local name = 'BaseAA' .. t
+        if spec and tech >= t and not Find(ctx, name) then
+            local cat = categories.ANTIAIR * categories.STRUCTURE * categories['TECH' .. t]
+            local sites = {}
+            for _, p in ipairs(Ring(ctx.startPos, spec.radius, spec.count, dir)) do
+                p[2] = GetSurfaceHeight(p[1], p[3])
+                if not ctx.badSites[SiteKey(p)] and Utils.CountAround(brain, cat, p, 12, 'Ally') == 0 then
+                    table.insert(sites, p)
+                end
+            end
+            local n = table.getn(sites)
+            if n > 0 then
+                Add(brain, ctx, { name = name, key = 'AntiAirT' .. t, sites = sites, count = n, crewMax = 2,
+                    minCrewTech = t, gap = 1, maxRadius = 10, priority = 4 })
+            end
+        end
+    end
 end
 
 local function PlanExperimentals(brain, ctx)
@@ -439,6 +486,7 @@ end
 local CatOwnSilos = categories.STRUCTURE * (categories.NUKE + categories.ANTIMISSILE * categories.TECH3)
 local CatOwnNukes = categories.STRUCTURE * categories.NUKE
 local CatOwnArty = categories.STRUCTURE * categories.ARTILLERY * (categories.TECH2 + categories.TECH3 + categories.EXPERIMENTAL)
+local CatOwnSatellite = categories.SATELLITE * categories.MOBILE
 local CatEnders = categories.STRUCTURE * (categories.ARTILLERY * (categories.TECH3 + categories.EXPERIMENTAL)
     + categories.EXPERIMENTAL + categories.NUKE)
 local CatAntiNuke = categories.STRUCTURE * categories.ANTIMISSILE * categories.TECH3
@@ -516,17 +564,30 @@ local function WeaponsStep(brain, ctx)
     end
     -- Artillery re-picks every planner tick: a better target (an ACU walking
     -- into range, a shield going down) takes over from the current one.
-    for _, a in ipairs(brain:GetListOfUnits(CatOwnArty, false)) do
+    -- Novax satellites fly anywhere, so their range is the whole map; they
+    -- are untargetable, so enemy AA doesn't matter to them.
+    local shooters = {}
+    for _, a in ipairs(brain:GetListOfUnits(CatOwnArty, false)) do table.insert(shooters, a) end
+    for _, a in ipairs(brain:GetListOfUnits(CatOwnSatellite, false)) do
+        a.DualGapAssigned = true
+        table.insert(shooters, a)
+    end
+    for _, a in ipairs(shooters) do
         if Alive(a) and a:GetFractionComplete() >= 1 then
             local range = 4000
             local w = a:GetBlueprint().Weapon
-            if w and w[1] and w[1].MaxRadius then range = w[1].MaxRadius end
+            if not EntityCategoryContains(CatOwnSatellite, a) and w and w[1] and w[1].MaxRadius then
+                range = w[1].MaxRadius
+            end
             local t, score = BestTarget(brain, ctx, a:GetPosition(), range, false)
             local current = Alive(a.DGTarget) and a.DGTarget or nil
             if t and t ~= current and (not current or a:IsIdleState() or score > (a.DGScore or 0)) then
                 IssueClearCommands({ a })
                 IssueAttack({ a }, t)
                 a.DGTarget, a.DGScore = t, score
+            elseif current and a:IsIdleState() then
+                -- Lost sight of the target (or it can't be reached): pick again next tick.
+                a.DGTarget, a.DGScore = nil, nil
             elseif not t and current then
                 a.DGTarget, a.DGScore = nil, nil
             end
@@ -556,7 +617,7 @@ local function PlannerStep(brain, ctx)
     UpdateStrategic(brain, ctx)
     UpdatePushState(brain, ctx)
     PlanProxy(brain, ctx)
-    PlanBaseDefense(brain, ctx)
+    PlanBaseAA(brain, ctx)
     PlanAntiNuke(brain, ctx)
     PlanShields(brain, ctx)
     PlanExperimentals(brain, ctx)

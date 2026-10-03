@@ -1429,16 +1429,45 @@ check(P.AntiNukeWanted(2, True) == 2, 'two scouted enemy nukes -> two anti-nukes
 
 ring = lua.execute(r"""
 local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
-local function check(pts, dir)
+local C = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local function onCircle(pts, r)
     for _, p in ipairs(pts) do
-        if (p[1] - 100) * dir <= 0 then return false end
-        if math.abs(math.sqrt((p[1] - 100) ^ 2 + (p[3] - 500) ^ 2) - 35) > 0.01 then return false end
+        if math.abs(math.sqrt((p[1] - 100) ^ 2 + (p[3] - 500) ^ 2) - r) > 0.01 then return false end
     end
-    return #pts == 4
+    return true
 end
-return check(P.DefenseRing({ 100, 0, 500 }, 35, 4, 1), 1), check(P.DefenseRing({ 100, 0, 500 }, 35, 4, -1), -1)
+local one = P.Ring({ 100, 0, 500 }, 18, 1, -1)
+local three = P.Ring({ 100, 0, 500 }, 28, 3, 1)
+local eight = P.Ring({ 100, 0, 500 }, 40, 8, 1)
+-- the 8 SAMs surround the base: points on all four sides
+local e, w, n, s = false, false, false, false
+for _, p in ipairs(eight) do
+    if p[1] > 130 then e = true end
+    if p[1] < 70 then w = true end
+    if p[3] > 530 then s = true end
+    if p[3] < 470 then n = true end
+end
+return #one == 1 and one[1][1] < 100, #three == 3 and three[1][1] > 100 and onCircle(three, 28),
+       #eight == 8 and onCircle(eight, 40) and e and w and n and s,
+       C.BaseAA[1].count, C.BaseAA[2].count, C.BaseAA[3].count
 """)
-check(ring[0] and ring[1], 'base defence points sit on the enemy-facing half circle (both teams)')
+check(ring[0], 'the single early T1 AA stands toward the enemy')
+check(ring[1], 'three T2 flak spread around the base')
+check(ring[2], 'T3 SAMs ring the whole base')
+check((ring[3], ring[4], ring[5]) == (1, 3, 8), 'base AA by tech: 1 x T1, 3 x T2, 8 x T3')
+
+halves = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local C = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local top = A.FrontLine('LEFT', U.ToWorld, function() return 0 end, C.AirFrontZTop)
+local bottom = A.FrontLine('LEFT', U.ToWorld, function() return 0 end, C.AirFrontZBottom)
+local topMax, bottomMin = top[#top][3], bottom[1][3]
+local all = A.FrontLine('LEFT', U.ToWorld, function() return 0 end)
+return top[1][3] == all[1][3], bottom[#bottom][3] == all[#all][3], bottomMin < topMax
+""")
+check(halves[0] and halves[1], 'upper AIR patrols from the north end, lower AIR to the south end')
+check(halves[2], 'the two patrol stretches overlap a little in the middle')
 
 A = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')")
 off = A.SpreadOffsets(4, 40)

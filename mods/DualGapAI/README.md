@@ -39,7 +39,7 @@ The ACU, engineers and factories are driven by the mod's modules:
    - first factory: scout → 10 T1 engineers → T2 → 5 T2 engineers → scouts up to 3 (air factory only) → T3 → 10 T3 engineers;
    - T1 engineers 1–3 and 6–8 reclaim (trees, rocks, wrecks), 4–5 build the hydro, 9–10 help;
      then those four build 3 energy storages next to the hydro and go assist the ACU.
-2. **After the opening**, every idle engineer takes the first task that fits: projects (anti-nuke, shields, proxy, base point defences,
+2. **After the opening**, every idle engineer takes the first task that fits: projects (anti-nuke, shields, proxy, base anti-air,
    experimentals) → own mex → power if short → mass storages around T2 mexes → mass fabricators when energy overflows →
    the role's factories → reclaim (the base, then the own half of the mid when no known enemy army is there) → assist a factory or a build. Factories build from their role's `Production` table.
    T1 units are only built on a T1 factory and capped, so there is no T1 spam after the upgrade.
@@ -72,11 +72,11 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   The anti-nuke is first in the project queue, so ECO's game ender can't hold it up. Enemy T3/T4 artillery spotted → 2 heavy shields per base (except GROUND).
   Bombers and air experimentals hit scouted game enders first, picking the one with the least AA around.
   Own nuke and anti-nuke missiles load automatically. Nukes hit scouted targets not covered by an enemy anti-nuke.
-  Artillery (T2 at the proxy, T3, T4) picks targets by priority: game enders (T3/T4 artillery, nukes, Yolona Oss, Paragon, the Novax satellite centre and any other experimental structure) → the enemy anti-nuke while we own a nuke →
+  Artillery (T2 at the proxy, T3, T4) and Novax satellites (anywhere on the map) pick targets by priority: game enders (T3/T4 artillery, nukes, Yolona Oss, Paragon, the Novax satellite centre and any other experimental structure) → the enemy anti-nuke while we own a nuke →
   the ACU if it is in sight, not underwater and not under a shield → mexes and power → factories.
   A target under enemy shields that are up is worth 1 + 2×(shields) times less, so the guns hit something unshielded instead of pounding a shield.
   Targets are re-picked every 10 seconds, so an ACU walking into range becomes the target at once.
-- **Base defence.** After the first T2 factory each base gets 4 T2 point defences on the half circle facing the enemy.
+- **Base anti-air.** Each base gets one T1 AA from the start, three T2 flak around it at T2 and a full ring of 8 T3 SAMs at T3. Lost ones are rebuilt.
 - **Mid.** Each GROUND fortifies the map author's defensive point in its zone. Short walls stand only in front of the point defences, so the gaps stay open.
   At T2 the ACU takes the engineering upgrade, builds a proxy base with T2 engineers (2 T2 shields and 3 T2 artillery ~100 from the enemy's mid defensive point)
   and holds the mid. Once the mid is pushed, the GROUND ACU goes to help the navy.
@@ -84,8 +84,9 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   If the enemy comes at the wall, they leave earlier. The fleet gathers at the naval rally point and sails in formation in groups of 6/8/10.
   If a clearly stronger fleet has been scouted ahead, it waits or falls back.
   Experimentals don't walk inside the wave: each keeps 40 from the wave and from the other experimentals, so a dying one doesn't kill its neighbours.
-- **Air.** Patrols run along the front (north to south, on the own side). A point with a lot of scouted enemy AA steps back.
-  Known enemy aircraft behind the front are intercepted by the nearest fighters (at least 4, 2 per enemy), which then return to the patrol.
+- **Air.** Patrols run along the front (north to south, on the own side). The upper half of the team (including the upper AIR player) patrols the upper part of the front,
+  the lower half the lower part; the two stretches overlap a little in the middle. A point with a lot of scouted enemy AA steps back.
+  Known enemy aircraft behind the front, in the player's own stretch, are intercepted by the nearest fighters (at least 4, 2 per enemy), which then return to the patrol.
   Bombers mass at the staging point. On a strike the escort fighters leave first (1.2× the known enemy fighters at the target and on the way)
   and tie up the enemy fighter wall on the direct line. The bombers leave 6 seconds later on a flank route, on the side with less AA.
   If the escort is too weak, the strike waits. Air experimentals pick different targets so they don't crash onto each other.
@@ -110,7 +111,7 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
 | `lua/AI/DualGapEconomy.lua` | mex upgrades, RAS for ECO |
 | `lua/AI/DualGapIntel.lua` | the team's shared scouting memory, scout control, search mode when the enemy is lost |
 | `lua/AI/DualGapComms.lua` | team pings and team chat callouts |
-| `lua/AI/DualGapProjects.lua` | engineer crews: experimentals, ECO game ender, shared anti-nuke, shields, proxy base, base point defences, nuke and artillery targeting |
+| `lua/AI/DualGapProjects.lua` | engineer crews: experimentals, ECO game ender, shared anti-nuke, shields, proxy base, base anti-air, nuke, artillery and satellite targeting |
 | `lua/AI/DualGapRoleManager.lua`, `DualGapRoutes.lua`, `DualGapUtils.lua`, `DualGapInit.lua` | roles, routes, utilities, startup |
 
 ## Differences from the original spec

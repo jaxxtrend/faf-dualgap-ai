@@ -46,7 +46,8 @@ local CatFighter  = categories.AIR * categories.MOBILE * categories.ANTIAIR
 local CatBomber   = categories.AIR * categories.MOBILE * (categories.BOMBER + categories.ANTINAVY + categories.GROUNDATTACK)
                     - categories.EXPERIMENTAL
 local CatTorpBomber = categories.AIR * categories.MOBILE * categories.ANTINAVY
-local CatAirT4    = categories.AIR * categories.MOBILE * categories.EXPERIMENTAL
+-- Novax satellites are aimed by DualGapProjects with the artillery priorities.
+local CatAirT4    = categories.AIR * categories.MOBILE * categories.EXPERIMENTAL - categories.SATELLITE
 
 local CatNavalTargets = categories.NAVAL - categories.WALL
 local CatEnemyAir     = categories.AIR * categories.MOBILE
@@ -357,9 +358,10 @@ end
 ---------------------------------------------------------------------------
 -- Exposed for tests: the patrol line, each point pushed back while the
 -- AA count there (aaAt(point)) reaches the threshold.
-function FrontLine(side, toWorld, aaAt)
+-- zList: the stretch of the front this player covers (default: all of it).
+function FrontLine(side, toWorld, aaAt, zList)
     local pts = {}
-    for _, z in ipairs(Config.AirFrontZ) do
+    for _, z in ipairs(zList or Config.AirFrontZ) do
         local x = Config.AirFrontX
         local p = toWorld({ x, z }, side)
         local steps = 0
@@ -375,15 +377,21 @@ end
 
 local function LineKey(pts)
     local s = ''
-    for _, p in ipairs(pts) do s = s .. math.floor(p[1]) .. ',' end
+    for _, p in ipairs(pts) do s = s .. math.floor(p[1]) .. '/' .. math.floor(p[3]) .. ',' end
     return s
 end
 
--- Is pos behind the own front line (the own side of the patrol line)?
+-- Is pos behind the own front line, in this player's stretch of it (with
+-- a little margin north and south)?
 local function BehindFront(ctx, pos)
-    local nx = Utils.Normalise(pos[1], pos[3])
+    local nx, nz = Utils.Normalise(pos[1], pos[3])
     if ctx.side == 'RIGHT' then nx = 1 - nx end
-    return nx < Config.AirFrontX
+    if nx >= Config.AirFrontX then return false end
+    local zl = ctx.airZones or Config.AirFrontZ
+    local zmin, zmax = zl[1], zl[table.getn(zl)]
+    if zmin > 0.26 then zmin = zmin - 0.06 else zmin = -1 end   -- the outer edges
+    if zmax < 0.80 then zmax = zmax + 0.06 else zmax = 2 end    -- reach the map edge
+    return nz >= zmin and nz <= zmax
 end
 
 local function FreeFighters(ctx)
@@ -437,7 +445,7 @@ local function Intercept(brain, ctx, now)
 end
 
 local function FightersStep(brain, ctx, now)
-    local line = FrontLine(ctx.side, Utils.ToWorld, function(p) return Intel.AAThreat(ctx.side, p) end)
+    local line = FrontLine(ctx.side, Utils.ToWorld, function(p) return Intel.AAThreat(ctx.side, p) end, ctx.airZones)
     local key = LineKey(line)
     if ctx.airLineKey and key ~= ctx.airLineKey then Utils.Log(brain, 'air patrol line moved (enemy AA)') end
     ctx.airLineKey = key
@@ -641,6 +649,8 @@ function Start(brain, ctx)
         for _, other in pairs(slots) do
             if other.side ~= own.side and other.rank == own.rank then ctx.enemyGroundBase = other.pos end
         end
+        -- Upper half of the team patrols the upper front, lower half the lower.
+        ctx.airZones = (own.rank <= 3) and Config.AirFrontZTop or Config.AirFrontZBottom
     end
     ForkThread(Utils.RunLoop, 'Army', brain, ctx, 5, ArmyStep)
 end

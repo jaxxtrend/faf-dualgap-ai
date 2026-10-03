@@ -88,8 +88,13 @@ Points = {
 -- Air patrols fly ALONG the front (north-south), on the own side of it.
 -- AirFrontX is the normal line; each point steps back by AirFrontStep (up
 -- to AirFrontMaxSteps times) while known enemy AA near it reaches AAThreat.
+-- The upper half of a team (slots 1-3, incl. the upper AIR player) patrols
+-- AirFrontZTop, the lower half AirFrontZBottom; they overlap in the middle.
+-- AirFrontZ is the whole line, for spawns without a slot.
 AirFrontX         = 0.42
 AirFrontZ         = { 0.26, 0.36, 0.46, 0.58, 0.70, 0.80 }
+AirFrontZTop      = { 0.26, 0.36, 0.46, 0.58 }
+AirFrontZBottom   = { 0.46, 0.58, 0.70, 0.80 }
 AirFrontStep      = 0.04
 AirFrontMaxSteps  = 4
 AAThreat          = 6      -- known enemy AA units within AARadius
@@ -165,10 +170,15 @@ BomberFlankShare   = 0.35
 BomberDelay        = 6
 StrikeTimeout      = 150
 
--- Base defence: T2 point defences on the enemy-facing half circle around
--- each base, built after the first T2 factory.
-BaseDefenseCount  = 4
-BaseDefenseRadius = 35
+-- Anti-air around each base, by the player's top factory tech: one T1 AA
+-- from the start, three T2 flak at T2, a full ring of T3 SAMs at T3.
+-- Points sit on a circle around the start (the first one toward the
+-- enemy); lost ones are rebuilt.
+BaseAA = {
+    { count = 1, radius = 18 },
+    { count = 3, radius = 28 },
+    { count = 8, radius = 40 },
+}
 
 -- Mex storages: four mass storages around every own mex once it is T2; a
 -- mex only goes to T3 when no free storage spot is left around it.
