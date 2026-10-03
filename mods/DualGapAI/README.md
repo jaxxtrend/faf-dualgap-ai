@@ -72,7 +72,7 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   The anti-nuke is first in the project queue, so ECO's game ender can't hold it up. Enemy T3/T4 artillery spotted → 2 heavy shields per base (except GROUND).
   Bombers and air experimentals hit scouted game enders first, picking the one with the least AA around.
   Own nuke and anti-nuke missiles load automatically. Nukes hit scouted targets not covered by an enemy anti-nuke.
-  Artillery (T2 at the proxy, T3, T4) picks targets by priority: game enders (T3/T4 artillery, satellite, nukes) → the enemy anti-nuke while we own a nuke →
+  Artillery (T2 at the proxy, T3, T4) picks targets by priority: game enders (T3/T4 artillery, nukes, Yolona Oss, Paragon, the Novax satellite centre and any other experimental structure) → the enemy anti-nuke while we own a nuke →
   the ACU if it is in sight, not underwater and not under a shield → mexes and power → factories.
   A target under enemy shields that are up is worth 1 + 2×(shields) times less, so the guns hit something unshielded instead of pounding a shield.
   Targets are re-picked every 10 seconds, so an ACU walking into range becomes the target at once.

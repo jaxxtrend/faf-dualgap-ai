@@ -424,8 +424,9 @@ end
 -- Silos and artillery we own: load missiles, fire at scouted targets.
 --
 -- Artillery priorities (ArtilleryScore), highest first:
---   100 enemy game enders: T3/T4 artillery, satellite centre and other
---       experimental structures, nuke launchers
+--   100 enemy game enders: T3/T4 artillery, nuke launchers and every
+--       experimental structure (Mavor, Scathis, Salvation, Yolona Oss,
+--       Paragon, Novax satellite centre)
 --    80 enemy anti-nuke, but only while we own a nuke launcher (kill the
 --       anti-nuke, then the nuke gets through)
 --    60 enemy ACU, if it is in sight, not underwater and not under a shield
