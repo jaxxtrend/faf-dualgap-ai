@@ -21,6 +21,8 @@
 --           heavy shields at T3, a bigger ring once enemy T3/T4 artillery
 --           is scouted (Config.BaseShields); lost ones are rebuilt
 --   GROUND  after the first T2 factory: proxy base (T2 shields + T2 arty)
+--   GROUND / NAVAL after the first T2 factory: forward factories near the
+--           front (Config.ForwardFactories)
 --   all     anti-air around the base: one T1 AA from the start, three T2
 --           flak at T2, a full ring of T3 SAMs at T3 (Config.BaseAA);
 --           lost ones are rebuilt
@@ -95,6 +97,7 @@ local function Remove(ctx, p)
 end
 
 local function CrewWanted(brain, p)
+    if p.throttle and p.throttle(brain) then return 1 end
     if p.share then
         local total = Utils.Count(brain:GetListOfUnits(CatEngineer, false))
         return math.max(1, math.floor(total * p.share))
@@ -535,6 +538,58 @@ local function PlanBaseShields(brain, ctx)
     end
 end
 
+local CatT3Land = categories.LAND * categories.MOBILE * categories.TECH3 - categories.ENGINEER - categories.COMMAND
+    - categories.SUBCOMMANDER
+local CatT3Ships = categories.NAVAL * categories.MOBILE * categories.TECH3
+
+-- Exposed for tests: enough T3 units for one more experimental?
+function T4EscortReady(t3, exps)
+    return t3 >= Config.T3PerT4 * math.max(1, exps)
+end
+
+-- Forward production sites: two points behind the GROUND mid point, or two
+-- water points short of the NAVAL rally point.
+local function ForwardSites(ctx)
+    local dir = (ctx.side == 'LEFT') and 1 or -1
+    local out = {}
+    if ctx.role == 'GROUND' and ctx.choke then
+        local x = ctx.choke[1] - dir * Config.ForwardLandBack
+        for _, dz in ipairs({ -12, 12 }) do
+            local z = ctx.choke[3] + dz
+            table.insert(out, { x, GetSurfaceHeight(x, z), z })
+        end
+    elseif ctx.role == 'NAVAL' then
+        local r = Routes.GetPoint('NavalRally', ctx.side)
+        local x = r[1] - dir * Config.ForwardNavalBack
+        for _, dz in ipairs({ -15, 15 }) do
+            local w = Utils.FindNearestWater({ x, 0, r[3] + dz }, 2, 60)
+            if w then table.insert(out, w) end
+        end
+    end
+    return out
+end
+
+local function PlanForwardBase(brain, ctx)
+    if not ctx.t2Time or Find(ctx, 'ForwardFactory') then return end
+    local kind = (ctx.role == 'NAVAL') and 'Naval' or 'Land'
+    local id = Utils.FactoryId(brain, kind, 1)
+    if not id then return end
+    ctx.forwardSites = ctx.forwardSites or ForwardSites(ctx)
+    ctx.badSites = ctx.badSites or {}
+    local sites = {}
+    for i, p in ipairs(ctx.forwardSites) do
+        if i <= Config.ForwardFactories and not ctx.badSites[SiteKey(p)]
+            and Utils.CountAround(brain, Utils.FactoryCategory(kind), p, 15, 'Ally') == 0 then
+            table.insert(sites, p)
+        end
+    end
+    local n = table.getn(sites)
+    if n > 0 then
+        Add(brain, ctx, { name = 'ForwardFactory', id = id, key = 'Forward' .. kind, sites = sites, count = n,
+            crewMax = 3, gap = 2, maxRadius = 20, priority = 3 })
+    end
+end
+
 local function PlanExperimentals(brain, ctx)
     local role = ctx.role
     if role == 'ECO' then
@@ -565,7 +620,13 @@ local function PlanExperimentals(brain, ctx)
     if T4Trigger(role, fighters, ctx.midPushed, ctx.waterPushed, Intel.EnemyT4Seen(ctx.side)) then
         local id = Utils.FactionId(brain, key)
         local site = (role == 'NAVAL') and NavalT4Site(brain, ctx, id) or T4Site(ctx)
-        Add(brain, ctx, { name = 'Experimental', key = key, site = site, crewMax = 8, minCrewTech = 2, priority = 5 })
+        local cat = (role == 'NAVAL') and CatT3Ships or (role == 'GROUND' and CatT3Land or nil)
+        Add(brain, ctx, { name = 'Experimental', key = key, site = site, crewMax = 8, minCrewTech = 2, priority = 5,
+            -- Not enough T3 army to go with the T4s yet: one engineer only.
+            throttle = cat and function(b)
+                local exps = Utils.Count(b:GetListOfUnits(categories.EXPERIMENTAL * categories.MOBILE, false))
+                return not T4EscortReady(Utils.Count(b:GetListOfUnits(cat, false)), exps)
+            end })
     end
 end
 
@@ -833,6 +894,7 @@ local function PlannerStep(brain, ctx)
     UpdateStrategic(brain, ctx)
     UpdatePushState(brain, ctx)
     PlanProxy(brain, ctx)
+    PlanForwardBase(brain, ctx)
     PlanBaseAA(brain, ctx)
     PlanIntelStructures(brain, ctx)
     PlanAntiNuke(brain, ctx)

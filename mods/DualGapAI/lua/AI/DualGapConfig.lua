@@ -182,6 +182,23 @@ BaseAA = {
     { count = 8, radius = 40 },
 }
 
+-- Forward production. After the first T2 factory GROUND puts
+-- ForwardFactories land factories ForwardLandBack behind its mid point, and
+-- NAVAL puts ForwardFactories naval yards on the water ForwardNavalBack
+-- short of the naval rally point, so new units reach the front sooner.
+-- Lost ones are rebuilt; they upgrade like other support factories.
+ForwardFactories = 2
+ForwardLandBack  = 40
+ForwardNavalBack = 40
+
+-- Experimentals never go alone: a wave with a T4 leaves only with at least
+-- T4EscortMin other units, and another T4 gets a full engineer crew only
+-- while the player has T3PerT4 T3 combat units (land for GROUND, ships for
+-- NAVAL) per T4 alive; otherwise one engineer keeps it going slowly and the
+-- economy stays with the factories.
+T4EscortMin = 8
+T3PerT4     = 15
+
 -- Intel structures. Every base: a radar BaseRadarRadius toward the enemy,
 -- upgraded to T2 at T2 and to Omni at T3 (when the economy allows). GROUND:
 -- a forward radar MidRadarBack behind its mid defensive point. NAVAL: a

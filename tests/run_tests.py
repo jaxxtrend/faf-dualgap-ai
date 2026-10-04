@@ -769,6 +769,26 @@ check(A.SafetyDecision(1.0, False, False, 8, 0, 0, True) == 'LAND',
       '...unless torpedo bombers own the water')
 check(A.SafetyDecision(1.0, False, False, 0, 0, 0, False) is None, 'no threat: the ACU keeps working')
 
+print('\nT4 escorts')
+esc = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+EntityCategoryContains = function(cat, u) return u.exp end
+local function units(exps, others)
+    local out = {}
+    for i = 1, exps do table.insert(out, { exp = true }) end
+    for i = 1, others do table.insert(out, { exp = false }) end
+    return out
+end
+return A.WaveReady(units(1, 0), 10), A.WaveReady(units(2, 3), 10), A.WaveReady(units(1, 8), 10),
+       A.WaveReady(units(0, 10), 10), A.WaveReady(units(0, 9), 10),
+       P.T4EscortReady(14, 0), P.T4EscortReady(15, 1), P.T4EscortReady(29, 2), P.T4EscortReady(30, 2)
+""")
+check(not esc[0] and not esc[1], 'an experimental never leaves alone or with a handful of units')
+check(esc[2], 'an experimental with 8 other units makes a wave')
+check(esc[3] and not esc[4], 'waves without experimentals keep their normal size')
+check(not esc[5] and esc[6] and not esc[7] and esc[8], 'a full T4 crew needs 15 T3 units per experimental alive')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

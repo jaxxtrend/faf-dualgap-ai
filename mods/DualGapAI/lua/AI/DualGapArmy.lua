@@ -121,6 +121,17 @@ local function TopTech(brain)
     return best
 end
 
+-- Exposed for tests: may a gathered group with these units leave? A wave
+-- with an experimental needs Config.T4EscortMin other units with it.
+function WaveReady(units, size)
+    local exps, others = 0, 0
+    for _, u in ipairs(units) do
+        if EntityCategoryContains(categories.EXPERIMENTAL, u) then exps = exps + 1 else others = others + 1 end
+    end
+    if exps > 0 and others < Config.T4EscortMin then return false end
+    return exps * Config.ExperimentalWaveWeight + others >= size
+end
+
 -- Weight: experimentals count as several units.
 local function Weight(units)
     local w = 0
@@ -297,7 +308,7 @@ local function LandStep(brain, ctx)
         Comms.Say(brain, ctx.side, 'wall:' .. brain.Name, 'Enemy army at my wall, need help here!', ctx.choke, 'alert')
     end
     local size = Config.WaveSize[TopTech(brain)] or 10
-    if Weight(ready) >= size or (enemyAtWall and Utils.Count(ready) >= 4) then
+    if WaveReady(ready, size) or (enemyAtWall and Utils.Count(ready) >= 4) then
         local enemy = OtherSide(ctx.side)
         local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
         local path = { ctx.choke, Routes.GetPoint(zone, enemy) }
@@ -340,7 +351,7 @@ local function NavalStep(brain, ctx)
     local size = Config.NavalFleetSize[TopTech(brain)] or 6
     -- Searching for a hidden ACU: any two ships go.
     if Intel.Stale(ctx.side) then size = math.min(size, 2) end
-    if Weight(ready) >= size then
+    if WaveReady(ready, size) then
         local enemy = OtherSide(ctx.side)
         local ahead = KnownNear(brain, categories.NAVAL * categories.MOBILE, Routes.GetPoint('BasinCenter', ctx.side), 200)
         if NavalStrength(ahead) > 1.5 * NavalStrength(ready) then return end   -- wait, keep massing

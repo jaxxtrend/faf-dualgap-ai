@@ -98,6 +98,11 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   If the enemy comes at the wall, they leave earlier. The fleet gathers at the naval rally point and sails in formation in groups of 6/8/10.
   If a clearly stronger fleet has been scouted ahead, it waits or falls back.
   Experimentals don't walk inside the wave: each keeps 40 from the wave and from the other experimentals, so a dying one doesn't kill its neighbours.
+- **Forward bases.** After the first T2 factory GROUND puts 2 land factories 40 behind its mid point and NAVAL 2 naval yards
+  on the water short of the naval rally point, so new units reach the front sooner. Lost ones are rebuilt.
+- **Experimentals with an escort.** A wave with a T4 leaves only with at least 8 other units. Another T4 gets a full engineer crew only
+  while there are 15 T3 units (land for GROUND, ships for NAVAL) per T4 alive; otherwise one engineer builds it slowly
+  and the economy goes to the factories.
 - **Air.** Patrols run along the front (north to south, on the own side). The upper half of the team (including the upper AIR player) patrols the upper part of the front,
   the lower half the lower part; the two stretches overlap a little in the middle. A point with a lot of scouted enemy AA steps back.
   Known enemy aircraft behind the front, in the player's own stretch, are intercepted by the nearest fighters (at least 4, 2 per enemy), which then return to the patrol.

@@ -97,7 +97,7 @@ Production = {
         Naval = {
             { 'T1Frigate', cap = 8 }, { 'T1Sub', cap = 6 },
             { 'T2Destroyer', cap = 10 }, { 'T2Cruiser', cap = 6 },
-            { 'T3Battleship', cap = 6 },
+            { 'T3Battleship', cap = 10 },
         },
         Air = { { 'T1Interceptor', cap = 4 }, { 'T3ASF', cap = 6 } },
     },
