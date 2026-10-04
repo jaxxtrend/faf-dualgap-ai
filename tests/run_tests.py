@@ -1162,6 +1162,23 @@ return Ec.T3PhaseOpen(0, true), Ec.T3PhaseOpen(2, true), Ec.T3PhaseOpen(5, true)
 """)
 check(mx[0] and not mx[1] and not mx[2] and not mx[3], 'T3 mex upgrades start once every base mex is T2 (mexes out of the base do not count)')
 
+hs = lua.execute(r"""
+local B = import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
+local C = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+return B.HideSpacing(true, false) == C.HideSpacing, B.HideSpacing(true, true) == C.HideSpacingNear,
+       B.HideSpacing(false, false) == C.HideSpacingNear, C.HideSpacingNear > 0, C.HideBasinRadius < 200
+""")
+check(hs[0] and hs[1] and hs[2] and hs[3], 'hidden ACUs spread out only with an enemy nuke in the air and no loaded anti-nuke, else close but not on one spot')
+check(hs[4], 'hidden ACUs stay in the water of their own base')
+
+nl = lua.execute(r"""
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+local enemy = function(a, b) return (a <= 6) ~= (b <= 6) end
+return I.NukeLaunchedRecently(1, 100, 50, { [8] = 70 }, enemy), I.NukeLaunchedRecently(1, 200, 50, { [8] = 70 }, enemy),
+       I.NukeLaunchedRecently(1, 100, 50, { [2] = 90 }, enemy)
+""")
+check(nl[0] and not nl[1] and not nl[2], 'an enemy nuke launch is remembered for a while; own team launches do not count')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

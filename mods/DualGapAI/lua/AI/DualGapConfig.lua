@@ -281,10 +281,20 @@ ReclaimRoleSeconds = 240
 EnergyStall        = 0.1
 ProjectCrewShare   = 0.5
 
--- Hidden ACUs keep HideSpacing apart (one nuke must not catch two), and
--- each gets up to TorpGuardsPerACU of its team's torpedo bombers patrolling
--- over it (from every bot that has them) when they have nothing to strike.
-HideSpacing      = 150
+-- A hiding ACU stays in the water of its own base (within HideBasinRadius
+-- of its start: under the anti-nuke and the own fleet), never out in the
+-- central basin. Hidden ACUs may stand close, HideSpacingNear apart (just
+-- not on one spot). Only when an enemy nuke was launched (every player
+-- hears "strategic launch detected", without the target) in the last
+-- NukeAlertSeconds and no loaded own anti-nuke covers the spot, they spread
+-- out to HideSpacing (one missile must not catch two). Each gets up to
+-- TorpGuardsPerACU of its team's torpedo bombers patrolling over it (from
+-- every bot that has them) when they have nothing to strike.
+HideBasinRadius  = 130
+HideSpacingNear  = 30
+HideSpacing      = 70
+NukeAlertSeconds = 50
+HideFleetDistance = 80
 TorpGuardsPerACU = 4
 
 -- Bombers go for the target with the least known AA; a group may accept

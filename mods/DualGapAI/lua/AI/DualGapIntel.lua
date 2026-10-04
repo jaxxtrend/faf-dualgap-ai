@@ -412,6 +412,37 @@ function Register(brain, side)
     table.insert(observers[side], brain)
 end
 
+-- Nuke launches: FAF announces every launch to all armies ("strategic
+-- launch detected", without the target), so knowing that army X just fired
+-- is fair. Hooked on every brain once; keeps the last launch time per army.
+local nukeLaunchAt = {}
+local nukeWatch = false
+function WatchNukeLaunches()
+    if nukeWatch or not ArmyBrains then return end
+    nukeWatch = true
+    for _, b in ipairs(ArmyBrains) do
+        local old = b.OnUnitNukeLaunched
+        local army = b:GetArmyIndex()
+        b.OnUnitNukeLaunched = function(self, unit)
+            nukeLaunchAt[army] = GetGameTimeSeconds()
+            if old then return old(self, unit) end
+        end
+    end
+end
+
+-- Exposed for tests: did an enemy of `army` launch a nuke within `window`
+-- seconds? launches: { [army] = time }, isEnemy(a, b).
+function NukeLaunchedRecently(army, now, window, launches, isEnemy)
+    for a, t in pairs(launches) do
+        if isEnemy(army, a) and now - t <= window then return true end
+    end
+    return false
+end
+
+function EnemyNukeInFlight(army)
+    return NukeLaunchedRecently(army, GetGameTimeSeconds(), Config.NukeAlertSeconds, nukeLaunchAt, IsEnemy)
+end
+
 local scanning = false
 function StartScanner()
     if scanning then return end

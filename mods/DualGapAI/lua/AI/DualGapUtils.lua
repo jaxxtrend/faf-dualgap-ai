@@ -243,6 +243,35 @@ end
 -- list of points).
 RearDepth = 0.35
 
+-- Deepest water within radius of center, at least minDist from every
+-- point of avoid (a list) and fleetDist from fleet (a point or nil).
+function DeepestWaterNear(center, radius, avoid, minDist, fleet, fleetDist)
+    local best, bestDepth
+    local x = center[1] - radius
+    while x <= center[1] + radius do
+        local z = center[3] - radius
+        while z <= center[3] + radius do
+            local dx, dz = x - center[1], z - center[3]
+            if dx * dx + dz * dz <= radius * radius then
+                local d = WaterDepth(x, z)
+                if d >= Config.DeepWaterDepth and (not bestDepth or d > bestDepth) then
+                    local far = true
+                    for _, a in ipairs(avoid or {}) do
+                        if (x - a[1]) * (x - a[1]) + (z - a[3]) * (z - a[3]) < minDist * minDist then far = false; break end
+                    end
+                    if far and fleet and (x - fleet[1]) * (x - fleet[1]) + (z - fleet[3]) * (z - fleet[3]) < fleetDist * fleetDist then
+                        far = false
+                    end
+                    if far then best, bestDepth = { x, GetSurfaceHeight(x, z), z }, d end
+                end
+            end
+            z = z + 6
+        end
+        x = x + 6
+    end
+    return best
+end
+
 function DeepestRearWater(side, avoid, minDist)
     -- avoid: one point or a list of points.
     local avoidList = {}

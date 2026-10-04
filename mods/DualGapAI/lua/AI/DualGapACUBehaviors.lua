@@ -125,13 +125,39 @@ local function OtherHideSpots(brain, ctx)
     return out
 end
 
--- Deepest rear water at least Config.HideSpacing from the allies' hiding
--- spots (and from `extra`, e.g. an enemy fleet); falls back to any.
-local function PickHideSpot(brain, ctx, extra)
+-- Exposed for tests: how far apart hidden ACUs keep. Spread out only
+-- while an enemy nuke is in the air and no loaded own anti-nuke covers
+-- them; else close is fine (just not the same spot).
+function HideSpacing(nukeInFlight, loadedAntiNuke)
+    if nukeInFlight and not loadedAntiNuke then return Config.HideSpacing end
+    return Config.HideSpacingNear
+end
+
+local CatOwnSMD = categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE
+-- An allied anti-nuke within reach of pos with a missile loaded.
+local function LoadedAntiNuke(brain, pos)
+    for _, s in ipairs(brain:GetUnitsAroundPoint(CatOwnSMD, pos, 90, 'Ally') or {}) do
+        if Alive(s) and s:GetFractionComplete() >= 1 and s.GetTacticalSiloAmmoCount
+            and s:GetTacticalSiloAmmoCount() > 0 then return true end
+    end
+    return false
+end
+
+local function NukeDanger(brain, ctx, pos)
+    return Intel.EnemyNukeInFlight(brain:GetArmyIndex()), LoadedAntiNuke(brain, pos or ctx.startPos)
+end
+
+-- The deepest water of the own base's basin, spaced from the allies'
+-- hiding spots (HideSpacing) and away from `fleet` (a known enemy fleet).
+-- Never out of the own basin: nil if there is no such spot.
+local function PickHideSpot(brain, ctx, fleet)
     local avoid = OtherHideSpots(brain, ctx)
-    if extra then table.insert(avoid, extra) end
-    return Utils.DeepestRearWater(ctx.side, avoid, Config.HideSpacing)
-        or (not extra and Utils.DeepestRearWater(ctx.side))
+    local spacing = HideSpacing(NukeDanger(brain, ctx))
+    local r = Config.HideBasinRadius
+    return Utils.DeepestWaterNear(ctx.startPos, r, avoid, spacing, fleet, Config.HideFleetDistance)
+        or (spacing > Config.HideSpacingNear
+            and Utils.DeepestWaterNear(ctx.startPos, r, avoid, Config.HideSpacingNear, fleet, Config.HideFleetDistance))
+        or nil
 end
 
 -- Only what this army can see (or has seen, for structures): no peeking
@@ -186,7 +212,6 @@ local function SafetyStep(brain, ctx)
 
         if want == 'DEEP' and ctx.acuState ~= 'SUBMERGED' then
             local water = PickHideSpot(brain, ctx)
-                or Utils.FindNearestWater(pos, Config.DeepWaterDepth, 400)
             if water then
                 Utils.Log(brain, string.format('ACU to max depth (hp=%.2f lateT2=%s bombers=%d)',
                     hp, tostring(lateT2), bombers))
@@ -409,6 +434,26 @@ function SubmergedStep(brain, ctx)
         return
     end
 
+    -- An enemy nuke shows up with no anti-nuke over us: spread out from
+    -- the other hidden ACUs (one missile must not catch two).
+    local inFlight, loaded = NukeDanger(brain, ctx, ctx.submergePos)
+    if ctx.submergePos and HideSpacing(inFlight, loaded) > Config.HideSpacingNear then
+        local crowded = false
+        for _, o in ipairs(OtherHideSpots(brain, ctx)) do
+            if Utils.Dist2D(o, ctx.submergePos) < Config.HideSpacing then crowded = true; break end
+        end
+        local spot = crowded and PickHideSpot(brain, ctx)
+        if spot and Utils.Dist2D(spot, ctx.submergePos) > 10 then
+            ctx.evadeUntil = now + Config.EvadeCooldown
+            Utils.Log(brain, 'ACU spreads out from the other hidden ACUs: enemy nuke launched, no loaded anti-nuke')
+            IssueClearCommands({ acu })
+            IssueMove({ acu }, spot)
+            ctx.submergePos = spot
+            SetHideSpot(brain, ctx, spot)
+            return
+        end
+    end
+
     if not Utils.IsIdle(acu) then return end
     local home = ctx.submergePos or pos
     -- Stay near the hiding spot: only work within reach of it.
@@ -494,6 +539,7 @@ end
 ---------------------------------------------------------------------------
 function Start(brain, ctx)
     ctx.acuState = 'OPENING'
+    Intel.WatchNukeLaunches()
     -- Each GROUND player holds its own zone: upper slot (rank 2) the upper
     -- mid mex group via the north arc, lower slot (rank 3) the lower one.
     local slot = RoleManager.GetSlots()[brain.Name]
