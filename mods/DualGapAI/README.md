@@ -84,6 +84,10 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
 - **Navy helps the mid.** NAVAL sends its first 3 T2 destroyers and a cruiser to the water right below the lower mid choke;
   they patrol from there to the centre, shelling enemy land units at the shore for GROUND (5 destroyers, on to the water by
   the enemy mid, once the water is pushed).
+- **Air T4 operation.** A finished own air experimental (Czar, Ahwassa, Soul Ripper) gathers at the air staging point for
+  40 s while both AIR players send 80% of their free fighters and all free bombers to guard it - they fly at its pace. Then
+  it goes for the enemy ECO's commander (on land; else the heart of the enemy ECO base) and the bombers dive in on the
+  target once the T4 is within 140 of it. Novax satellites also go for the enemy ECO commander first when it is seen and unshielded.
 - **Everyone on a game ender.** A scouted enemy game ender is the whole team's target: AIR strikes it once 30+ planes are home and free, land waves
   leave with a smaller size (fleets at full size) and take the less defended mid lane to it, fleets sail to the water next to it, nukes and artillery
   already put it first.

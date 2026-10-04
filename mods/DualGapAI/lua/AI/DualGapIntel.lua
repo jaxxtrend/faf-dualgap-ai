@@ -274,6 +274,17 @@ function SubmergedACUs(side)
     return out
 end
 
+-- The team's air T4 operation: { lead, units, phase = 'gather'|'go',
+-- target (unit or nil), targetPos, id, by } or nil.
+function AirT4Op(side)
+    if not side then return nil end
+    return Team(side).airT4Op
+end
+
+function SetAirT4Op(side, op)
+    Team(side).airT4Op = op
+end
+
 -- The team's current mass air attack: { pos, unit, at } or nil. Set by the
 -- AIR player who launches it; the other AIR player joins the same target.
 function AirMass(side)

@@ -1060,9 +1060,33 @@ local function WeaponsStep(brain, ctx)
             local range = 4000
             local w = a:GetBlueprint().Weapon
             if not sat and w and w[1] and w[1].MaxRadius then range = w[1].MaxRadius end
-            AimShooter(brain, ctx, a, range, longRange)
+            -- Novax satellites go for the enemy ECO's commander first (with
+            -- the team's air T4 operation), when it is seen, on land and
+            -- not under a shield.
+            local ecoACU = sat and EnemyEcoACU(brain, ctx)
+            if ecoACU then
+                if a.DGTarget ~= ecoACU then
+                    a.DGTarget = ecoACU
+                    IssueClearCommands({ a })
+                    IssueAttack({ a }, ecoACU)
+                end
+            else
+                AimShooter(brain, ctx, a, range, longRange)
+            end
         end
     end
+end
+
+-- The enemy ECO's commander, if seen, on land and unshielded.
+function EnemyEcoACU(brain, ctx)
+    local army = brain:GetArmyIndex()
+    for _, base in ipairs(EnemyEcoBases(ctx)) do
+        for _, e in ipairs(brain:GetUnitsAroundPoint(categories.COMMAND, base, 200, 'Enemy') or {}) do
+            local p = e:GetPosition()
+            if Intel.Known(e, army) and not Utils.IsUnderwater(e) and Intel.ShieldsOver(ctx.side, p) == 0 then return e end
+        end
+    end
+    return nil
 end
 
 -- Known enemy army (land / naval units) in range of a gun.

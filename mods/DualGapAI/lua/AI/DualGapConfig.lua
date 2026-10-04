@@ -105,6 +105,15 @@ AirFrontStep      = 0.04
 MidCoverX          = 0.52
 MidCoverRadius     = 90
 MidCoverPerBomber  = 3
+-- Air T4 operation: a finished air experimental (Czar, Ahwassa, Soul
+-- Ripper) gathers at the air staging point for up to T4OpGatherSeconds
+-- while both AIR players send T4OpEscortShare of their free fighters and
+-- all free bombers to guard it (they fly at its pace). Then it goes for
+-- the enemy ECO's ACU (else the heart of the enemy ECO base); when it is
+-- within T4OpBomberRange of the target the bombers dive in on it.
+T4OpGatherSeconds = 40
+T4OpEscortShare   = 0.8
+T4OpBomberRange   = 140
 -- An enemy experimental (land or sea) in the own half: AIR sends its
 -- bombers / gunships (at least T4StrikeMin) with an escort right away.
 T4StrikeMin        = 3

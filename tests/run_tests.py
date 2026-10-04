@@ -927,6 +927,17 @@ return P.NukeSalvoNeed(0, 4), P.NukeSalvoNeed(1, 4), P.NukeSalvoNeed(2, 4), P.Nu
 check(ns[0] == 1 and ns[1] == 2 and ns[2] == 3 and ns[3] == 4,
       'nukes: no anti-nuke -> one missile; else one more than the anti-nukes, at most all silos, landing together')
 
+op = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local base = { 900, 0, 640 }
+local acus = { { pos = { 880, 0, 400 } }, { pos = { 905, 0, 650 } }, { pos = { 910, 0, 630 }, underwater = true } }
+local t = A.T4OpTarget(acus, base, 200)
+local none = A.T4OpTarget({ { pos = { 880, 0, 400 } } }, base, 200)
+return t and t.pos[1], none == nil
+""")
+check(op[0] == 905, 'air T4 operation: goes for the enemy ECO commander (not one under water, not another player)')
+check(op[1], 'air T4 operation: no ECO commander in sight -> the enemy ECO base')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

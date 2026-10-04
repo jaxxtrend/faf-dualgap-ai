@@ -24,6 +24,10 @@
 --          ender, experimental, anti-nuke while we own a nuke, the heart of
 --          the enemy economy): fighters clear the sky, bombers and
 --          gunships right behind. The other AIR player joins.
+--   T4 op  an own air experimental leads a team operation: it gathers, AIR
+--          fighters and bombers guard it (flying at its pace), then it
+--          goes for the enemy ECO's ACU and the bombers dive in on the
+--          target once close (AirT4OpStep / JoinAirT4Op).
 --   Ender  a scouted enemy game ender is everyone's target: AIR strikes it
 --          as soon as it can, land waves leave earlier and take the less
 --          defended mid lane to it, fleets sail to the water next to it.
@@ -72,6 +76,8 @@ local CatEnemyFighter = categories.AIR * categories.MOBILE * categories.ANTIAIR 
 local CatEcoTargets   = categories.STRUCTURE * (categories.MASSEXTRACTION + categories.ENERGYPRODUCTION
                         + categories.MASSFABRICATION + categories.FACTORY)
 local CatEnemyLand    = categories.LAND * categories.MOBILE
+local CatHeart = categories.STRUCTURE * categories.TECH3 * (categories.ENERGYPRODUCTION + categories.MASSFABRICATION
+    + categories.MASSEXTRACTION)
 
 local function OtherSide(side)
     if side == 'LEFT' then return 'RIGHT' end
@@ -767,7 +773,9 @@ local function AirStep(brain, ctx)
     -- An enemy experimental pushing into our half: bombers go now.
     local defended = DefendAgainstT4(brain, ctx, staging, bombers, torps, now)
     if defended then bombers = {} end
-    local massed = (not defended) and MassAirStep(brain, ctx, staging, bombers, now)
+    local inOp = JoinAirT4Op(brain, ctx, bombers, now)
+    if inOp then bombers = {} end
+    local massed = (not defended) and (not inOp) and MassAirStep(brain, ctx, staging, bombers, now)
     if not massed and Utils.Count(bombers) >= Config.AirStrikeSize and AirCount(brain) < Config.AirRaidMaxAir then
         -- The bigger the group, the more AA it may fly into.
         local maxAA = Config.AAThreat + Utils.Count(bombers) / Config.BomberAAPerUnit
@@ -791,6 +799,8 @@ local function AirStep(brain, ctx)
     end
     ctx.strikes = keep
 
+    AirT4OpStep(brain, ctx, staging, now)
+
     -- Air experimentals hunt game enders, else the best economy target;
     -- each picks a different target, so they don't crash onto each other.
     local taken = {}
@@ -801,6 +811,150 @@ local function AirStep(brain, ctx)
             IssueAttack({ u }, t)
         end
     end
+end
+
+---------------------------------------------------------------------------
+-- Air T4 operation (see the header and Config.T4OpGatherSeconds).
+---------------------------------------------------------------------------
+-- Exposed for tests: the op's target - the enemy ECO's ACU if known (not
+-- under water: a T4 can't reach it there), else the enemy ECO base.
+-- acus: { {pos, underwater} }, ecoBase: position or nil.
+function T4OpTarget(acus, ecoBase, near)
+    local best, bestD
+    for _, a in ipairs(acus) do
+        local d = ecoBase and Utils.Dist2D(a.pos, ecoBase) or 0
+        if not a.underwater and (not ecoBase or d < near) and (not bestD or d < bestD) then best, bestD = a, d end
+    end
+    return best
+end
+
+local function EnemyEcoBase(ctx)
+    for _, sl in pairs(RoleManager.GetSlots()) do
+        if sl.side ~= ctx.side and sl.role == 'ECO' then return sl.pos end
+    end
+    return nil
+end
+
+local function PickOpTarget(brain, ctx)
+    local base = EnemyEcoBase(ctx)
+    local list = {}
+    for _, e in ipairs(KnownNear(brain, categories.COMMAND, ctx.startPos, MapRadius())) do
+        table.insert(list, { pos = e:GetPosition(), underwater = Utils.IsUnderwater(e), unit = e })
+    end
+    local acu = T4OpTarget(list, base, 200)
+    if acu then return acu.unit, acu.pos end
+    -- Not seen: the heart of the enemy ECO base (game enders there first).
+    for _, rec in ipairs(Intel.Enders(ctx.side)) do
+        if base and Utils.Dist2D(rec.pos, base) < 200 then return rec.unit, rec.pos end
+    end
+    local t = base and NearestKnown(brain, categories.STRUCTURE * categories.TECH3 - categories.WALL, base, 150)
+    if t then return t, t:GetPosition() end
+    return nil, base
+end
+
+-- Owner of air experimentals: starts and leads the operation.
+function AirT4OpStep(brain, ctx, staging, now)
+    local op = ctx.t4Op
+    if op then
+        op.units = Utils.FilterAlive(op.units)
+        if table.getn(op.units) == 0 then
+            Utils.Log(brain, 'air T4 operation over')
+            ctx.t4Op = nil
+            Intel.SetAirT4Op(ctx.side, nil)
+            return
+        end
+        op.lead = op.units[1]
+        if op.phase == 'gather' and now - op.started >= Config.T4OpGatherSeconds then
+            op.phase = 'go'
+            op.target = nil
+            Comms.Say(brain, ctx.side, 't4op:' .. brain.Name, 'Our ' .. Comms.UnitName(op.lead)
+                .. ' is going in for their ECO commander. Air, stay with it!', op.lead:GetPosition(), 'attack')
+        end
+        -- (Re)target when the target is gone; a move to the base without a
+        -- target is re-checked every half minute.
+        if op.phase == 'go' and not Alive(op.target)
+            and not (op.target == nil and op.movedAt and now - op.movedAt < 30) then
+            local t, pos = PickOpTarget(brain, ctx)
+            op.movedAt = (not t) and now or nil
+            op.target, op.targetPos = t, pos
+            if pos then
+                IssueClearCommands(op.units)
+                if t then IssueAttack(op.units, t) else IssueAggressiveMove(op.units, pos) end
+                Utils.Log(brain, 'air T4 operation: ' .. (t and Comms.UnitName(t) or 'the enemy ECO base'))
+            end
+        end
+        Intel.SetAirT4Op(ctx.side, op)
+        return
+    end
+    local t4s = FreeUnits(brain, CatAirT4)
+    if table.getn(t4s) == 0 then return end
+    Claim(t4s)
+    IssueClearCommands(t4s)
+    IssueMove(t4s, staging)
+    ctx.t4OpId = (ctx.t4OpId or 0) + 1
+    ctx.t4Op = { units = t4s, lead = t4s[1], phase = 'gather', started = now,
+        id = brain:GetArmyIndex() * 1000 + ctx.t4OpId, by = brain:GetArmyIndex() }
+    Intel.SetAirT4Op(ctx.side, ctx.t4Op)
+    Utils.Log(brain, 'air T4 operation: gathering escort')
+    Comms.Say(brain, ctx.side, 't4gather:' .. brain.Name, 'Our ' .. Comms.UnitName(t4s[1])
+        .. ' is ready. Air, escort it!', staging, 'move')
+end
+
+-- AIR (and any player with fighters / bombers): guard the team's air T4.
+-- Returns true while this player's planes are in the operation.
+function JoinAirT4Op(brain, ctx, bombers, now)
+    local op = Intel.AirT4Op(ctx.side)
+    local mine = ctx.opJoin
+    if mine and (not op or op.id ~= mine.id or not Alive(op.lead)) then
+        -- Operation over: everyone back.
+        for _, u in ipairs(Utils.FilterAlive(mine.fighters)) do u.DGEscort, u.DGLine = nil, nil end
+        Release(Utils.FilterAlive(mine.bombers))
+        ctx.opJoin = nil
+        return false
+    end
+    if not op or not Alive(op.lead) then return false end
+    if ctx.role ~= 'AIR' and op.by ~= brain:GetArmyIndex() then return false end
+    if not mine then
+        ctx.fighters = Utils.FilterAlive(ctx.fighters or {})
+        local free = FreeFighters(ctx)
+        local n = math.floor(table.getn(free) * Config.T4OpEscortShare)
+        local escort = Nearest(free, op.lead:GetPosition(), n)
+        local strikers = {}
+        for _, u in ipairs(bombers) do table.insert(strikers, u) end
+        for _, u in ipairs(FreeUnits(brain, CatBomber - CatTorpBomber)) do
+            local dup = false
+            for _, v in ipairs(strikers) do if v == u then dup = true; break end end
+            if not dup then table.insert(strikers, u) end
+        end
+        for _, u in ipairs(escort) do u.DGEscort, u.DGLine = true, nil end
+        Claim(strikers)
+        local all = {}
+        for _, u in ipairs(escort) do table.insert(all, u) end
+        for _, u in ipairs(strikers) do table.insert(all, u) end
+        if table.getn(all) > 0 then
+            IssueClearCommands(all)
+            IssueGuard(all, op.lead)
+        end
+        ctx.opJoin = { id = op.id, fighters = escort, bombers = strikers, dived = false }
+        Utils.Log(brain, 'joins the air T4 operation: ' .. table.getn(escort) .. ' fighters, ' .. table.getn(strikers) .. ' bombers')
+        return true
+    end
+    -- Close to the target: the bombers dive in on it.
+    if op.phase == 'go' and op.targetPos and not mine.dived
+        and Utils.Dist2D(op.lead:GetPosition(), op.targetPos) < Config.T4OpBomberRange then
+        local b = Utils.FilterAlive(mine.bombers)
+        if table.getn(b) > 0 then
+            IssueClearCommands(b)
+            if Alive(op.target) then IssueAttack(b, op.target) end
+            for _, x in ipairs(KnownNear(brain, CatHeart + categories.COMMAND, op.targetPos, 60)) do IssueAttack(b, x) end
+            IssueGuard(b, op.lead)
+            Utils.Log(brain, table.getn(b) .. ' bombers dive in with the air T4')
+        end
+        mine.dived = true
+    end
+    -- A new target: dive again when close.
+    if op.target ~= mine.target then mine.target, mine.dived = op.target, false end
+    return true
 end
 
 ---------------------------------------------------------------------------
@@ -839,8 +993,6 @@ end
 -- Mass air attack (see the header and Config.AirMassSize).
 ---------------------------------------------------------------------------
 local CatAllAir = categories.AIR * categories.MOBILE - categories.ENGINEER - categories.SCOUT - categories.TRANSPORTATION
-local CatHeart = categories.STRUCTURE * categories.TECH3 * (categories.ENERGYPRODUCTION + categories.MASSFABRICATION
-    + categories.MASSEXTRACTION)
 local CatEnemyAntiNuke = categories.STRUCTURE * categories.ANTIMISSILE * categories.TECH3
 
 function AirCount(brain)
