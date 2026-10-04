@@ -276,6 +276,10 @@ SubACUMemory = 300
 ACULostSeconds       = 120
 ACULostMinTime       = 900
 ACULostMaxStructures = 6
+-- ...and only for a player whose base we have really seen and beaten: at
+-- some point at least this many of their structures were known at once
+-- (an unscouted AIR base is not a beaten one).
+ACULostMinSeenBase   = 12
 
 -- Game enders ECO keeps building, at most this many of a kind alive
 -- (nil = no limit).
@@ -310,6 +314,7 @@ EnderWaveShare     = 0.6
 -- go BankedCapMul x over their unit caps and BankedExtraEngineers more T3
 -- engineers are kept: nobody sits on full storage.
 MassBankedRatio      = 0.6
+BankedEnergyRatio    = 0.5     -- ...and energy at least this full (no stall)
 BankedExtraBuilds    = 3
 BankedCapMul         = 2
 BankedExtraEngineers = 6
@@ -317,6 +322,11 @@ BankedExtraEngineers = 6
 -- Nuke silos stop loading missiles while energy is short (a silo that
 -- already holds a missile pauses below SiloPauseEnergy stored, resumes
 -- above SiloResumeEnergy).
+-- Factory upgrades running at the same time (more with banked mass); idle
+-- engineers assist them, like players do with their HQ upgrade.
+FactoryUpgradesAtOnce       = 2
+FactoryUpgradesAtOnceBanked = 4
+
 SiloPauseEnergy  = 0.1
 SiloResumeEnergy = 0.4
 

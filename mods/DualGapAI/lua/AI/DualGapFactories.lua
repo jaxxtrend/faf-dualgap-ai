@@ -205,9 +205,12 @@ end
 ---------------------------------------------------------------------------
 local function UpgradeFactories(brain, ctx)
     if brain:GetEconomyStoredRatio('MASS') < 0.2 or brain:GetEconomyStoredRatio('ENERGY') < 0.5 then return end
+    local running = 0
     for _, f in ipairs(brain:GetListOfUnits(CatAllFactories, false)) do
-        if Alive(f) and f:IsUnitState('Upgrading') then return end   -- one at a time
+        if Alive(f) and f:IsUnitState('Upgrading') then running = running + 1 end
     end
+    local most = Utils.MassBanked(brain) and Config.FactoryUpgradesAtOnceBanked or Config.FactoryUpgradesAtOnce
+    if running >= most then return end
     for _, kind in ipairs({ 'Land', 'Air', 'Naval' }) do
         local list = {}
         local hqTech, hq = 0, nil
@@ -270,7 +273,7 @@ function FactoryStep(brain, ctx)
     end
 
     ctx.factoryUpgradeTick = (ctx.factoryUpgradeTick or 0) + 1
-    if ctx.factoryBODone and ctx.factoryUpgradeTick >= 10 then
+    if ctx.factoryBODone and ctx.factoryUpgradeTick >= 5 then
         ctx.factoryUpgradeTick = 0
         UpgradeFactories(brain, ctx)
     end

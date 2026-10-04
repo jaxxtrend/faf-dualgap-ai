@@ -108,7 +108,9 @@ function LostACUScan(brain, side, t, now)
         if IsEnemy(me, i) and not ArmyIsOutOfGame(i) and not (ArmyIsCivilian and ArmyIsCivilian(i)) then
             local seen = t.acuSeen[i]
             local structs = known[i] or {}
-            if ACULost(now, seen and seen.at, table.getn(structs)) then
+            t.maxKnown = t.maxKnown or {}
+            t.maxKnown[i] = math.max(t.maxKnown[i] or 0, table.getn(structs))
+            if ACULost(now, seen and seen.at, table.getn(structs), t.maxKnown[i]) then
                 local clues = {}
                 if seen and now - seen.at < Config.SubACUMemory * 2 then table.insert(clues, seen.pos) end
                 -- Structures on water first: torpedo launchers and AA by the
@@ -291,8 +293,9 @@ function LostACUs(side)
 end
 
 -- Exposed for tests: is an enemy player's ACU lost?
-function ACULost(now, lastSeenAt, knownStructures)
+function ACULost(now, lastSeenAt, knownStructures, maxKnown)
     if now < Config.ACULostMinTime then return false end
+    if (maxKnown or 0) < Config.ACULostMinSeenBase then return false end
     if knownStructures > Config.ACULostMaxStructures then return false end
     return now - (lastSeenAt or 0) >= Config.ACULostSeconds
 end

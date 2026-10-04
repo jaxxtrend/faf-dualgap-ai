@@ -85,7 +85,8 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   leave with a smaller size and take the less defended mid lane to it, fleets sail to the water next to it, nukes and artillery
   already put it first.
 - **Banked mass gets spent.** With mass storage 60%+ full, a bot builds more structures at once, factories go over their unit caps
-  and more T3 engineers are kept.
+  and more T3 engineers are kept. Up to 2 factory upgrades run at once (4 with banked mass) and idle engineers assist them;
+  new factories are built straight as T2/T3 support factories once the HQ has that tech.
   Enemy Yolona Oss spotted → every base stacks 6 anti-nukes, and idle engineers assist them so interceptors load faster.
   Artillery (T2 at the proxy, T3, T4) and Novax satellites (anywhere on the map) pick targets by priority: game enders (T3/T4 artillery, nukes, Yolona Oss, Paragon, the Novax satellite centre and any other experimental structure) → the enemy anti-nuke while we own a nuke →
   the ACU if it is in sight, not underwater and not under a shield → T3 mexes → T3 power → factories. Long-range guns (T3/T4 artillery,

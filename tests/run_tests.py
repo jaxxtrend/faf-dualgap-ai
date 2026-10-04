@@ -836,9 +836,10 @@ check(deep[2], 'a second ACU hides 150+ away from the first (point or list of po
 
 lost = lua.execute(r"""
 local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
-return I.ACULost(3300, 2400, 2), I.ACULost(3300, 3250, 2), I.ACULost(3300, 2400, 20), I.ACULost(500, nil, 0),
-       I.ACULost(1500, nil, 0)
+return I.ACULost(3300, 2400, 2, 40), I.ACULost(3300, 3250, 2, 40), I.ACULost(3300, 2400, 20, 40), I.ACULost(500, nil, 0, 40),
+       I.ACULost(1500, nil, 0, 40), I.ACULost(1500, nil, 0, 3)
 """)
+check(not lost[5], 'lost ACU: not for a player whose base was never scouted')
 check(lost[0], 'lost ACU: a beaten enemy whose ACU is unseen for 2+ minutes is hunted')
 check(not lost[1] and not lost[2] and not lost[3], 'lost ACU: not while recently seen, while the enemy still has a base, or early')
 check(lost[4], 'lost ACU: an ACU never seen at all late in the game counts as lost')

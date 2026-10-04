@@ -364,6 +364,7 @@ end
 function MassBanked(brain)
     if not brain.GetEconomyStoredRatio then return false end
     return brain:GetEconomyStoredRatio('MASS') >= Config.MassBankedRatio
+        and brain:GetEconomyStoredRatio('ENERGY') >= Config.BankedEnergyRatio
 end
 
 function CanStartBuild(brain, bpId)

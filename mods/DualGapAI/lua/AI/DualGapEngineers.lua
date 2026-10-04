@@ -690,7 +690,16 @@ local function TryFactories(brain, ctx, u)
                 IssueRepair({ u }, unfinished)
                 return true
             end
+            -- With an HQ of higher tech, build the support factory of that
+            -- tech straight away (as players do), not a T1 to upgrade.
             local id = Utils.FactoryId(brain, kind, 1)
+            local hqTech = 1
+            for _, f in ipairs(brain:GetListOfUnits(cat - categories.SUPPORTFACTORY, false)) do
+                if Alive(f) and f:GetFractionComplete() >= 1 then hqTech = math.max(hqTech, Utils.TechOf(f)) end
+            end
+            local t = math.min(hqTech, Utils.TechOf(u))
+            local support = (t > 1) and Utils.SupportFactoryId(brain, kind, t)
+            if support and __blueprints[support] and u:CanBuild(support) then id = support end
             if not Utils.CanStartBuild(brain, id) then return false end
             local site = BaseSite(ctx, 0)
             if kind == 'Naval' then
@@ -708,6 +717,24 @@ local function TryFactories(brain, ctx, u)
     return false
 end
 
+-- A factory upgrade in the base (the HQ first): engineers assist it, the
+-- way players speed up their tech. At most 6 helpers per upgrade.
+local function TryAssistUpgrade(brain, ctx, u)
+    local best
+    for _, f in ipairs(brain:GetListOfUnits(categories.FACTORY * categories.STRUCTURE, false)) do
+        if Alive(f) and f:IsUnitState('Upgrading') and Utils.Dist2D(f:GetPosition(), ctx.startPos) < 90 then
+            f.DGHelpers = Utils.FilterAlive(f.DGHelpers or {})
+            if table.getn(f.DGHelpers) < 6 then
+                if not best or not EntityCategoryContains(categories.SUPPORTFACTORY, f) then best = f end
+            end
+        end
+    end
+    if not best then return false end
+    table.insert(best.DGHelpers, u)
+    IssueGuard({ u }, best)
+    return true
+end
+
 local function TryAssist(brain, ctx, u)
     -- Finish what is being built before helping the factory.
     local building = FirstUnfinished(brain, categories.STRUCTURE - categories.MASSEXTRACTION, ctx.startPos, 80)
@@ -715,6 +742,7 @@ local function TryAssist(brain, ctx, u)
         IssueRepair({ u }, building)
         return true
     end
+    if TryAssistUpgrade(brain, ctx, u) then return true end
     local f = MainFactory(brain, ctx)
     if f and not f:IsIdleState() then
         IssueGuard({ u }, f)
@@ -739,6 +767,8 @@ local function GeneralTask(brain, ctx, u, baseOnly)
     if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end
     if TryPower(brain, ctx, u) then return end
+    -- Banked mass and energy: more factories and faster upgrades come first.
+    if Utils.MassBanked(brain) and (TryFactories(brain, ctx, u) or TryAssistUpgrade(brain, ctx, u)) then return end
     if not baseOnly and Projects().Offer(brain, ctx, u) then return end
     if TryRebuild(brain, ctx, u) then return end
     if TryMexStorage(brain, ctx, u) then return end
