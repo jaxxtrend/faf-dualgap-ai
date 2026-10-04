@@ -1044,6 +1044,14 @@ check(lay[0] == 876 and lay[1] == 610, 'first factory against the hydrocarbon pl
 check(lay[2], 'factory spot falls back to another side of the hydro when blocked')
 check(lay[3] == 102 and lay[4] == 202 and lay[5] == 4, 'mex block: T2 fabs go in the 4 corners of the storage cross')
 
+hu2 = lua.execute(r"""
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+return I.HidingUnderwater(90, 20, true), I.HidingUnderwater(20, 20, true), I.HidingUnderwater(90, 3, true),
+       I.HidingUnderwater(90, 20, false)
+""")
+check(hu2[0] and not hu2[1] and not hu2[2] and not hu2[3],
+      'a hiding ACU: in its rear, deep water, a minute under (not wading or working at a yard)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

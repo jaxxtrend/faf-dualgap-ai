@@ -175,9 +175,15 @@ local function Scan(side, brain)
     -- Enemy ACUs seen under water: remembered (last position) for a while,
     -- so torpedo bombers and fleets keep hunting them after contact is lost.
     local now0 = GetGameTimeSeconds()
+    t.underSince = t.underSince or {}
     for _, e in ipairs(KnownEnemies(brain, categories.COMMAND)) do
         local key = e.EntityId or tostring(e)
-        if Utils.IsUnderwater(e) then
+        local p0 = e:GetPosition()
+        local under = Utils.IsUnderwater(e)
+        if under then t.underSince[key] = t.underSince[key] or now0 else t.underSince[key] = nil end
+        local nx = Utils.Normalise(p0[1], p0[3])
+        local rear = (side == 'LEFT' and nx >= 1 - Utils.RearDepth) or (side == 'RIGHT' and nx <= Utils.RearDepth)
+        if under and HidingUnderwater(now0 - t.underSince[key], Utils.WaterDepth(p0[1], p0[3]), rear) then
             if not t.subACUs[key] then
                 Comms.Say(brain, side, 'subacu:' .. key, 'Enemy ACU hiding under water here! Torpedo bombers and ships!',
                     e:GetPosition(), 'attack')
@@ -262,6 +268,11 @@ end
 function Stale(side)
     if not side then return false end
     return Team(side).stale
+end
+
+-- Exposed for tests: is an ACU under water for `secs` at `depth` hiding?
+function HidingUnderwater(secs, depth, rear)
+    return rear and secs >= Config.SubACUHideSeconds and depth >= Config.SubACUHideDepth
 end
 
 -- Enemy ACUs seen under water recently: { unit, pos (last seen), at }.

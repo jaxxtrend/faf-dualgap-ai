@@ -317,6 +317,11 @@ MassFabEnergySurplus = 1500     -- energy/s trend needed before a fabricator
 StaleSeconds = 90
 -- An enemy ACU seen under water is hunted at its last known spot this long.
 SubACUMemory = 300
+-- ...but only an ACU really hiding counts: in its own rear, in water at
+-- least SubACUHideDepth deep, under for SubACUHideSeconds in a row. An ACU
+-- wading through water or a NAVAL ACU working at its yard is not hiding.
+SubACUHideSeconds = 60
+SubACUHideDepth   = 6
 -- Lost ACU: an enemy player is still in the game (the scoreboard shows it)
 -- but almost nothing of theirs is left (at most ACULostMaxStructures known
 -- structures, walls aside) and their ACU has not been seen for
@@ -428,6 +433,9 @@ NukeBlockedSeconds = 300
 -- loaded (as many as it has silos at most) and fires them together; it
 -- never waits longer than NukeWaitMax seconds.
 NukeWaitMax        = 240
+-- Nothing scouted worth a missile, but the enemy has no known anti-nuke
+-- over a living enemy player's base: a missile goes into that base anyway
+-- (everyone knows where the bases are).
 -- Long-range guns of ECO prefer targets near the enemy ECO base (x this).
 EcoVsEcoBonus = 1.5
 

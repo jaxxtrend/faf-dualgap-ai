@@ -752,7 +752,11 @@ local function AirStep(brain, ctx)
     -- while the enemy is lost they sweep its deep water with their sonar.
     local torpsBusy = false
     if Utils.Count(torps) >= Config.AirStrikeSize or (hunt and Utils.Count(torps) >= 2) then
-        local target = PickStrikeTarget(brain, ctx, CatNavalTargets + categories.COMMAND, staging, false, TorpTargetOk)
+        -- A small hunting group goes for the hidden ACU only, not for any
+        -- ship in the basin.
+        local few = Utils.Count(torps) < Config.AirStrikeSize
+        local cat = few and categories.COMMAND or (CatNavalTargets + categories.COMMAND)
+        local target = PickStrikeTarget(brain, ctx, cat, staging, false, TorpTargetOk)
         if target then
             torpsBusy = LaunchStrike(brain, ctx, torps, target, staging, now)
         elseif hunt or stale then

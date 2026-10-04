@@ -1069,6 +1069,22 @@ local function PickNukeTarget(brain, ctx, from)
     return best, bestValue
 end
 
+-- No scouted target worth a missile: the start position of a living enemy
+-- player (ECO first) with no known anti-nuke over it.
+function BlindNukeTarget(brain, ctx)
+    local enemy = OtherSide(ctx.side)
+    local Mex = import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua')
+    local list = {}
+    for _, p in ipairs(Mex.DutyPositions(enemy, 'ECO')) do table.insert(list, p) end
+    for name, sl in pairs(RoleManager.GetSlots()) do
+        if sl.side == enemy and Mex.Holder(name) == name then table.insert(list, sl.pos) end
+    end
+    for _, p in ipairs(list) do
+        if Intel.AntiNukesCovering(ctx.side, p) == 0 then return { p[1], p[2], p[3] } end
+    end
+    return nil
+end
+
 -- Nukes: one focus point, hit again and again (see Config.NukeShotsPerTarget).
 -- All loaded missiles fire together, timed to land at the same moment.
 local function NukeStep(brain, ctx)
@@ -1100,7 +1116,16 @@ local function NukeStep(brain, ctx)
     if not f then
         local pos, value = PickNukeTarget(brain, ctx, loaded[1]:GetPosition())
         if not pos then
+            pos = BlindNukeTarget(brain, ctx)
+            value = pos and Config.NukeMinValue or nil
+            if pos then Utils.Log(brain, 'nuke: nothing scouted worth it, a missile into an enemy base without anti-nuke') end
+        end
+        if not pos then
             ctx.nukeFocus = nil
+            if not ctx.nukeIdleSaid or GetGameTimeSeconds() - ctx.nukeIdleSaid > 120 then
+                ctx.nukeIdleSaid = GetGameTimeSeconds()
+                Utils.Log(brain, 'nuke loaded (' .. n .. '), no target: every enemy base is covered or unknown')
+            end
             return
         end
         f = { pos = pos, value0 = value, shots = 0 }
