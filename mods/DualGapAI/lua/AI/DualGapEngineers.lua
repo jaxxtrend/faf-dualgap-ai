@@ -844,7 +844,19 @@ local function TryFactories(brain, ctx, u)
             if kind == 'Naval' then
                 site = ctx.yardPos or Utils.FindNearestWater(ctx.startPos, 1.5, 250)
             end
-            local spot = site and PickSpots(brain, id, 1, nil, site)[1]
+            -- Air factories make one block with the power, as in a player's
+            -- base: against a T2/T3 generator next to the factories, else
+            -- against another air factory (land / naval keep their exit lanes).
+            local spot
+            if kind == 'Air' then
+                local anchors = {}
+                for _, g in ipairs(brain:GetListOfUnits(categories.ENERGYPRODUCTION * (categories.TECH2 + categories.TECH3) * categories.STRUCTURE, false)) do
+                    if Alive(g) and Utils.CountAround(brain, cat, g:GetPosition(), 12, 'Ally') > 0 then table.insert(anchors, g) end
+                end
+                for _, f in ipairs(brain:GetListOfUnits(cat, false)) do table.insert(anchors, f) end
+                spot = Utils.AdjacentSpot(brain, id, anchors)
+            end
+            spot = spot or (site and PickSpots(brain, id, 1, nil, site)[1])
             if spot then IssueBuildMobile({ u }, spot, id, {}); return true end
         end
     end
