@@ -192,6 +192,10 @@ local function ProjectTick(brain, ctx, p)
 
     if Alive(p.unit) and p.unit:GetFractionComplete() >= 1 then
         p.built = p.built + 1
+        if p.name == 'GameEnder' then
+            ctx.enderBuilt = ctx.enderBuilt or {}
+            ctx.enderBuilt[p.key] = (ctx.enderBuilt[p.key] or 0) + 1
+        end
         Utils.Log(brain, 'project ' .. p.name .. ' finished #' .. p.built)
         p.unit, p.lead, p.startedAt = nil, nil, nil
         if p.count and p.built >= p.count then Remove(ctx, p); return end
@@ -266,6 +270,18 @@ end
 -- Sites
 ---------------------------------------------------------------------------
 -- The map's 'Protected Experimental Construction' marker next to the base.
+-- Land experimentals go up in front of the base, toward the choke: built
+-- behind it, a Fatboy or Monkeylord can't squeeze through the base blocks.
+local function LandT4Site(ctx)
+    if not ctx.choke then return nil end
+    local d = Utils.Dist2D(ctx.startPos, ctx.choke)
+    if d < 1 then return nil end
+    local k = math.min(1, Config.LandT4Ahead / d)
+    local x = ctx.startPos[1] + (ctx.choke[1] - ctx.startPos[1]) * k
+    local z = ctx.startPos[3] + (ctx.choke[3] - ctx.startPos[3]) * k
+    return { x, GetSurfaceHeight(x, z), z }
+end
+
 local function T4Site(ctx)
     if ctx.t4Site then return ctx.t4Site end
     local best, bestD
@@ -870,6 +886,20 @@ function EnderStep(plan, count)
     return nil
 end
 
+-- Exposed for tests: how far a plan step counts as done. Units (air T4s):
+-- how many were built, dead or alive. Structures: the ones standing, so a
+-- destroyed silo or artillery piece is put back up.
+function EnderCount(key, alive, built, structure)
+    if structure then return alive end
+    return math.max(alive, built)
+end
+
+local function IsStructureKey(brain, key)
+    local id = Utils.FactionId(brain, key)
+    local bp = id and __blueprints[id]
+    return bp ~= nil and bp.CategoriesHash.STRUCTURE == true
+end
+
 -- The game ender: ECO's job, or of whoever took it over from a defeated ECO.
 local function PlanGameEnder(brain, ctx)
     if not ctx.strategic then return end
@@ -889,9 +919,15 @@ local function PlanGameEnder(brain, ctx)
         Add(brain, ctx, { name = 'AntiSMDArty', key = 'StratArtyT3', site = T4Site(ctx), count = 1, crewMax = 6,
             minCrewTech = 2, priority = 2 })
     end
-    local function count(key)
+    -- A step is done once that many were BUILT: shot-down air T4s don't
+    -- send the plan back to them over and over - it moves on to the nukes
+    -- and artillery. Lost structures of finished steps are rebuilt.
+    local function alive(key)
         local id = Utils.FactionId(brain, key)
         return id and Utils.Count(brain:GetListOfUnits(categories[id], false)) or 0
+    end
+    local function count(key)
+        return EnderCount(key, alive(key), (ctx.enderBuilt or {})[key] or 0, IsStructureKey(brain, key))
     end
     local p = Find(ctx, 'GameEnder')
     if p and Alive(p.unit) then return end          -- one in progress: let it finish
@@ -927,7 +963,8 @@ local function PlanExperimentals(brain, ctx)
     local fighters = Utils.Count(brain:GetListOfUnits(CatT3Fighter, false))
     if T4Trigger(role, fighters, ctx.midPushed, ctx.waterPushed, Intel.EnemyT4Seen(ctx.side)) then
         local id = Utils.FactionId(brain, key)
-        local site = (role == 'NAVAL') and NavalT4Site(brain, ctx, id) or T4Site(ctx)
+        local site = (role == 'NAVAL') and NavalT4Site(brain, ctx, id)
+            or (role == 'GROUND' and LandT4Site(ctx)) or T4Site(ctx)
         local cat = (role == 'NAVAL') and CatT3Ships or (role == 'GROUND' and CatT3Land or nil)
         Add(brain, ctx, { name = 'Experimental', key = key, site = site, crewMax = 8, minCrewTech = 2, priority = 5,
             -- Not enough T3 army to go with the T4s yet: one engineer only.

@@ -481,15 +481,20 @@ local function LandRally(ctx)
     return Shift(ctx.frontPoint or ctx.choke, -Toward(ctx) * 25)
 end
 
+-- Exposed for tests: does a free land unit count as gathered?
+function RallyReady(dist, idle)
+    return dist <= Config.RallyRadius or (idle and dist <= Config.RallyIdleRadius)
+end
+
 local function LandStep(brain, ctx)
     if HelpLand(brain, ctx) then return end
     local rally = LandRally(ctx)
     local ready = {}
     for _, u in ipairs(FreeUnits(brain, CatLandDF)) do
-        if Utils.Dist2D(u:GetPosition(), rally) > 20 then
-            IssueMove({ u }, rally)
-        else
+        if RallyReady(Utils.Dist2D(u:GetPosition(), rally), u:IsIdleState()) then
             table.insert(ready, u)
+        elseif u:IsIdleState() then
+            IssueMove({ u }, rally)
         end
     end
     local enemyAtWall = table.getn(KnownNear(brain, CatEnemyLand, ctx.choke, 70)) >= 5
@@ -925,7 +930,8 @@ local function LaunchStrike(brain, ctx, units, target, staging, now)
         IssueMove(alive, staging)
     end)
     table.insert(ctx.strikes, { units = units, escort = escort, started = now, target = target, staging = staging })
-    Utils.Log(brain, 'air strike: ' .. table.getn(units) .. ' bombers, ' .. table.getn(escort) .. ' escorts')
+    Utils.Log(brain, 'air strike: ' .. table.getn(units) .. ' bombers, ' .. table.getn(escort) .. ' escorts on '
+        .. Comms.UnitName(target))
     Comms.Say(brain, ctx.side, 'strike:' .. brain.Name, 'Air strike going in here.', tpos, 'attack')
     return true
 end
@@ -1000,7 +1006,7 @@ end
 -- The strike's target is dead and the bombers are still out: the next
 -- thing worth a bomb around them - an ACU on land first, then game
 -- enders / anti-nukes, then an enemy army - instead of flying home over it.
-local CatFollowArmy = categories.MOBILE * (categories.LAND + categories.NAVAL) - categories.ENGINEER - categories.COMMAND
+local CatFollowArmy = categories.MOBILE * categories.EXPERIMENTAL * (categories.LAND + categories.NAVAL)
 function FollowUp(brain, ctx, st, now)
     if st.search or not st.target or Alive(st.target) or Utils.Count(st.units) == 0 then return end
     if (st.followUps or 0) >= Config.FollowUpMax then return end
@@ -1011,7 +1017,9 @@ function FollowUp(brain, ctx, st, now)
     for _, e in ipairs(KnownNear(brain, categories.COMMAND, c, r)) do
         if not Utils.IsUnderwater(e) then t = e; break end
     end
-    t = t or NearestKnown(brain, CatBomberExtras, c, r) or NearestKnown(brain, CatFollowArmy, c, r)
+    t = t or NearestKnown(brain, CatBomberExtras, c, r)
+        or NearestKnown(brain, categories.STRUCTURE * categories.TECH3 * (categories.ENERGYPRODUCTION + categories.MASSFABRICATION), c, r)
+        or NearestKnown(brain, CatFollowArmy, c, r)
     if not t then return end
     st.target, st.followUps, st.started = t, (st.followUps or 0) + 1, now
     IssueClearCommands(st.units)
@@ -1080,8 +1088,7 @@ local function AirStep(brain, ctx)
         -- enemy armies at the front still get bombed.
         local maxAA = Config.AAThreat + Utils.Count(bombers) / Config.BomberAAPerUnit
         local target
-        if AirCount(brain) < Config.AirRaidMaxAir then target = BomberTarget(brain, ctx, maxAA)
-        else target = ArmyTarget(brain, ctx, maxAA) end
+        if AirCount(brain) < Config.AirRaidMaxAir then target = BomberTarget(brain, ctx, maxAA) end
         if target then LaunchStrike(brain, ctx, bombers, target, staging, now) end
     end
 
@@ -1403,11 +1410,12 @@ end
 
 -- Exposed for tests: launch a mass attack now? Returns 'ender', 'mass',
 -- 'join' or nil.
-function MassAirDecision(air, enderKnown, teamStrikeOn, sinceLast)
+function MassAirDecision(air, enderKnown, teamStrikeOn, sinceLast, bombers)
     if sinceLast < Config.AirMassCooldown then return nil end
     if teamStrikeOn and air >= Config.AirMassSize * Config.AirMassJoinShare then return 'join' end
     if enderKnown and air >= Config.AirEnderStrikeMin then return 'ender' end
     if air >= Config.AirMassSize then return 'mass' end
+    if (bombers or 0) >= Config.AirMassBombers then return 'bombers' end
     return nil
 end
 
@@ -1429,8 +1437,9 @@ function MassAirStep(brain, ctx, staging, bombers, now)
         + Utils.Count(bombers)
     local team = Intel.AirMass(ctx.side)
     local teamOn = team and now - team.at < 90 and Alive(team.unit)
+    local nBombers = table.getn(FreeUnits(brain, CatBomber - CatTorpBomber)) + Utils.Count(bombers)
     local why = MassAirDecision(air, EnderTarget(ctx) ~= nil, teamOn and team.by ~= brain:GetArmyIndex(),
-        now - (ctx.airMassAt or -1000))
+        now - (ctx.airMassAt or -1000), nBombers)
     if not why then return false end
     local target = (why == 'join') and team.unit or MassAirTarget(brain, ctx)
     if not Alive(target) then return false end
@@ -1534,17 +1543,20 @@ end
 -- ACU on land (assassination), a game ender, the enemy anti-nuke while the
 -- team owns a nuke; else nothing - bombing mexes is a waste.
 -- c: { acu = bool, ender = bool, antiNuke = bool, ownNuke = bool }
--- Then a big enemy army (helping our ground), then T3 power generators
--- (they blow up their neighbours); never mexes.
+-- Then the T3 economy (power generators blow up their neighbours), then
+-- big static defences / factories; never mexes, never moving armies
+-- (bombers miss them - gunships take those).
 function BomberTargetKind(c)
     if c.acu then return 'ACU' end
     if c.ender then return 'ENDER' end
     if c.antiNuke and c.ownNuke then return 'ANTINUKE' end
-    if c.army then return 'ARMY' end
     if c.power then return 'POWER' end
+    if c.static then return 'STATIC' end
     return nil
 end
 
+local CatBomberEco = categories.STRUCTURE * categories.TECH3 * (categories.ENERGYPRODUCTION + categories.MASSFABRICATION)
+local CatBomberStatic = categories.STRUCTURE * (categories.ARTILLERY + categories.SHIELD + categories.FACTORY) * (categories.TECH2 + categories.TECH3)
 local CatArmyTarget = categories.MOBILE * (categories.LAND + categories.NAVAL) - categories.ENGINEER - categories.COMMAND
 
 -- The known enemy unit in the heaviest army cluster (Config.ArmyStrikeMass
@@ -1598,9 +1610,12 @@ function BomberTarget(brain, ctx, maxAA, ok)
         t = pick(KnownNear(brain, categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE, ctx.startPos, MapRadius()))
         if t then return t end
     end
-    t = ArmyTarget(brain, ctx, maxAA)
-    if t and (not ok or ok(t)) then return t end
-    return pick(KnownNear(brain, categories.ENERGYPRODUCTION * categories.TECH3 * categories.STRUCTURE, ctx.startPos, MapRadius()))
+    -- Then the T3 economy (power blows up its neighbours), then the big
+    -- static defences and factories. Bombers miss moving armies - those are
+    -- the gunships' job.
+    t = pick(KnownNear(brain, CatBomberEco, ctx.startPos, MapRadius()))
+    if t then return t end
+    return pick(KnownNear(brain, CatBomberStatic, ctx.startPos, MapRadius()))
 end
 
 -- Scouted game enders first (if endersOk), then `cat`; among them the

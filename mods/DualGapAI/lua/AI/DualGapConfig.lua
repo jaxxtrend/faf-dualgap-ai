@@ -157,6 +157,13 @@ NavalRegroupSeconds = 240
 -- first) within FollowUpRadius, up to FollowUpMax times per strike.
 FollowUpRadius    = 90
 FollowUpMax       = 3
+-- Free land units count as gathered within RallyRadius of the rally point,
+-- or anywhere within RallyIdleRadius once they stand idle (a big army does
+-- not fit into a small circle and would never be "ready").
+RallyRadius       = 40
+-- GROUND builds its land experimentals this far from the start toward the choke.
+LandT4Ahead       = 60
+RallyIdleRadius   = 100
 WaveStuckSeconds  = 45
 WaveStuckDistance = 15
 NavalFleetSize = { 6, 8, 10 }
@@ -366,6 +373,9 @@ ACULostMinSeenBase   = 12
 -- An enemy game ender is everyone's target: AIR goes for it as soon as it
 -- has AirEnderStrikeMin aircraft, land waves and fleets head there too.
 AirMassSize        = 140
+-- ...or as soon as it has AirMassBombers free bombers (strategic bombers
+-- piling up over the base are wasted).
+AirMassBombers     = 40
 AirMassHomeShare   = 0.15
 AirMassJoinShare   = 0.5
 AirMassCooldown    = 180

@@ -1108,12 +1108,12 @@ ac = lua.execute(r"""
 local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
 local gb = {2,0,2}
 local s = A.LandFallbackStops({1,0,1}, gb, { gb, {3,0,3} })
-return A.BomberTargetKind({ army = true, power = true }), A.BomberTargetKind({ power = true }),
-       A.BomberTargetKind({ ender = true, army = true }),
+return A.BomberTargetKind({ army = true, power = true }), A.BomberTargetKind({ static = true }),
+       A.BomberTargetKind({ ender = true, power = true }),
        A.SweepWanted(40, 10, 500), A.SweepWanted(40, 30, 500), A.SweepWanted(10, 0, 500), A.SweepWanted(40, 10, 30),
        table.getn(s), s[1][1], s[2][1], s[3][1]
 """)
-check(ac[0] == 'ARMY' and ac[1] == 'POWER' and ac[2] == 'ENDER', 'bombers: enemy army at the front, then T3 power, after the strategic targets')
+check(ac[0] == 'POWER' and ac[1] == 'STATIC' and ac[2] == 'ENDER', 'bombers: T3 power, then static defences, after the strategic targets; no armies')
 check(ac[3] and not ac[4] and not ac[5] and not ac[6], 'air sweep: enough fighters, clearly more than the enemy\'s, not too often')
 check(ac[7] == 3 and ac[8] == 1 and ac[9] == 2 and ac[10] == 3, 'land waves with nothing scouted walk on: enemy mid, its base, the other bases')
 
@@ -1137,6 +1137,18 @@ return A.ForwardOk('LEFT', {400,0,400}, {500,0,400}), A.ForwardOk('LEFT', {400,0
 """)
 check(fw[0] and not fw[1] and fw[2] and not fw[3], 'a hunting land wave does not turn back for targets behind it')
 check(not fw[4] and fw[5], 'a fleet that fell back sails again only clearly stronger, not with one more ship')
+
+f3 = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+return P.EnderCount('AirT4', 0, 2, false), P.EnderCount('NukeSilo', 0, 1, true), P.EnderCount('AirT4', 1, 0, false),
+       A.MassAirDecision(60, false, false, 1000, 45), A.MassAirDecision(60, false, false, 1000, 10),
+       A.RallyReady(35, false), A.RallyReady(80, false), A.RallyReady(80, true), A.RallyReady(150, true)
+""")
+check(f3[0] == 2 and f3[2] == 1, 'game ender plan: shot-down air T4s still count, the plan moves on to nukes / artillery')
+check(f3[1] == 0, 'game ender plan: a destroyed silo or artillery piece is rebuilt')
+check(f3[3] == 'bombers' and f3[4] is None, 'a big bomber stack goes in as a mass attack')
+check(f3[5] and not f3[6] and f3[7] and not f3[8], 'a big army counts as gathered around the rally, not only inside a small circle')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
