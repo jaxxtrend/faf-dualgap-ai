@@ -674,7 +674,10 @@ local function TryFactories(brain, ctx, u)
         return false
     end
     local wanted = {}
-    for k, v in pairs(BO.ExtraFactories[ctx.role] or {}) do wanted[k] = v end
+    -- Banked mass and energy: the production factories are not enough to
+    -- spend the income, so a few more of them.
+    local extra = Utils.MassBanked(brain) and Config.BankedExtraFactories or 0
+    for k, v in pairs(BO.ExtraFactories[ctx.role] or {}) do wanted[k] = v + extra end
     -- The ground player helps the navy once its mid is pushed, or when the
     -- team hunts an ACU hiding under water.
     if ctx.role == 'GROUND' and (ctx.midPushed or import('/mods/DualGapAI/lua/AI/DualGapIntel.lua').HuntMode(ctx.side)) then

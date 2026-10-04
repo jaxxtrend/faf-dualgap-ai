@@ -330,6 +330,7 @@ BankedEnergyRatio    = 0.5     -- ...and energy at least this full (no stall)
 BankedExtraBuilds    = 3
 BankedCapMul         = 2
 BankedExtraEngineers = 6
+BankedExtraFactories = 3       -- more of the role's production factories
 
 -- Nuke silos stop loading missiles while energy is short (a silo that
 -- already holds a missile pauses below SiloPauseEnergy stored, resumes
