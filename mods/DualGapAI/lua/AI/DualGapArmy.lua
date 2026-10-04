@@ -512,10 +512,10 @@ end
 -- Exposed for tests: the patrol line, each point pushed back while the
 -- AA count there (aaAt(point)) reaches the threshold.
 -- zList: the stretch of the front this player covers (default: all of it).
-function FrontLine(side, toWorld, aaAt, zList)
+function FrontLine(side, toWorld, aaAt, line)
     local pts = {}
-    for _, z in ipairs(zList or Config.AirFrontZ) do
-        local x = Config.AirFrontX
+    for _, np in ipairs(line or Config.AirPatrolAll) do
+        local x, z = np[1], np[2]
         local p = toWorld({ x, z }, side)
         local steps = 0
         while aaAt(p) >= Config.AAThreat and steps < Config.AirFrontMaxSteps do
@@ -539,9 +539,11 @@ end
 local function BehindFront(ctx, pos)
     local nx, nz = Utils.Normalise(pos[1], pos[3])
     if ctx.side == 'RIGHT' then nx = 1 - nx end
-    if nx >= Config.AirFrontX then return false end
-    local zl = ctx.airZones or Config.AirFrontZ
-    local zmin, zmax = zl[1], zl[table.getn(zl)]
+    local zl = ctx.airZones or Config.AirPatrolAll
+    local lineX = 0
+    for _, np in ipairs(zl) do lineX = math.max(lineX, np[1]) end
+    if nx >= lineX then return false end
+    local zmin, zmax = zl[1][2], zl[table.getn(zl)][2]
     if zmin > 0.26 then zmin = zmin - 0.06 else zmin = -1 end   -- the outer edges
     if zmax < 0.80 then zmax = zmax + 0.06 else zmax = 2 end    -- reach the map edge
     return nz >= zmin and nz <= zmax
@@ -566,10 +568,31 @@ end
 
 -- Known enemy aircraft behind our front: the nearest free patrol fighters
 -- go after them (several per enemy), then return to the patrol.
+-- Exposed for tests: is an enemy plane at normalised (nx, nz) (left-team
+-- view) over this player's part of the own half, near allied units?
+function MidCover(nx, nz, zl, alliesNear)
+    if nx >= Config.MidCoverX or not alliesNear then return false end
+    local zmin, zmax = zl[1][2], zl[table.getn(zl)][2]
+    if zmin > 0.1 then zmin = zmin - 0.06 else zmin = -1 end
+    if zmax < 0.9 then zmax = zmax + 0.06 else zmax = 2 end
+    return nz >= zmin and nz <= zmax
+end
+
+local CatAlliedGround = (categories.LAND + categories.NAVAL + categories.STRUCTURE) - categories.WALL
+local CatHitsGround = categories.BOMBER + categories.GROUNDATTACK + categories.EXPERIMENTAL + categories.ANTINAVY
+
+local function OverMid(brain, ctx, pos)
+    local nx, nz = Utils.Normalise(pos[1], pos[3])
+    if ctx.side == 'RIGHT' then nx = 1 - nx end
+    local near = Utils.CountAround(brain, CatAlliedGround, pos, Config.MidCoverRadius, 'Ally') > 0
+    return MidCover(nx, nz, ctx.airZones or Config.AirPatrolAll, near)
+end
+
 local function Intercept(brain, ctx, now)
     local threats = {}
     for _, e in ipairs(KnownNear(brain, CatEnemyAir, ctx.startPos, MapRadius())) do
-        if BehindFront(ctx, e:GetPosition()) then table.insert(threats, e) end
+        local p = e:GetPosition()
+        if BehindFront(ctx, p) or OverMid(brain, ctx, p) then table.insert(threats, e) end
     end
     for _, e in ipairs(threats) do
         local p = e:GetPosition()
@@ -578,11 +601,16 @@ local function Intercept(brain, ctx, now)
             if u.DGIntercept and u.DGInterceptPos and Utils.Dist2D(u.DGInterceptPos, p) < 60 then covered = true; break end
         end
         if not covered then
-            local group = 0
+            local group, heavy = 0, 0
             for _, o in ipairs(threats) do
-                if Utils.Dist2D(o:GetPosition(), p) < 40 then group = group + 1 end
+                if Utils.Dist2D(o:GetPosition(), p) < 40 then
+                    group = group + 1
+                    if EntityCategoryContains(CatHitsGround, o) then heavy = heavy + 1 end
+                end
             end
-            local want = math.max(Config.InterceptMin, Config.InterceptPerEnemy * group)
+            -- Bombers, gunships and air T4s hitting our army get more fighters.
+            local want = math.max(Config.InterceptMin, Config.InterceptPerEnemy * group,
+                Config.MidCoverPerBomber * heavy)
             local units = Nearest(FreeFighters(ctx), p, want)
             if table.getn(units) > 0 then
                 IssueClearCommands(units)
@@ -736,7 +764,10 @@ local function AirStep(brain, ctx)
         end
     end
     if not torpsBusy then GuardHiddenACUs(brain, ctx, torps, now) end
-    local massed = MassAirStep(brain, ctx, staging, bombers, now)
+    -- An enemy experimental pushing into our half: bombers go now.
+    local defended = DefendAgainstT4(brain, ctx, staging, bombers, torps, now)
+    if defended then bombers = {} end
+    local massed = (not defended) and MassAirStep(brain, ctx, staging, bombers, now)
     if not massed and Utils.Count(bombers) >= Config.AirStrikeSize and AirCount(brain) < Config.AirRaidMaxAir then
         -- The bigger the group, the more AA it may fly into.
         local maxAA = Config.AAThreat + Utils.Count(bombers) / Config.BomberAAPerUnit
@@ -770,6 +801,38 @@ local function AirStep(brain, ctx)
             IssueAttack({ u }, t)
         end
     end
+end
+
+---------------------------------------------------------------------------
+-- Enemy experimental (land / sea) in the own half: the bombers and gunships
+-- at hand strike it with an escort; torpedo bombers join against a ship.
+---------------------------------------------------------------------------
+local CatEnemyT4Ground = categories.EXPERIMENTAL * categories.MOBILE - categories.AIR
+
+function DefendAgainstT4(brain, ctx, staging, bombers, torps, now)
+    if ctx.role ~= 'AIR' then return false end
+    if ctx.t4StrikeAt and now - ctx.t4StrikeAt < 45 then return false end
+    local best, bestD
+    for _, e in ipairs(KnownNear(brain, CatEnemyT4Ground, ctx.startPos, MapRadius())) do
+        local p = e:GetPosition()
+        local nx = Utils.Normalise(p[1], p[3])
+        if ctx.side == 'RIGHT' then nx = 1 - nx end
+        local d = Utils.Dist2D(p, ctx.startPos)
+        if nx < Config.MidCoverX and (not bestD or d < bestD) then best, bestD = e, d end
+    end
+    if not best then return false end
+    local group = {}
+    for _, u in ipairs(bombers) do table.insert(group, u) end
+    if EntityCategoryContains(categories.NAVAL, best) or Utils.IsUnderwater(best) then
+        for _, u in ipairs(torps) do table.insert(group, u) end
+    end
+    if table.getn(group) < Config.T4StrikeMin then return false end
+    if not LaunchStrike(brain, ctx, group, best, staging, now) then return false end
+    ctx.t4StrikeAt = now
+    Utils.Log(brain, 'air defence: ' .. table.getn(group) .. ' bombers on an enemy ' .. Comms.UnitName(best) .. ' in our half')
+    Comms.Say(brain, ctx.side, 't4def:' .. brain.Name, 'Bombers coming for their ' .. Comms.UnitName(best) .. '!',
+        best:GetPosition(), 'attack')
+    return true
 end
 
 ---------------------------------------------------------------------------
@@ -971,7 +1034,7 @@ function Start(brain, ctx)
             if other.side ~= own.side and other.rank == own.rank then ctx.enemyGroundBase = other.pos end
         end
         -- Upper half of the team patrols the upper front, lower half the lower.
-        ctx.airZones = (own.rank <= 3) and Config.AirFrontZTop or Config.AirFrontZBottom
+        ctx.airZones = (own.rank <= 3) and Config.AirPatrolTop or Config.AirPatrolBottom
     end
     ForkThread(Utils.RunLoop, 'Army', brain, ctx, 5, ArmyStep)
 end

@@ -121,7 +121,11 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   and the economy goes to the factories.
 - **Air.** Patrols run along the front (north to south, on the own side). The upper half of the team (including the upper AIR player) patrols the upper part of the front,
   the lower half the lower part; the two stretches overlap a little in the middle. A point with a lot of scouted enemy AA steps back.
+  The lines follow the ridges behind the own mid (about a quarter of the map from the own edge), well back from the centre.
   Known enemy aircraft behind the front, in the player's own stretch, are intercepted by the nearest fighters (at least 4, 2 per enemy), which then return to the patrol.
+  Fighters also cover the mid: enemy planes over the own half near allied units (GROUND waves, NAVAL ships, mid defences) are
+  intercepted too, 3 fighters per bomber, gunship or air T4. An enemy land or sea experimental in the own half gets an immediate
+  bomber strike with an escort (torpedo bombers join against a ship).
   Bombers mass at the staging point. On a strike the escort fighters leave first (1.2× the known enemy fighters at the target and on the way)
   and tie up the enemy fighter wall on the direct line. The bombers leave 6 seconds later on a flank route, on the side with less AA.
   The strike waits only while the free escort is below 0.8× the known enemy fighters. Air experimentals pick different targets so they don't crash onto each other.

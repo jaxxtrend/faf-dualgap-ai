@@ -85,17 +85,29 @@ Points = {
     LandCenter    = { 0.500, 0.360 },
 }
 
--- Air patrols fly ALONG the front (north-south), on the own side of it.
--- AirFrontX is the normal line; each point steps back by AirFrontStep (up
--- to AirFrontMaxSteps times) while known enemy AA near it reaches AAThreat.
--- The upper half of a team (slots 1-3, incl. the upper AIR player) patrols
--- AirFrontZTop, the lower half AirFrontZBottom; they overlap in the middle.
--- AirFrontZ is the whole line, for spawns without a slot.
-AirFrontX         = 0.42
-AirFrontZ         = { 0.26, 0.36, 0.46, 0.58, 0.70, 0.80 }
-AirFrontZTop      = { 0.26, 0.36, 0.46, 0.58 }
-AirFrontZBottom   = { 0.46, 0.58, 0.70, 0.80 }
+-- Air patrols fly ALONG the front (north-south), on the own side of it;
+-- each point steps back by AirFrontStep (up to AirFrontMaxSteps times)
+-- while known enemy AA near it reaches AAThreat. AirPatrolAll is the whole
+-- line, for spawns without a slot.
+-- Patrol lines (left team, normalised {nx, nz}; mirrored for RIGHT), drawn
+-- by a player on the map: along the ridges behind the own mid, well back
+-- from the centre. The upper AIR player flies AirPatrolTop, the lower one
+-- AirPatrolBottom; they overlap a little at the river shore.
+AirPatrolTop    = { { 0.247, 0.03 }, { 0.236, 0.10 }, { 0.238, 0.19 }, { 0.247, 0.32 }, { 0.258, 0.43 }, { 0.250, 0.50 } }
+AirPatrolBottom = { { 0.240, 0.46 }, { 0.237, 0.53 }, { 0.237, 0.64 }, { 0.262, 0.76 }, { 0.297, 0.87 }, { 0.307, 0.94 } }
+AirPatrolAll    = { { 0.247, 0.03 }, { 0.238, 0.19 }, { 0.258, 0.43 }, { 0.237, 0.64 }, { 0.297, 0.87 }, { 0.307, 0.94 } }
 AirFrontStep      = 0.04
+-- Mid cover: patrol fighters also go for enemy aircraft over the own half
+-- of the map (nx < MidCoverX) near allied units or structures (within
+-- MidCoverRadius) - bombers and gunships hitting GROUND or NAVAL at the
+-- mid. Bombers, gunships and air experimentals draw MidCoverPerBomber
+-- fighters each.
+MidCoverX          = 0.52
+MidCoverRadius     = 90
+MidCoverPerBomber  = 3
+-- An enemy experimental (land or sea) in the own half: AIR sends its
+-- bombers / gunships (at least T4StrikeMin) with an escort right away.
+T4StrikeMin        = 3
 AirFrontMaxSteps  = 4
 AAThreat          = 6      -- known enemy AA units within AARadius
 AARadius          = 70

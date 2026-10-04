@@ -501,13 +501,13 @@ local clear = A.FrontLine('LEFT', U.ToWorld, function(p) return 0 end)
 
 -- Heavy AA east of x=400 only.
 
-local aa = A.FrontLine('LEFT', U.ToWorld, function(p) if p[1] > 400 then return 99 end return 0 end)
+local aa = A.FrontLine('LEFT', U.ToWorld, function(p) if p[1] > 200 then return 99 end return 0 end)
 
 local sameX, alongZ = true, true
 
 for i = 2, table.getn(clear) do
 
-    if math.abs(clear[i][1] - clear[1][1]) > 0.01 then sameX = false end
+    if math.abs(clear[i][1] - clear[1][1]) > 0.08 * 1024 then sameX = false end
 
     if clear[i][3] <= clear[i - 1][3] then alongZ = false end
 
@@ -519,7 +519,7 @@ return sameX, alongZ, clear[1][1], aa[1][1], right[1][1]
 
 """)
 
-check(line[0] and line[1], 'air patrol line runs north-south along the front (constant x, increasing z)')
+check(line[0] and line[1], 'air patrol line runs north-south behind the front (x within a narrow band, increasing z)')
 
 check(line[3] < line[2] and line[3] <= 400, 'patrol points step back behind enemy AA (%.0f -> %.0f)' % (line[2], line[3]))
 
@@ -657,12 +657,28 @@ halves = lua.execute(r"""
 local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
 local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 local C = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
-local top = A.FrontLine('LEFT', U.ToWorld, function() return 0 end, C.AirFrontZTop)
-local bottom = A.FrontLine('LEFT', U.ToWorld, function() return 0 end, C.AirFrontZBottom)
+local top = A.FrontLine('LEFT', U.ToWorld, function() return 0 end, C.AirPatrolTop)
+local bottom = A.FrontLine('LEFT', U.ToWorld, function() return 0 end, C.AirPatrolBottom)
 local topMax, bottomMin = top[#top][3], bottom[1][3]
 local all = A.FrontLine('LEFT', U.ToWorld, function() return 0 end)
-return top[1][3] == all[1][3], bottom[#bottom][3] == all[#all][3], bottomMin < topMax
+local back = true
+for _, p in ipairs(top) do if p[1] > 0.32 * 1024 then back = false end end
+for _, p in ipairs(bottom) do if p[1] > 0.32 * 1024 then back = false end end
+local rt = A.FrontLine('RIGHT', U.ToWorld, function() return 0 end, C.AirPatrolTop)
+return top[1][3] == all[1][3], bottom[#bottom][3] == all[#all][3], bottomMin < topMax, back, rt[1][1] > 0.68 * 1024
 """)
+check(halves[3], 'patrol lines run along the ridges behind the own mid (x < 0.32), not at the centre')
+check(halves[4], 'the right team flies the mirrored lines')
+mc = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local C = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+return A.MidCover(0.45, 0.30, C.AirPatrolTop, true), A.MidCover(0.45, 0.30, C.AirPatrolTop, false),
+       A.MidCover(0.60, 0.30, C.AirPatrolTop, true), A.MidCover(0.45, 0.85, C.AirPatrolTop, true),
+       A.MidCover(0.45, 0.85, C.AirPatrolBottom, true)
+""")
+check(mc[0] and not mc[1], 'mid cover: enemy planes over our half near allied units are intercepted')
+check(not mc[2], 'mid cover: not over the enemy half')
+check(not mc[3] and mc[4], 'mid cover: each AIR covers its own part (upper / lower)')
 check(halves[0] and halves[1], 'upper AIR patrols from the north end, lower AIR to the south end')
 check(halves[2], 'the two patrol stretches overlap a little in the middle')
 
