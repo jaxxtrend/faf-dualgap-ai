@@ -73,7 +73,8 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
 - **Responses to scouting.** Enemy nuke spotted → anti-nuke right away (one per group of three spawns, at the group's centre, started by the member with the most resources at that moment while the others' engineers help build it;
   a second one at 2+ nukes). Without enemy nukes the anti-nuke goes up after the first T3 power generator.
   The anti-nuke is first in the project queue, so ECO's game ender can't hold it up. Enemy T3/T4 artillery spotted → the heavy shield ring grows from 3 to 5.
-  Bombers and air experimentals hit scouted game enders first, picking the one with the least AA around.
+  Bombers and air experimentals go for an enemy ACU on land first (assassination), then a game ender, then the enemy anti-nuke
+  while the team owns a nuke - the one with the least AA around; with none of these they wait (bombing mexes is a waste).
   Own nuke and anti-nuke missiles load automatically. Nukes are rare, so they go for the heart: the point with the most enemy mass in the blast,
   doubled near the enemy ECO base, plus game enders and an ACU on land. The bot hits that same point with every loaded missile (all loaded
   missiles land together) until 5 went in or the point is destroyed - an anti-nuke usually stops the first one or two. With known anti-nukes over the point it waits (up to 4 min) until one missile more than them is loaded and fires them together. A point that held
@@ -83,8 +84,8 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   fleets there and AIR its bombers at the attackers. A team down in players rings its bases with T2 point defences. The game
   swings instead of being decided by the first player lost.
 - **Mass air attack.** AIR keeps its planes together (fighters on the patrol line) until it has ~140 aircraft - 250-300 for two AIR
-  players - then sends everything but a home guard at one strategic target: an enemy game ender, an anti-nuke while the team owns a
-  nuke, or the heart of the enemy T3 economy. Fighters clear the sky, bombers and gunships follow right behind; the other AIR player
+  players - then sends everything but a home guard at one strategic target: an enemy ACU on land (assassination), a game ender,
+  or the anti-nuke while the team owns a nuke. Fighters clear the sky, bombers and gunships follow right behind; the other AIR player
   joins the same target. Small bomber raids happen only early, before ~70 aircraft.
 - **Navy helps the mid.** NAVAL sends its first 3 T2 destroyers and a cruiser to the water right below the lower mid choke;
   they patrol from there to the centre, shelling enemy land units at the shore for GROUND (5 destroyers, on to the water by

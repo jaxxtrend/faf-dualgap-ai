@@ -76,6 +76,10 @@ local CatEnemyFighter = categories.AIR * categories.MOBILE * categories.ANTIAIR 
 local CatEcoTargets   = categories.STRUCTURE * (categories.MASSEXTRACTION + categories.ENERGYPRODUCTION
                         + categories.MASSFABRICATION + categories.FACTORY)
 local CatEnemyLand    = categories.LAND * categories.MOBILE
+-- What bombers fly at, after their main target: ACUs, game enders, anti-nukes.
+local CatBomberExtras = categories.COMMAND + categories.EXPERIMENTAL * categories.STRUCTURE + categories.NUKE * categories.STRUCTURE
+    + categories.ARTILLERY * categories.STRUCTURE * categories.TECH3
+    + categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE
 local CatHeart = categories.STRUCTURE * categories.TECH3 * (categories.ENERGYPRODUCTION + categories.MASSFABRICATION
     + categories.MASSEXTRACTION)
 
@@ -867,7 +871,7 @@ local function AirStep(brain, ctx)
     if not massed and Utils.Count(bombers) >= Config.AirStrikeSize and AirCount(brain) < Config.AirRaidMaxAir then
         -- The bigger the group, the more AA it may fly into.
         local maxAA = Config.AAThreat + Utils.Count(bombers) / Config.BomberAAPerUnit
-        local target = PickStrikeTarget(brain, ctx, CatEcoTargets, staging, true, nil, maxAA)
+        local target = BomberTarget(brain, ctx, maxAA)
         if target then LaunchStrike(brain, ctx, bombers, target, staging, now) end
     end
 
@@ -893,7 +897,7 @@ local function AirStep(brain, ctx)
     -- each picks a different target, so they don't crash onto each other.
     local taken = {}
     for _, u in ipairs(FreeUnits(brain, CatAirT4)) do
-        local t = PickStrikeTarget(brain, ctx, CatEcoTargets, u:GetPosition(), true, function(e) return not taken[e] end)
+        local t = BomberTarget(brain, ctx, nil, function(e) return not taken[e] end)
         if t then
             taken[t] = true
             IssueAttack({ u }, t)
@@ -1076,7 +1080,7 @@ function AirT4OpStep(brain, ctx, staging, now)
                 if table.getn(b) > 0 then
                     IssueClearCommands(b)
                     if Alive(op.target) then IssueAttack(b, op.target) end
-                    for _, x in ipairs(KnownNear(brain, CatHeart + categories.COMMAND, op.targetPos, 60)) do IssueAttack(b, x) end
+                    for _, x in ipairs(KnownNear(brain, CatBomberExtras, op.targetPos, 60)) do IssueAttack(b, x) end
                     IssueGuard(b, op.lead)
                     Utils.Log(brain, table.getn(b) .. ' bombers dive in with the air T4')
                 end
@@ -1207,21 +1211,9 @@ end
 -- are enders too) > anti-nuke while the team owns a nuke > the T3
 -- economy structure with the most T3 economy around it (the heart).
 local function MassAirTarget(brain, ctx)
-    local e = EnderTarget(ctx)
-    if e then return e.unit end
-    for _, rec in ipairs(Intel.Enders(ctx.side)) do return rec.unit end
-    local all = MapRadius()
-    if OwnTeamNuke(brain) then
-        local a = NearestKnown(brain, CatEnemyAntiNuke, ctx.startPos, all)
-        if a then return a end
-    end
-    local best, bestN
-    for _, s in ipairs(KnownNear(brain, CatHeart, ctx.startPos, all)) do
-        local n = table.getn(KnownNear(brain, CatHeart, s:GetPosition(), 40))
-        if not bestN or n > bestN then best, bestN = s, n end
-    end
-    if best then return best end
-    return NearestKnown(brain, CatEcoTargets, ctx.startPos, all)
+    -- The whole air force: assassination first, then a game ender, then
+    -- the anti-nuke for our nuke; no mass attack on mexes.
+    return BomberTarget(brain, ctx, nil)
 end
 
 function MassAirStep(brain, ctx, staging, bombers, now)
@@ -1270,7 +1262,7 @@ function MassAirStep(brain, ctx, staging, bombers, now)
     Claim(strikers)
     -- Close behind the fighters, then the target and whatever is worth it
     -- around it, then home.
-    local extra = KnownNear(brain, CatHeart + CatEnemyAntiNuke + categories.EXPERIMENTAL, tpos, 60)
+    local extra = KnownNear(brain, CatBomberExtras, tpos, 60)
     ForkThread(function()
         WaitSeconds(Config.BomberDelay)
         local alive = Utils.FilterAlive(strikers)
@@ -1332,6 +1324,48 @@ function GuardHiddenACUs(brain, ctx, torps, now)
             ctx.torpGuards[key] = nil
         end
     end
+end
+
+-- Exposed for tests: a bomber group's target kind, by priority: an enemy
+-- ACU on land (assassination), a game ender, the enemy anti-nuke while the
+-- team owns a nuke; else nothing - bombing mexes is a waste.
+-- c: { acu = bool, ender = bool, antiNuke = bool, ownNuke = bool }
+function BomberTargetKind(c)
+    if c.acu then return 'ACU' end
+    if c.ender then return 'ENDER' end
+    if c.antiNuke and c.ownNuke then return 'ANTINUKE' end
+    return nil
+end
+
+local function OwnTeamNukeAny(brain)
+    return Utils.CountAround(brain, categories.NUKE * categories.STRUCTURE, { 512, 0, 512 }, 3000, 'Ally') > 0
+end
+
+-- The bomber group's target (see BomberTargetKind): among each kind the one
+-- with the least known AA (at most maxAA when given). ok(e) filters.
+function BomberTarget(brain, ctx, maxAA, ok)
+    local function pick(list)
+        local best, bestAA
+        for _, e in ipairs(list) do
+            local aa = Intel.AAThreat(ctx.side, e:GetPosition(), 50)
+            if (not maxAA or aa < maxAA) and (not ok or ok(e)) and (not bestAA or aa < bestAA) then best, bestAA = e, aa end
+        end
+        return best
+    end
+    local acus = {}
+    for _, e in ipairs(KnownNear(brain, categories.COMMAND, ctx.startPos, MapRadius())) do
+        if not Utils.IsUnderwater(e) then table.insert(acus, e) end
+    end
+    local t = pick(acus)
+    if t then return t end
+    local enders = {}
+    for _, rec in ipairs(Intel.Enders(ctx.side)) do table.insert(enders, rec.unit) end
+    t = pick(enders)
+    if t then return t end
+    if OwnTeamNukeAny(brain) then
+        return pick(KnownNear(brain, categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE, ctx.startPos, MapRadius()))
+    end
+    return nil
 end
 
 -- Scouted game enders first (if endersOk), then `cat`; among them the

@@ -1069,6 +1069,17 @@ return I.HidingUnderwater(90, 20, true), I.HidingUnderwater(20, 20, true), I.Hid
 check(hu2[0] and not hu2[1] and not hu2[2] and not hu2[3],
       'a hiding ACU: in its rear, deep water, a minute under (not wading or working at a yard)')
 
+bt = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+return A.BomberTargetKind({ acu = true, ender = true, antiNuke = true, ownNuke = true }),
+       A.BomberTargetKind({ ender = true, antiNuke = true, ownNuke = true }),
+       A.BomberTargetKind({ antiNuke = true, ownNuke = true }),
+       A.BomberTargetKind({ antiNuke = true, ownNuke = false }),
+       A.BomberTargetKind({})
+""")
+check(bt[0] == 'ACU' and bt[1] == 'ENDER' and bt[2] == 'ANTINUKE', 'bombers: ACU (assassination) > game ender > anti-nuke (own nuke)')
+check(bt[3] is None and bt[4] is None, 'bombers: no strike on mexes - nothing worth it, they wait')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
