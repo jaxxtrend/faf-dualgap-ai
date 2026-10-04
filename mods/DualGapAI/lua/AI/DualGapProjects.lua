@@ -737,9 +737,12 @@ local function PlanExperimentals(brain, ctx)
             ctx.enderKey = nextKey
             if not nextKey then return end
         end
-        if ctx.enderKey and HasT3Engineer(brain) then
+        if ctx.enderKey and HasT3Engineer(brain) and not Find(ctx, 'GameEnder') then
             local behind = T4Site(ctx)
-            Add(brain, ctx, { name = 'GameEnder', key = ctx.enderKey, site = behind,
+            local cap = Config.GameEnderMax[ctx.enderKey]
+            local id = Utils.FactionId(brain, ctx.enderKey)
+            local left = cap and id and (cap - Utils.Count(brain:GetListOfUnits(categories[id], false)))
+            Add(brain, ctx, { name = 'GameEnder', key = ctx.enderKey, site = behind, count = left,
                 share = Config.EcoStrategicShare, minCrewTech = 2, priority = 5 })
         end
         return
@@ -898,6 +901,12 @@ end
 
 -- Exposed for tests: keep hitting the focus point? (shots fired so far,
 -- mass there when we started and now)
+-- Exposed for tests: missiles to fire together at a point covered by
+-- `covering` known anti-nukes, with `silos` finished silos.
+function NukeSalvoNeed(covering, silos)
+    return math.max(1, math.min(silos, covering + 1))
+end
+
 function NukeKeepFocus(shots, value0, valueNow)
     if shots >= Config.NukeShotsPerTarget then return false, 'held' end
     if valueNow < value0 / 3 then return false, 'destroyed' end
@@ -976,6 +985,18 @@ local function NukeStep(brain, ctx)
     ctx.nukeFocus = f
 
     local target = f.pos
+    -- Saturate the anti-nukes: missiles land together, one more than the
+    -- known anti-nukes covering the point.
+    local silos = 0
+    for _, s in ipairs(brain:GetListOfUnits(CatOwnNukes, false)) do
+        if Alive(s) and s:GetFractionComplete() >= 1 then silos = silos + 1 end
+    end
+    local need = NukeSalvoNeed(Intel.AntiNukesCovering(ctx.side, target), silos)
+    if n < need then
+        f.waitSince = f.waitSince or GetGameTimeSeconds()
+        if GetGameTimeSeconds() - f.waitSince < Config.NukeWaitMax then return end
+    end
+    f.waitSince = nil
     -- Longest flight first, so all missiles arrive together (speed ~40/s).
     local shots = {}
     for i = 1, n do

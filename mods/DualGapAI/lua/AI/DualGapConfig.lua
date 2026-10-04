@@ -300,7 +300,7 @@ AirMassSize        = 140
 AirMassHomeShare   = 0.15
 AirMassJoinShare   = 0.5
 AirMassCooldown    = 180
-AirEnderStrikeMin  = 50
+AirEnderStrikeMin  = 30
 AirMassTimeout     = 240
 -- Small bomber raids only while AIR has fewer than this many aircraft;
 -- after that the bombers are kept for the mass attack.
@@ -335,6 +335,9 @@ MidSupportDestroyers       = 3
 MidSupportDestroyersPushed = 5
 MidSupportCruisers         = 1
 
+-- A hidden ACU that runs from a fleet sticks to its new spot this long.
+EvadeCooldown = 25
+
 SiloPauseEnergy  = 0.1
 SiloResumeEnergy = 0.4
 
@@ -351,6 +354,11 @@ NukeRadius         = 30
 NukeMinValue       = 8000
 NukeShotsPerTarget = 5
 NukeBlockedSeconds = 300
+-- Missiles one by one only feed the enemy anti-nuke. With known anti-nukes
+-- covering the point the bot waits until one missile more than them is
+-- loaded (as many as it has silos at most) and fires them together; it
+-- never waits longer than NukeWaitMax seconds.
+NukeWaitMax        = 240
 -- Long-range guns of ECO prefer targets near the enemy ECO base (x this).
 EcoVsEcoBonus = 1.5
 

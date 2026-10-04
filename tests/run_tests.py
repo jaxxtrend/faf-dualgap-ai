@@ -876,7 +876,7 @@ return A.MassAirDecision(100, false, false, 1000), A.MassAirDecision(150, false,
        A.MassAirDecision(300, true, false, 30)
 """)
 check(ma[0] is None and ma[1] == 'mass', 'AIR keeps massing until ~140 planes, then attacks with everything')
-check(ma[2] == 'ender', 'an enemy game ender is attacked as soon as AIR has 50+ free planes')
+check(ma[2] == 'ender', 'an enemy game ender is attacked as soon as AIR has 30+ free planes')
 check(ma[3] == 'join', 'the other AIR player joins the team air attack')
 check(ma[4] is None, 'no new mass attack right after the last one')
 bk = lua.execute(r"""
@@ -903,6 +903,13 @@ local F = import('/mods/DualGapAI/lua/AI/DualGapFactories.lua')
 return F.HoldForUpgrade(1, 3, false), F.HoldForUpgrade(3, 3, false), F.HoldForUpgrade(1, 2, true)
 """)
 check(hu[0] and not hu[1] and not hu[2], 'a T1 factory next to a T3 one stops making T1 units and waits for its upgrade')
+
+ns = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+return P.NukeSalvoNeed(0, 4), P.NukeSalvoNeed(1, 4), P.NukeSalvoNeed(2, 4), P.NukeSalvoNeed(5, 4)
+""")
+check(ns[0] == 1 and ns[1] == 2 and ns[2] == 3 and ns[3] == 4,
+      'nukes: no anti-nuke -> one missile; else one more than the anti-nukes, at most all silos, landing together')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

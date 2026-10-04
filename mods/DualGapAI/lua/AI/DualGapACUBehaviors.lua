@@ -373,8 +373,12 @@ function SubmergedStep(brain, ctx)
     if not acu or ctx.acuState ~= 'SUBMERGED' then return end
     local pos = acu:GetPosition()
 
-    -- Warships are the only real danger underwater.
+    -- Warships are the only real danger underwater. After a move the ACU
+    -- keeps to its new spot a while (no re-deciding every few seconds).
+    local now = GetGameTimeSeconds()
+    if ctx.evadeUntil and now < ctx.evadeUntil then return end
     if KnownStrength(brain, CatEnemyWarship, pos, Config.NavalDangerRadius) >= Config.NavalDangerStrength then
+        ctx.evadeUntil = now + Config.EvadeCooldown
         local fleet = FleetCentre(brain, pos, Config.NavalDangerRadius)
         local spot = fleet and PickHideSpot(brain, ctx, fleet)
         IssueClearCommands({ acu })

@@ -73,7 +73,7 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   Bombers and air experimentals hit scouted game enders first, picking the one with the least AA around.
   Own nuke and anti-nuke missiles load automatically. Nukes are rare, so they go for the heart: the point with the most enemy mass in the blast,
   doubled near the enemy ECO base, plus game enders and an ACU on land. The bot hits that same point with every loaded missile (all loaded
-  missiles land together) until 5 went in or the point is destroyed - an anti-nuke usually stops the first one or two. A point that held
+  missiles land together) until 5 went in or the point is destroyed - an anti-nuke usually stops the first one or two. With known anti-nukes over the point it waits (up to 4 min) until one missile more than them is loaded and fires them together. A point that held
   out is skipped for 5 minutes and ECO builds T3 artillery to knock out the enemy anti-nukes. ECO's long-range guns prefer the enemy ECO base.
   ECO keeps at most 4 nuke launchers (4 T3 artillery, 2 T4 artillery); at the cap it switches to the next game ender
   (T3 artillery first: it knocks out anti-nukes, then the nukes finish the job). Nuke silos pause loading while energy is short.
@@ -84,7 +84,7 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
 - **Navy helps the mid.** NAVAL sends its first 3 T2 destroyers and a cruiser to the water right below the lower mid choke;
   they patrol from there to the centre, shelling enemy land units at the shore for GROUND (5 destroyers, on to the water by
   the enemy mid, once the water is pushed).
-- **Everyone on a game ender.** A scouted enemy game ender is the whole team's target: AIR strikes it once 50+ planes are home and free, land waves
+- **Everyone on a game ender.** A scouted enemy game ender is the whole team's target: AIR strikes it once 30+ planes are home and free, land waves
   leave with a smaller size (fleets at full size) and take the less defended mid lane to it, fleets sail to the water next to it, nukes and artillery
   already put it first.
 - **Banked mass gets spent.** With mass storage 60%+ full, a bot builds more structures at once, factories go over their unit caps
