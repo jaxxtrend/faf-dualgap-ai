@@ -146,6 +146,17 @@ WaveSize = { 10, 16, 20 }
 -- A land wave that moved less than WaveStuckDistance in WaveStuckSeconds
 -- with no known enemy around (formations jam in the mid chokes) walks on
 -- to its next target without the formation.
+-- A hunting land wave never turns back for a target more than HuntBehindMax
+-- behind it (an enemy scout at our base is the defences' business).
+HuntBehindMax     = 60
+-- A fleet that fell back sails again only once it is NavalRegroupRatio
+-- times the enemy fleet it ran from (remembered NavalRegroupSeconds).
+NavalRegroupRatio   = 1.2
+NavalRegroupSeconds = 240
+-- Bombers whose target died look for the next one around them (an ACU
+-- first) within FollowUpRadius, up to FollowUpMax times per strike.
+FollowUpRadius    = 90
+FollowUpMax       = 3
 WaveStuckSeconds  = 45
 WaveStuckDistance = 15
 NavalFleetSize = { 6, 8, 10 }

@@ -282,6 +282,13 @@ function LandFallback(ctx)
     return LandFallbackStops(Routes.GetPoint(zone, OtherSide(ctx.side)), ctx.enemyGroundBase, EnemySlots(ctx))
 end
 
+-- Exposed for tests: is p not too far behind a wave at c (toward its own
+-- base)?
+function ForwardOk(side, c, p)
+    local dir = (side == 'LEFT') and 1 or -1
+    return (p[1] - c[1]) * dir >= -Config.HuntBehindMax
+end
+
 local function HuntTarget(brain, ctx, wave, c)
     -- Scouted game enders first, then anything known.
     if wave.kind == 'NAVAL' then
@@ -293,8 +300,15 @@ local function HuntTarget(brain, ctx, wave, c)
     end
     local cat = (wave.kind == 'NAVAL') and (categories.NAVAL + categories.STRUCTURE + categories.COMMAND - categories.WALL)
         or (categories.ALLUNITS - categories.AIR - categories.WALL)
-    local t = NearestKnown(brain, cat, c, MapRadius())
-    if t then return t:GetPosition() end
+    local best, bestD
+    for _, e in ipairs(KnownNear(brain, cat, c, MapRadius())) do
+        local p = e:GetPosition()
+        if wave.kind == 'NAVAL' or ForwardOk(ctx.side, c, p) then
+            local d = Utils.Dist2D(c, p)
+            if not bestD or d < bestD then best, bestD = e, d end
+        end
+    end
+    if best then return best:GetPosition() end
     -- Nothing known: search. Fleets sweep the enemy's deep water (sonar finds
     -- a hidden ACU), land waves walk to a random enemy base.
     -- Fleets go where the hidden ACU most likely is; each fleet takes the
@@ -311,10 +325,15 @@ local function HuntTarget(brain, ctx, wave, c)
     -- Nothing scouted: a land wave doesn't stand at the mid, it walks on -
     -- the enemy's mid, its base, then the other enemy bases.
     local stops = LandFallback(ctx)
-    wave.fallback = (wave.fallback or 0) + 1
     local n = table.getn(stops)
     if n == 0 then return nil end
-    return stops[wave.fallback - n * math.floor((wave.fallback - 1) / n)]
+    -- The next stop that is not behind the wave (else the last one).
+    for k = 1, n do
+        wave.fallback = (wave.fallback or 0) + 1
+        local p = stops[wave.fallback - n * math.floor((wave.fallback - 1) / n)]
+        if ForwardOk(ctx.side, c, p) then return p end
+    end
+    return stops[n]
 end
 
 local function NavalStrength(units)
@@ -366,6 +385,7 @@ local function UpdateWaves(brain, ctx)
             if wave.kind == 'NAVAL' and wave.stage ~= 'retreat' then
                 local enemy = KnownNear(brain, categories.NAVAL * categories.MOBILE, c, 150)
                 if NavalStrength(enemy) > 1.5 * NavalStrength(wave.units) then
+                    ctx.navalThreat = { pos = c, at = GetGameTimeSeconds() }
                     Utils.Log(brain, 'fleet falls back: stronger enemy fleet ahead')
                     FormationPath(wave.units, { Routes.GetPoint('NavalRally', ctx.side) }, c)
                     wave.stage = 'retreat'
@@ -594,6 +614,11 @@ local function MidSupportStep(brain, ctx)
     end
 end
 
+-- Exposed for tests: may a fleet that fell back sail again?
+function RegroupDone(own, enemy)
+    return own >= Config.NavalRegroupRatio * enemy
+end
+
 local function NavalStep(brain, ctx)
     MidSupportStep(brain, ctx)
     if HelpNaval(brain, ctx) then return end
@@ -621,6 +646,14 @@ local function NavalStep(brain, ctx)
         end
         local ahead = KnownNear(brain, categories.NAVAL * categories.MOBILE, Routes.GetPoint('BasinCenter', ctx.side), 200)
         if NavalStrength(ahead) > 1.5 * NavalStrength(ready) then return end   -- wait, keep massing
+        -- After falling back: out again only clearly stronger than what we
+        -- ran from, not with one more ship.
+        local th = ctx.navalThreat
+        if th and GetGameTimeSeconds() - th.at < Config.NavalRegroupSeconds then
+            local enemyThere = NavalStrength(KnownNear(brain, categories.NAVAL * categories.MOBILE, th.pos, 200))
+            if not RegroupDone(NavalStrength(ready), enemyThere) then return end
+        end
+        ctx.navalThreat = nil
         Claim(ready)
         FormationPath(ready, { Routes.GetPoint('BasinCenter', ctx.side), Routes.GetPoint('NavalRally', enemy) }, rally)
         table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1 })
@@ -891,7 +924,7 @@ local function LaunchStrike(brain, ctx, units, target, staging, now)
         IssueAttack(alive, target)
         IssueMove(alive, staging)
     end)
-    table.insert(ctx.strikes, { units = units, escort = escort, started = now })
+    table.insert(ctx.strikes, { units = units, escort = escort, started = now, target = target, staging = staging })
     Utils.Log(brain, 'air strike: ' .. table.getn(units) .. ' bombers, ' .. table.getn(escort) .. ' escorts')
     Comms.Say(brain, ctx.side, 'strike:' .. brain.Name, 'Air strike going in here.', tpos, 'attack')
     return true
@@ -954,10 +987,37 @@ function GunshipStep(brain, ctx, park)
         if target then
             IssueAggressiveMove(g, target)
             Utils.Log(brain, table.getn(g) .. ' gunships attack the enemy army at ' .. math.floor(target[1]) .. ',' .. math.floor(target[3]))
-        elseif Utils.Dist2D(Centroid(g), park) > 30 or idle then
-            IssueMove(g, park)
+        else
+            -- Nothing to shoot: hover behind the front, ready for the
+            -- next target, instead of the long trip home and back.
+            local front = ctx.frontPoint or ctx.choke
+            local hold = (front and table.getn(g) >= Config.GunshipGroupMin) and Shift(front, -Toward(ctx) * 40) or park
+            if Utils.Dist2D(Centroid(g), hold) > 30 then IssueMove(g, hold) end
         end
     end
+end
+
+-- The strike's target is dead and the bombers are still out: the next
+-- thing worth a bomb around them - an ACU on land first, then game
+-- enders / anti-nukes, then an enemy army - instead of flying home over it.
+local CatFollowArmy = categories.MOBILE * (categories.LAND + categories.NAVAL) - categories.ENGINEER - categories.COMMAND
+function FollowUp(brain, ctx, st, now)
+    if st.search or not st.target or Alive(st.target) or Utils.Count(st.units) == 0 then return end
+    if (st.followUps or 0) >= Config.FollowUpMax then return end
+    local c = Centroid(st.units)
+    if st.staging and Utils.Dist2D(c, st.staging) < 80 then return end
+    local r = Config.FollowUpRadius
+    local t
+    for _, e in ipairs(KnownNear(brain, categories.COMMAND, c, r)) do
+        if not Utils.IsUnderwater(e) then t = e; break end
+    end
+    t = t or NearestKnown(brain, CatBomberExtras, c, r) or NearestKnown(brain, CatFollowArmy, c, r)
+    if not t then return end
+    st.target, st.followUps, st.started = t, (st.followUps or 0) + 1, now
+    IssueClearCommands(st.units)
+    IssueAttack(st.units, t)
+    if st.staging then IssueMove(st.units, st.staging) end
+    Utils.Log(brain, Utils.Count(st.units) .. ' bombers go on to ' .. Comms.UnitName(t) .. ' nearby')
 end
 
 local function AirStep(brain, ctx)
@@ -1030,6 +1090,7 @@ local function AirStep(brain, ctx)
     local keep = {}
     for _, st in ipairs(ctx.strikes) do
         st.units = Utils.FilterAlive(st.units)
+        FollowUp(brain, ctx, st, now)
         local timeout = (st.search and 120) or (st.mass and Config.AirMassTimeout) or Config.StrikeTimeout
         local idle = now - st.started > Config.BomberDelay + 5 and AllIdle(st.units)
         if Utils.Count(st.units) == 0 or idle or now - st.started > timeout then
@@ -1419,7 +1480,7 @@ function MassAirStep(brain, ctx, staging, bombers, now)
         end
         IssueMove(alive, staging)
     end)
-    table.insert(ctx.strikes, { units = strikers, escort = escort, started = now, mass = true })
+    table.insert(ctx.strikes, { units = strikers, escort = escort, started = now, mass = true, target = target, staging = staging })
     local what = Comms.UnitName(target)
     Utils.Log(brain, 'mass air attack (' .. why .. '): ' .. table.getn(escort) .. ' fighters, '
         .. table.getn(strikers) .. ' bombers on ' .. what)

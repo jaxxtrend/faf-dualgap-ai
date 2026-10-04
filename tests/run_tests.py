@@ -1129,6 +1129,15 @@ return A.T4InOwnHalf(0.3, true), A.T4InOwnHalf(0.7, true), A.T4InOwnHalf(0.3, fa
 """)
 check(t4h[0] and not t4h[1] and not t4h[2], 'an enemy air T4 anywhere in the own half draws the fighters')
 
+fw = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+return A.ForwardOk('LEFT', {400,0,400}, {500,0,400}), A.ForwardOk('LEFT', {400,0,400}, {200,0,400}),
+       A.ForwardOk('RIGHT', {600,0,400}, {400,0,400}), A.ForwardOk('RIGHT', {600,0,400}, {800,0,400}),
+       A.RegroupDone(10, 10), A.RegroupDone(13, 10)
+""")
+check(fw[0] and not fw[1] and fw[2] and not fw[3], 'a hunting land wave does not turn back for targets behind it')
+check(not fw[4] and fw[5], 'a fleet that fell back sails again only clearly stronger, not with one more ship')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
