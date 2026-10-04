@@ -66,7 +66,8 @@ local function UpgradeStep(brain, ctx)
     local belowTarget, upgrading = MexStats(brain, ctx)
 
     if table.getn(belowTarget) > 0 then
-        if upgrading == 0 then
+        -- No new upgrade into an empty energy store (it stalls everything).
+        if upgrading == 0 and brain:GetEconomyStoredRatio('ENERGY') >= 0.2 then
             local u = Closest(belowTarget, ctx.startPos)
             IssueUpgrade({ u }, UpgradeTarget(u))
         end

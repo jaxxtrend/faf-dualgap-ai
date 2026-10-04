@@ -485,14 +485,22 @@ local function EnergyStalled(brain)
     return brain:GetEconomyStoredRatio('ENERGY') < Config.EnergyStall
 end
 
+-- A T2 / T3 engineer not tied to a project (it can build better power).
+local function FreeHigherEngineer(brain)
+    for _, e in ipairs(brain:GetListOfUnits(CatEngineer * (categories.TECH2 + categories.TECH3), false)) do
+        if Alive(e) and e:GetFractionComplete() >= 1 and not e.DualGapAssigned then return true end
+    end
+    return false
+end
+
 local function BestPowerId(brain, u)
     for _, key in ipairs({ 'PowerT3', 'PowerT2', 'PowerT1' }) do
         local id = Utils.FactionId(brain, key)
         if id and u:CanBuild(id) then
             -- Players stop T1 generators once T2 power is in reach: T1
-            -- engineers leave power to the T2 / T3 ones (unless stalling).
-            if key == 'PowerT1' and not EnergyStalled(brain)
-                and Utils.Count(brain:GetListOfUnits(CatEngineer * (categories.TECH2 + categories.TECH3), false)) > 0 then
+            -- engineers leave power to a free T2 / T3 engineer - but if all
+            -- of those are busy on projects, T1 power it is (no stall).
+            if key == 'PowerT1' and not EnergyStalled(brain) and FreeHigherEngineer(brain) then
                 return nil
             end
             return id
@@ -871,6 +879,8 @@ end
 -- A factory upgrade in the base (the HQ first): engineers assist it, the
 -- way players speed up their tech. At most 6 helpers per upgrade.
 local function TryAssistUpgrade(brain, ctx, u)
+    -- Assisting multiplies the upgrade's energy drain: only with energy to spare.
+    if brain:GetEconomyStoredRatio('ENERGY') < 0.4 or EnergyLow(brain) then return false end
     local best
     for _, f in ipairs(brain:GetListOfUnits(categories.FACTORY * categories.STRUCTURE, false)) do
         if Alive(f) and f:IsUnitState('Upgrading') and Utils.Dist2D(f:GetPosition(), ctx.startPos) < 90 then
