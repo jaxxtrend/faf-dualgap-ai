@@ -237,10 +237,14 @@ end
 -- Deepest water in the own rear (layout nx <= RearDepth for LEFT, mirrored
 -- for RIGHT), inside the current playable area. Sampled on an 8-unit grid;
 -- recomputed per call because the adaptive map can grow its playable area.
--- avoid / minDist: skip spots closer than minDist to avoid.
+-- avoid / minDist: skip spots closer than minDist to avoid (a point or a
+-- list of points).
 RearDepth = 0.35
 
 function DeepestRearWater(side, avoid, minDist)
+    -- avoid: one point or a list of points.
+    local avoidList = {}
+    if avoid and type(avoid[1]) == 'table' then avoidList = avoid elseif avoid then avoidList = { avoid } end
     local x0, z0, x1, z1 = MapBounds()
     local best, bestDepth
     local x = x0 + 4
@@ -251,7 +255,10 @@ function DeepestRearWater(side, avoid, minDist)
             local z = z0 + 4
             while z < z1 do
                 local d = WaterDepth(x, z)
-                local far = not avoid or math.sqrt((x - avoid[1]) * (x - avoid[1]) + (z - avoid[3]) * (z - avoid[3])) >= minDist
+                local far = true
+                for _, a in ipairs(avoidList) do
+                    if math.sqrt((x - a[1]) * (x - a[1]) + (z - a[3]) * (z - a[3])) < minDist then far = false; break end
+                end
                 if far and d >= Config.DeepWaterDepth and (not bestDepth or d > bestDepth) then
                     best, bestDepth = { x, GetSurfaceHeight(x, z), z }, d
                 end

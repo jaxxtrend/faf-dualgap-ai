@@ -803,6 +803,16 @@ check(hunt[0] and hunt[1], 'hunt mode: AIR and ECO build torpedo bombers on any 
 check(hunt[2] and hunt[3], 'hunt mode: NAVAL and GROUND build subs')
 check(hunt[4] and hunt[5] == 2, 'GROUND has a naval production list and builds 2 yards to help the navy')
 
+print('\nHiding apart, siege point, bombers vs AA')
+hide = lua.execute(r"""
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+local sp = P.SiegePoint({ 446, 0, 396 }, { 900, 0, 390 }, 100)
+local d = math.sqrt((sp[1] - 900) ^ 2 + (sp[3] - 390) ^ 2)
+return d, sp[1] < 900 and sp[1] > 446
+""")
+check(abs(hide[0] - 100) < 0.01 and hide[1], 'siege camp sits 100 from the enemy base, on the way from the mid')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

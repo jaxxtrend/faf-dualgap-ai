@@ -17,6 +17,11 @@
 --   all     a radar at every base (T1 -> T2 -> Omni with tech), a forward
 --           radar behind the GROUND mid point, a sonar at the NAVAL yard;
 --           lost ones are rebuilt
+--   all     torpedo launchers on the water by the base, if there is water
+--   GROUND  the defence moves with the front: a forward line at the enemy
+--           mid point once the mid is pushed, then a siege camp (shields,
+--           T2 artillery, AA) near the enemy base
+--   NAVAL   torpedo launchers at the enemy naval rally once water is pushed
 --   all     shields over the base core: two T2 shields at T2, a ring of
 --           heavy shields at T3, a bigger ring once enemy T3/T4 artillery
 --           is scouted (Config.BaseShields); lost ones are rebuilt
@@ -533,6 +538,89 @@ local function PlanYolonaDefense(brain, ctx)
     end
 end
 
+-- A cluster of `want` structures of category `have` around `site`: plan
+-- what is missing (first build and rebuilds).
+local function PlanCluster(brain, ctx, name, key, have, site, want, near, gap, minTech)
+    if not site or Find(ctx, name) then return end
+    local n = Utils.CountAround(brain, have, site, near, 'Ally')
+    if n < want then
+        Add(brain, ctx, { name = name, key = key, site = site, count = want - n, crewMax = 3,
+            minCrewTech = minTech or 2, gap = gap or 1, maxRadius = near, priority = 3 })
+    end
+end
+
+local CatPDs = categories.STRUCTURE * categories.DEFENSE * categories.DIRECTFIRE
+local CatAAs = categories.STRUCTURE * categories.ANTIAIR
+local CatShieldsOwn = categories.STRUCTURE * categories.SHIELD
+local CatArtyT2 = categories.STRUCTURE * categories.ARTILLERY * categories.TECH2
+local CatTorps = categories.STRUCTURE * categories.ANTINAVY
+
+local function TorpedoKey(brain)
+    if TopFactoryTech(brain) >= 2 then return 'TorpedoT2', 2 end
+    return 'TorpedoT1', 1
+end
+
+-- Torpedo launchers on the water closest to the base.
+local function PlanBaseTorpedoes(brain, ctx)
+    if not ctx.t2Time then return end
+    if ctx.baseWater == nil then
+        ctx.baseWater = Utils.FindNearestWater(ctx.startPos, 2, Config.BaseTorpedoRange) or false
+    end
+    if not ctx.baseWater then return end
+    local key, tech = TorpedoKey(brain)
+    PlanCluster(brain, ctx, 'BaseTorpedo', key, CatTorps, ctx.baseWater, Config.BaseTorpedoes, 25, 1, tech)
+end
+
+-- Exposed for tests: the siege camp point, `dist` short of the enemy base
+-- on the line from the enemy mid point.
+function SiegePoint(from, base, dist)
+    local dx, dz = from[1] - base[1], from[3] - base[3]
+    local len = math.sqrt(dx * dx + dz * dz)
+    if len <= dist then return { from[1], from[2], from[3] } end
+    return { base[1] + dx / len * dist, base[2], base[3] + dz / len * dist }
+end
+
+-- The defence follows the front. Stage 1: forward line at the enemy mid
+-- point; stage 2: siege camp near the enemy base.
+local function PlanFrontline(brain, ctx)
+    local now = GetGameTimeSeconds()
+    if ctx.role == 'GROUND' and ctx.choke then
+        local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
+        local enemyMid = Routes.GetPoint(zone, OtherSide(ctx.side))
+        if not ctx.frontStage and ctx.midPushed then
+            ctx.frontStage, ctx.frontSince, ctx.frontPoint = 1, now, enemyMid
+            Utils.Log(brain, 'defence moves to the enemy mid point')
+            Comms.Say(brain, ctx.side, 'front1:' .. brain.Name, 'Mid is ours, fortifying their mid point.', enemyMid, 'move')
+        end
+        if ctx.frontStage == 1 and ctx.enemyGroundBase and now - ctx.frontSince >= Config.SiegeDelay then
+            local p = SiegePoint(enemyMid, ctx.enemyGroundBase, Config.SiegeDistance)
+            p[2] = GetSurfaceHeight(p[1], p[3])
+            ctx.frontStage, ctx.frontSince, ctx.frontPoint = 2, now, p
+            Utils.Log(brain, 'siege camp at the enemy base')
+            Comms.Say(brain, ctx.side, 'front2:' .. brain.Name, 'Setting up a siege of their base here.', p, 'attack')
+        end
+        if ctx.frontStage == 1 then
+            local s = ctx.frontPoint
+            PlanCluster(brain, ctx, 'Front1PD', 'PointDefenseT2', CatPDs, s, 3, 20, 0)
+            PlanCluster(brain, ctx, 'Front1AA', 'AntiAirT2', CatAAs, s, 2, 20, 1)
+            PlanCluster(brain, ctx, 'Front1Shield', 'ShieldT2', CatShieldsOwn, s, 1, 20, 1)
+        elseif ctx.frontStage == 2 then
+            local s = ctx.frontPoint
+            PlanCluster(brain, ctx, 'SiegeShield', 'ShieldT2', CatShieldsOwn, s, 2, 25, 0)
+            PlanCluster(brain, ctx, 'SiegeArty', 'ArtilleryT2', CatArtyT2, s, 4, 25, 0)
+            PlanCluster(brain, ctx, 'SiegeAA', 'AntiAirT2', CatAAs, s, 2, 25, 1)
+        end
+    elseif ctx.role == 'NAVAL' and ctx.waterPushed then
+        if not ctx.frontWater then
+            ctx.frontWater = Utils.FindNearestWater(Routes.GetPoint('NavalRally', OtherSide(ctx.side)), 2, 60) or false
+        end
+        if ctx.frontWater then
+            local key, tech = TorpedoKey(brain)
+            PlanCluster(brain, ctx, 'FrontTorpedo', key, CatTorps, ctx.frontWater, 3, 25, 1, tech)
+        end
+    end
+end
+
 local function PlanBaseShields(brain, ctx)
     local arty = table.getn(Intel.Enders(ctx.side, 'ARTY')) > 0
     for _, s in ipairs(ShieldPlan(TopFactoryTech(brain), arty)) do
@@ -905,6 +993,8 @@ local function PlannerStep(brain, ctx)
     UpdatePushState(brain, ctx)
     PlanProxy(brain, ctx)
     PlanForwardBase(brain, ctx)
+    PlanFrontline(brain, ctx)
+    PlanBaseTorpedoes(brain, ctx)
     PlanBaseAA(brain, ctx)
     PlanIntelStructures(brain, ctx)
     PlanAntiNuke(brain, ctx)

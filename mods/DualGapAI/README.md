@@ -109,6 +109,13 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   Bombers mass at the staging point. On a strike the escort fighters leave first (1.2× the known enemy fighters at the target and on the way)
   and tie up the enemy fighter wall on the direct line. The bombers leave 6 seconds later on a flank route, on the side with less AA.
   The strike waits only while the free escort is below 0.8× the known enemy fighters. Air experimentals pick different targets so they don't crash onto each other.
+- **Hidden ACUs apart.** Each ACU hides at its own deep spot, at least 150 from its allies (one nuke must not catch two).
+  Torpedo bombers with nothing to strike patrol over the team's hidden ACUs, up to 4 per ACU from each bot.
+- **Defence follows the front.** Every base with water nearby gets 3 torpedo launchers there. Once GROUND has pushed its mid it fortifies
+  the enemy mid point (T2 point defence, AA, shield) and its waves gather there; 4 minutes later it sets up a siege camp 100 from the enemy
+  base (shields, 4 T2 artillery, AA). NAVAL puts torpedo launchers at the enemy naval rally once the water is pushed. Lost pieces are rebuilt.
+- **Bombers vs AA.** A bomber group may fly into more known AA the bigger it is (AA limit + size / 2), so it no longer circles at home
+  waiting for an undefended target.
 - **Hunting a hidden ACU.** An enemy ACU seen under water is remembered at its last spot for 5 minutes. Meanwhile AIR, ECO and NAVAL
   build torpedo bombers (on any air factory tech), NAVAL and GROUND build subs, torpedo bombers and fleets go for it in groups of two or more,
   and GROUND builds 2 naval yards to help the navy (also once its mid is pushed).

@@ -103,6 +103,37 @@ function KnownStrength(brain, cat, pos, radius)
     return s
 end
 
+-- Hiding spots of each side's ACUs, so they spread out under water.
+local hideSpots = { LEFT = {}, RIGHT = {} }
+
+function HideSpots(side)
+    local out = {}
+    for name, pos in pairs(hideSpots[side] or {}) do table.insert(out, { name = name, pos = pos }) end
+    return out
+end
+
+local function SetHideSpot(brain, ctx, pos)
+    hideSpots[ctx.side] = hideSpots[ctx.side] or {}
+    hideSpots[ctx.side][brain.Name] = pos
+end
+
+local function OtherHideSpots(brain, ctx)
+    local out = {}
+    for name, pos in pairs(hideSpots[ctx.side] or {}) do
+        if name ~= brain.Name then table.insert(out, pos) end
+    end
+    return out
+end
+
+-- Deepest rear water at least Config.HideSpacing from the allies' hiding
+-- spots (and from `extra`, e.g. an enemy fleet); falls back to any.
+local function PickHideSpot(brain, ctx, extra)
+    local avoid = OtherHideSpots(brain, ctx)
+    if extra then table.insert(avoid, extra) end
+    return Utils.DeepestRearWater(ctx.side, avoid, Config.HideSpacing)
+        or (not extra and Utils.DeepestRearWater(ctx.side))
+end
+
 local function EnemyStratArtyPresent(brain, pos)
     return Utils.CountAround(brain, CatStratArty, pos, Config.StratArtyScanRadius, 'Enemy') > 0
 end
@@ -142,7 +173,7 @@ local function SafetyStep(brain, ctx)
         local want = SafetyDecision(hp, lateT2, EnemyStratArtyPresent(brain, pos), torp, bombers, otherAir, landT4)
 
         if want == 'DEEP' and ctx.acuState ~= 'SUBMERGED' then
-            local water = Utils.DeepestRearWater(ctx.side)
+            local water = PickHideSpot(brain, ctx)
                 or Utils.FindNearestWater(pos, Config.DeepWaterDepth, 400)
             if water then
                 Utils.Log(brain, string.format('ACU to max depth (hp=%.2f lateT2=%s bombers=%d)',
@@ -151,6 +182,7 @@ local function SafetyStep(brain, ctx)
                 IssueMove({ acu }, water)
                 ctx.acuState = 'SUBMERGED'
                 ctx.submergePos = water
+                SetHideSpot(brain, ctx, water)
             end
         elseif want == 'LAND' and ctx.acuState ~= 'LANDBUILD' then
             Utils.Log(brain, 'ACU stays on land: torpedo bombers (' .. torp .. '), little other air')
@@ -160,6 +192,7 @@ local function SafetyStep(brain, ctx)
         elseif want == nil and (ctx.acuState == 'SUBMERGED' or ctx.acuState == 'LANDBUILD') and hp > 0.8 then
             -- Threat gone (only possible before the T2 phase ends): back to work.
             ctx.acuState = (role == 'GROUND') and 'MARCH' or 'NAVAL'
+            SetHideSpot(brain, ctx, nil)
         end
     else
         if hp < Config.ACURetreatHealth and Utils.Dist2D(pos, ctx.startPos) > 20 then
@@ -343,16 +376,18 @@ function SubmergedStep(brain, ctx)
     -- Warships are the only real danger underwater.
     if KnownStrength(brain, CatEnemyWarship, pos, Config.NavalDangerRadius) >= Config.NavalDangerStrength then
         local fleet = FleetCentre(brain, pos, Config.NavalDangerRadius)
-        local spot = fleet and Utils.DeepestRearWater(ctx.side, fleet, Config.NavalEvadeDistance)
+        local spot = fleet and PickHideSpot(brain, ctx, fleet)
         IssueClearCommands({ acu })
         if spot then
             Utils.Log(brain, 'ACU moves away from an enemy fleet to another deep spot')
             IssueMove({ acu }, spot)
             ctx.submergePos = spot
+            SetHideSpot(brain, ctx, spot)
         else
             Utils.Log(brain, 'ACU leaves the water: enemy fleet close and no other deep spot')
             IssueMove({ acu }, ctx.startPos)
             ctx.acuState = 'LANDBUILD'
+            SetHideSpot(brain, ctx, nil)
         end
         Comms.Say(brain, ctx.side, 'acufleet:' .. brain.Name, 'Enemy navy at my hidden ACU, moving it!', pos, 'alert')
         return

@@ -36,6 +36,10 @@ local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
 local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
 
+local function ACU()
+    return import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
+end
+
 local Alive = Utils.Alive
 
 local CatLandDF   = categories.LAND * categories.MOBILE - categories.ENGINEER - categories.COMMAND
@@ -296,8 +300,10 @@ local function UpdateWaves(brain, ctx)
 end
 
 ---------------------------------------------------------------------------
+-- Waves gather behind the furthest defence line the player holds
+-- (DualGapProjects moves ctx.frontPoint forward as the front advances).
 local function LandRally(ctx)
-    return Shift(ctx.choke, -Toward(ctx) * 25)
+    return Shift(ctx.frontPoint or ctx.choke, -Toward(ctx) * 25)
 end
 
 local function LandStep(brain, ctx)
@@ -318,7 +324,8 @@ local function LandStep(brain, ctx)
     if WaveReady(ready, size) or (enemyAtWall and Utils.Count(ready) >= 4) then
         local enemy = OtherSide(ctx.side)
         local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
-        local path = { ctx.choke, Routes.GetPoint(zone, enemy) }
+        local path = { ctx.frontPoint or ctx.choke, Routes.GetPoint(zone, enemy) }
+        if ctx.frontPoint then path = { ctx.frontPoint } end
         if ctx.enemyGroundBase then table.insert(path, ctx.enemyGroundBase) end
         Claim(ready)
         FormationPath(ready, path, rally)
@@ -581,11 +588,12 @@ local function AirStep(brain, ctx)
     -- Torpedo bombers always go after a submerged ACU, two or more at a
     -- time: in sight -> attack it, out of sight -> sweep its last spot;
     -- while the enemy is lost they sweep its deep water with their sonar.
+    local torpsBusy = false
     if Utils.Count(torps) >= Config.AirStrikeSize or (hunt and Utils.Count(torps) >= 2) then
         local target = PickStrikeTarget(brain, ctx, CatNavalTargets + categories.COMMAND, staging, false, TorpTargetOk)
         local sub = Intel.SubmergedACUs(ctx.side)[1]
         if target then
-            LaunchStrike(brain, ctx, torps, target, staging, now)
+            torpsBusy = LaunchStrike(brain, ctx, torps, target, staging, now)
         elseif sub or stale then
             local deep = (sub and sub.pos) or Intel.DeepWater(OtherSide(ctx.side))
             if deep then
@@ -595,11 +603,15 @@ local function AirStep(brain, ctx)
                 IssuePatrol(torps, Shift(deep, Toward(ctx) * 60))
                 table.insert(ctx.strikes, { units = torps, escort = {}, started = now, search = true })
                 Utils.Log(brain, Utils.Count(torps) .. ' torpedo bombers search the enemy deep water')
+                torpsBusy = true
             end
         end
     end
+    if not torpsBusy then GuardHiddenACUs(brain, ctx, torps, now) end
     if Utils.Count(bombers) >= Config.AirStrikeSize then
-        local target = PickStrikeTarget(brain, ctx, CatEcoTargets, staging, true)
+        -- The bigger the group, the more AA it may fly into.
+        local maxAA = Config.AAThreat + Utils.Count(bombers) / Config.BomberAAPerUnit
+        local target = PickStrikeTarget(brain, ctx, CatEcoTargets, staging, true, nil, maxAA)
         if target then LaunchStrike(brain, ctx, bombers, target, staging, now) end
     end
 
@@ -631,14 +643,56 @@ local function AirStep(brain, ctx)
     end
 end
 
+-- Torpedo bombers with nothing to strike patrol over the team's hidden
+-- ACUs (up to Config.TorpGuardsPerACU each from this bot), killing subs
+-- and ships that come for them.
+function GuardHiddenACUs(brain, ctx, torps, now)
+    ctx.torpGuards = ctx.torpGuards or {}
+    local spots = ACU().HideSpots(ctx.side)
+    local free = {}
+    for _, u in ipairs(torps) do table.insert(free, u) end
+    for _, s in ipairs(spots) do
+        local key = s.name
+        local guards = Utils.FilterAlive(ctx.torpGuards[key] or {})
+        ctx.torpGuards[key] = guards
+        local need = Config.TorpGuardsPerACU - table.getn(guards)
+        if need > 0 and table.getn(free) > 0 then
+            local group = {}
+            while need > 0 and table.getn(free) > 0 do
+                table.insert(group, table.remove(free))
+                need = need - 1
+            end
+            Claim(group)
+            IssueClearCommands(group)
+            local p = s.pos
+            for _, d in ipairs({ { 30, 0 }, { 0, 30 }, { -30, 0 }, { 0, -30 } }) do
+                IssuePatrol(group, { p[1] + d[1], GetSurfaceHeight(p[1] + d[1], p[3] + d[2]), p[3] + d[2] })
+            end
+            for _, u in ipairs(group) do table.insert(guards, u) end
+            Utils.Log(brain, table.getn(group) .. ' torpedo bombers guard the hidden ACU of ' .. key)
+        end
+    end
+    -- Guards of an ACU that came out of the water go back to the pool.
+    for key, guards in pairs(ctx.torpGuards) do
+        local still = false
+        for _, s in ipairs(spots) do if s.name == key then still = true end end
+        if not still then
+            Release(Utils.FilterAlive(guards))
+            ctx.torpGuards[key] = nil
+        end
+    end
+end
+
 -- Scouted game enders first (if endersOk), then `cat`; among them the
--- least AA-covered. ok(e), when given, filters candidates.
-function PickStrikeTarget(brain, ctx, cat, from, endersOk, ok)
+-- least AA-covered. ok(e), when given, filters candidates; maxAA (default
+-- Config.AAThreat) is the most known AA a target may have around it.
+function PickStrikeTarget(brain, ctx, cat, from, endersOk, ok, maxAA)
+    maxAA = maxAA or Config.AAThreat
     local best, bestAA
     if endersOk then
         for _, rec in ipairs(Intel.Enders(ctx.side)) do
             local aa = Intel.AAThreat(ctx.side, rec.pos, 50)
-            if aa < Config.AAThreat and (not ok or ok(rec.unit)) and (not bestAA or aa < bestAA) then
+            if aa < maxAA and (not ok or ok(rec.unit)) and (not bestAA or aa < bestAA) then
                 best, bestAA = rec.unit, aa
             end
         end
@@ -646,7 +700,7 @@ function PickStrikeTarget(brain, ctx, cat, from, endersOk, ok)
     end
     for _, e in ipairs(KnownNear(brain, cat, from, MapRadius())) do
         local aa = Intel.AAThreat(ctx.side, e:GetPosition(), 50)
-        if aa < Config.AAThreat and (not ok or ok(e)) and (not bestAA or aa < bestAA) then best, bestAA = e, aa end
+        if aa < maxAA and (not ok or ok(e)) and (not bestAA or aa < bestAA) then best, bestAA = e, aa end
     end
     return best
 end

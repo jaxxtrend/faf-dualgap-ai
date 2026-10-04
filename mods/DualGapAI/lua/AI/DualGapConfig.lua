@@ -193,6 +193,31 @@ ReclaimRoleSeconds = 240
 EnergyStall        = 0.1
 ProjectCrewShare   = 0.5
 
+-- Hidden ACUs keep HideSpacing apart (one nuke must not catch two), and
+-- each gets up to TorpGuardsPerACU of its team's torpedo bombers patrolling
+-- over it (from every bot that has them) when they have nothing to strike.
+HideSpacing      = 150
+TorpGuardsPerACU = 4
+
+-- Bombers go for the target with the least known AA; a group may accept
+-- AAThreat + its size / BomberAAPerUnit known AA units at the target, so a
+-- big group doesn't wait forever for an undefended target.
+BomberAAPerUnit = 2
+
+-- Base torpedo defence: a base with water within BaseTorpedoRange gets
+-- BaseTorpedoes torpedo launchers there (T2 once the player has T2).
+BaseTorpedoRange = 100
+BaseTorpedoes    = 3
+
+-- The defence moves with the front. GROUND: once its mid is pushed, a
+-- forward line (T2 point defence, AA, shield) at the enemy's mid point;
+-- SiegeDelay seconds later a siege camp SiegeDistance from the enemy base
+-- (shields, T2 artillery, AA). Waves gather behind the furthest line.
+-- NAVAL: once the water is pushed, torpedo launchers at the enemy's naval
+-- rally point. Lost pieces are rebuilt.
+SiegeDelay    = 240
+SiegeDistance = 100
+
 -- Forward production. After the first T2 factory GROUND puts
 -- ForwardFactories land factories ForwardLandBack behind its mid point, and
 -- NAVAL puts ForwardFactories naval yards on the water ForwardNavalBack
