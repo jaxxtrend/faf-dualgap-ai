@@ -300,7 +300,7 @@ AirMassSize        = 140
 AirMassHomeShare   = 0.15
 AirMassJoinShare   = 0.5
 AirMassCooldown    = 180
-AirEnderStrikeMin  = 40
+AirEnderStrikeMin  = 50
 AirMassTimeout     = 240
 -- Small bomber raids only while AIR has fewer than this many aircraft;
 -- after that the bombers are kept for the mass attack.

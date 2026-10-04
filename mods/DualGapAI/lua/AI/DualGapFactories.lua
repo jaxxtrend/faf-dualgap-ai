@@ -163,9 +163,25 @@ local function KeepUnits(brain, ctx, f)
     return false
 end
 
+-- Highest finished factory tech of the factory's kind.
+local function KindTopTech(brain, f)
+    local top = 1
+    for _, x in ipairs(brain:GetListOfUnits(Utils.FactoryCategory(Utils.FactoryKind(f)), false)) do
+        if Alive(x) and x:GetFractionComplete() >= 1 then top = math.max(top, TechOf(x)) end
+    end
+    return top
+end
+
+-- Exposed for tests: a factory behind the best one of its kind stops
+-- making units (low-tech units only die) and waits for its upgrade.
+function HoldForUpgrade(factoryTech, topTech, isMain)
+    return not isMain and factoryTech < topTech
+end
+
 -- Global so tests can drive it.
 function Produce(brain, ctx, f)
     if f == ctx.mainFactory and RefillEngineers(brain, ctx, f) then return end
+    if HoldForUpgrade(TechOf(f), KindTopTech(brain, f), f == ctx.mainFactory) then return end
     if KeepUnits(brain, ctx, f) then return end
     local byKind = BO.Production[ctx.role]
     local list = byKind and byKind[Utils.FactoryKind(f)]

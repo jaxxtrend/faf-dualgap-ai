@@ -872,11 +872,11 @@ check(ge[2] and ge[3] == 'ArtilleryT4', 'next game ender skips capped ones; noth
 ma = lua.execute(r"""
 local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
 return A.MassAirDecision(100, false, false, 1000), A.MassAirDecision(150, false, false, 1000),
-       A.MassAirDecision(45, true, false, 1000), A.MassAirDecision(80, false, true, 1000),
+       A.MassAirDecision(55, true, false, 1000), A.MassAirDecision(80, false, true, 1000),
        A.MassAirDecision(300, true, false, 30)
 """)
 check(ma[0] is None and ma[1] == 'mass', 'AIR keeps massing until ~140 planes, then attacks with everything')
-check(ma[2] == 'ender', 'an enemy game ender is attacked as soon as AIR has 40+ planes')
+check(ma[2] == 'ender', 'an enemy game ender is attacked as soon as AIR has 50+ free planes')
 check(ma[3] == 'join', 'the other AIR player joins the team air attack')
 check(ma[4] is None, 'no new mass attack right after the last one')
 bk = lua.execute(r"""
@@ -897,6 +897,12 @@ return own ~= nil and centre ~= nil and enemy ~= nil, d, d0, d1
 """)
 check(ms[0] and ms[1] < 60, 'mid support: water right below the lower mid choke (and the centre, the enemy side)')
 check(ms[2] == 3 and ms[3] == 5, 'mid support: 3 destroyers, 5 once the water is pushed')
+
+hu = lua.execute(r"""
+local F = import('/mods/DualGapAI/lua/AI/DualGapFactories.lua')
+return F.HoldForUpgrade(1, 3, false), F.HoldForUpgrade(3, 3, false), F.HoldForUpgrade(1, 2, true)
+""")
+check(hu[0] and not hu[1] and not hu[2], 'a T1 factory next to a T3 one stops making T1 units and waits for its upgrade')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

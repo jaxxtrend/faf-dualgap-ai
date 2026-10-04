@@ -84,8 +84,8 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
 - **Navy helps the mid.** NAVAL sends its first 3 T2 destroyers and a cruiser to the water right below the lower mid choke;
   they patrol from there to the centre, shelling enemy land units at the shore for GROUND (5 destroyers, on to the water by
   the enemy mid, once the water is pushed).
-- **Everyone on a game ender.** A scouted enemy game ender is the whole team's target: AIR strikes it with 40+ planes, land waves
-  leave with a smaller size and take the less defended mid lane to it, fleets sail to the water next to it, nukes and artillery
+- **Everyone on a game ender.** A scouted enemy game ender is the whole team's target: AIR strikes it once 50+ planes are home and free, land waves
+  leave with a smaller size (fleets at full size) and take the less defended mid lane to it, fleets sail to the water next to it, nukes and artillery
   already put it first.
 - **Banked mass gets spent.** With mass storage 60%+ full, a bot builds more structures at once, factories go over their unit caps
   and more T3 engineers are kept. Up to 2 factory upgrades run at once (4 with banked mass) and idle engineers assist them;

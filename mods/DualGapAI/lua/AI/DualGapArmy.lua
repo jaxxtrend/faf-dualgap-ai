@@ -482,8 +482,9 @@ local function NavalStep(brain, ctx)
     local size = Config.NavalFleetSize[TopTech(brain)] or 6
     -- Searching for a hidden ACU: any two ships go.
     if Intel.HuntMode(ctx.side) then size = math.min(size, 2) end
+    -- Fleets go for a game ender at full size: small groups only die one
+    -- after another under its guns and the enemy navy.
     local enderWater = EnderWater(ctx)
-    if enderWater then size = math.max(3, math.floor(size * Config.EnderWaveShare)) end
     if WaveReady(ready, size) then
         local enemy = OtherSide(ctx.side)
         if enderWater then
@@ -821,7 +822,11 @@ end
 
 function MassAirStep(brain, ctx, staging, bombers, now)
     if ctx.role ~= 'AIR' then return false end
-    local air = AirCount(brain)
+    -- Only what is home and free counts: planes still out on the last
+    -- strike or chasing intruders would turn the attack into a trickle.
+    ctx.fighters = Utils.FilterAlive(ctx.fighters or {})
+    local air = table.getn(FreeFighters(ctx)) + table.getn(FreeUnits(brain, CatBomber - CatTorpBomber))
+        + Utils.Count(bombers)
     local team = Intel.AirMass(ctx.side)
     local teamOn = team and now - team.at < 90 and Alive(team.unit)
     local why = MassAirDecision(air, EnderTarget(ctx) ~= nil, teamOn and team.by ~= brain:GetArmyIndex(),
