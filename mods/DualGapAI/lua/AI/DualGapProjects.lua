@@ -362,12 +362,13 @@ end
 
 local function UpdatePushState(brain, ctx)
     local enemy = OtherSide(ctx.side)
-    if ctx.role == 'GROUND' then
+    if Utils.HasDuty(ctx, 'GROUND') then
         local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
         local was = ctx.midPushed
         ctx.midPushed = Pushed(brain, ctx, Routes.GetPoint(zone, enemy), categories.LAND * categories.MOBILE)
         if ctx.midPushed and not was then Utils.Log(brain, 'mid pushed') end
-    elseif ctx.role == 'NAVAL' then
+    end
+    if Utils.HasDuty(ctx, 'NAVAL') then
         local was = ctx.waterPushed
         ctx.waterPushed = Pushed(brain, ctx, Routes.GetPoint('NavalRally', enemy), categories.NAVAL * categories.MOBILE)
         if ctx.waterPushed and not was then Utils.Log(brain, 'water pushed') end

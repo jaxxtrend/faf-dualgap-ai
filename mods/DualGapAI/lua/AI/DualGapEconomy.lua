@@ -60,21 +60,31 @@ local function Closest(list, pos)
     return best
 end
 
+-- Exposed for tests: may T2 -> T3 mex upgrades run?
+function T3PhaseOpen(belowT2, t2Started)
+    return t2Started and belowT2 <= Config.MexT3WaitFor
+end
+
 local function UpgradeStep(brain, ctx)
     if not ctx.mexUpgradesAllowed then return end
     local belowTarget, upgrading = MexStats(brain, ctx)
 
     if table.getn(belowTarget) > 0 then
-        -- No new upgrade into an empty energy store (it stalls everything).
-        if upgrading == 0 and brain:GetEconomyStoredRatio('ENERGY') >= 0.2 then
+        -- No new upgrade into an empty energy store (it stalls everything);
+        -- one at a time, two with mass piling up.
+        local most = Utils.MassBanked(brain) and 2 or 1
+        if upgrading < most and brain:GetEconomyStoredRatio('ENERGY') >= 0.2 then
             local u = Closest(belowTarget, ctx.startPos)
             IssueUpgrade({ u }, UpgradeTarget(u))
+            upgrading = upgrading + 1
         end
-        return
     end
 
-    -- Sequential phase finished: T2 -> T3 once the T2 phase clock is running.
-    if not ctx.t2Time or brain:GetEconomyStoredRatio('ENERGY') < 0.5 then return end
+    -- T2 -> T3 once the T2 phase clock is running. A couple of mexes still
+    -- below T2 (contested ones at the mid, rebuilt as T1 again and again)
+    -- don't hold the T3 upgrades back.
+    if not T3PhaseOpen(table.getn(belowTarget), ctx.t2Time ~= nil) then return end
+    if brain:GetEconomyStoredRatio('ENERGY') < 0.5 then return end
     local cap = Config.MaxConcurrentUpgrades
     if ctx.role == 'ECO' then cap = cap + 2 end
     if upgrading >= cap then return end

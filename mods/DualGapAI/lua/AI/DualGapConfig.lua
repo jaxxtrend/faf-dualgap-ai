@@ -221,6 +221,8 @@ AirStrikeSize    = 8
 EcoStrategicMassIncome = 100    -- mass/sec before ECO goes all-in on T3/T4
 EcoStrategicShare      = 0.8    -- share of engineers sent to strategic builds
 MaxConcurrentUpgrades  = 3
+-- T3 mex upgrades start while at most this many mexes are still below T2.
+MexT3WaitFor           = 2
 
 -- Experimentals walk apart: a dying T4 explodes and hurts whatever stands
 -- next to it. Each one keeps this distance from the wave and from the others.
