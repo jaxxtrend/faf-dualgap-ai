@@ -265,6 +265,23 @@ function EnderWater(ctx)
     return ctx.enderWater
 end
 
+-- Exposed for tests: where a land wave walks with nothing scouted: the
+-- enemy mid choke of its lane, the mirrored enemy base, the other bases.
+function LandFallbackStops(choke, groundBase, slots)
+    local out = {}
+    if choke then table.insert(out, choke) end
+    if groundBase then table.insert(out, groundBase) end
+    for _, p in ipairs(slots or {}) do
+        if p ~= groundBase then table.insert(out, p) end
+    end
+    return out
+end
+
+function LandFallback(ctx)
+    local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
+    return LandFallbackStops(Routes.GetPoint(zone, OtherSide(ctx.side)), ctx.enemyGroundBase, EnemySlots(ctx))
+end
+
 local function HuntTarget(brain, ctx, wave, c)
     -- Scouted game enders first, then anything known.
     if wave.kind == 'NAVAL' then
@@ -287,13 +304,17 @@ local function HuntTarget(brain, ctx, wave, c)
         local p = Intel.SearchPoint(ctx.side, ctx.searchIdx)
         if p then return p end
     end
-    if Intel.Stale(ctx.side) then
-        if wave.kind == 'NAVAL' then return Intel.DeepWater(OtherSide(ctx.side)) end
-        local slots = EnemySlots(ctx)
-        local n = table.getn(slots)
-        if n > 0 then return slots[Random and Random(1, n) or 1] end
+    if wave.kind == 'NAVAL' then
+        if Intel.Stale(ctx.side) then return Intel.DeepWater(OtherSide(ctx.side)) end
+        return nil
     end
-    return nil
+    -- Nothing scouted: a land wave doesn't stand at the mid, it walks on -
+    -- the enemy's mid, its base, then the other enemy bases.
+    local stops = LandFallback(ctx)
+    wave.fallback = (wave.fallback or 0) + 1
+    local n = table.getn(stops)
+    if n == 0 then return nil end
+    return stops[wave.fallback - n * math.floor((wave.fallback - 1) / n)]
 end
 
 local function NavalStrength(units)
@@ -431,8 +452,8 @@ local function LandStep(brain, ctx)
     if WaveReady(ready, size) or (enemyAtWall and Utils.Count(ready) >= 4) then
         local enemy = OtherSide(ctx.side)
         local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
+        -- Through the own front, over the enemy's mid choke, on to its base.
         local path = { ctx.frontPoint or ctx.choke, Routes.GetPoint(zone, enemy) }
-        if ctx.frontPoint then path = { ctx.frontPoint } end
         if ender and not enemyAtWall then
             -- Everyone on the game ender, through the mid lane with less
             -- known enemy army: the sneaky way in.
@@ -698,6 +719,46 @@ local function Intercept(brain, ctx, now)
     end
 end
 
+-- Exposed for tests: send a sweep? free: own free fighters, enemy: known
+-- enemy fighters, since: seconds since the last one.
+function SweepWanted(free, enemy, since)
+    if since < Config.AirSweepCooldown or free < Config.AirSweepMin then return false end
+    return free >= Config.AirSweepRatio * enemy
+end
+
+-- Air superiority: the fighters fly over the enemy's side of the front
+-- (its patrol line, where the AA allows) and kill its fighters there.
+local function SweepStep(brain, ctx, now)
+    local sw = ctx.sweep
+    if sw then
+        sw.units = Utils.FilterAlive(sw.units)
+        if table.getn(sw.units) == 0 or now > sw.untilAt or (now - sw.at > 20 and AllIdle(sw.units)) then
+            for _, u in ipairs(sw.units) do u.DGEscort, u.DGLine = nil, nil end
+            ctx.sweep = nil
+        end
+        return
+    end
+    if not Utils.HasDuty(ctx, 'AIR') then return end
+    local free = FreeFighters(ctx)
+    local enemy = table.getn(KnownNear(brain, CatEnemyFighter, ctx.startPos, MapRadius()))
+    if not SweepWanted(table.getn(free), enemy, now - (ctx.sweepAt or -1000)) then return end
+    local pts = {}
+    for _, np in ipairs(ctx.airZones or Config.AirPatrolAll) do
+        local p = Utils.ToWorld({ np[1], np[2] }, OtherSide(ctx.side))
+        if Intel.AAThreat(ctx.side, p) < Config.AAThreat then table.insert(pts, p) end
+    end
+    if table.getn(pts) == 0 then return end
+    local keep = math.floor(table.getn(free) * Config.AirSweepHomeShare)
+    local units = Nearest(free, pts[1], table.getn(free) - keep)
+    if table.getn(units) == 0 then return end
+    for _, u in ipairs(units) do u.DGEscort, u.DGLine = true, nil end
+    IssueClearCommands(units)
+    for _, p in ipairs(pts) do IssueAggressiveMove(units, p) end
+    ctx.sweep = { units = units, at = now, untilAt = now + Config.AirSweepSeconds }
+    ctx.sweepAt = now
+    Utils.Log(brain, 'air sweep: ' .. table.getn(units) .. ' fighters over the enemy front (' .. enemy .. ' enemy fighters known)')
+end
+
 local function FightersStep(brain, ctx, now)
     local line = FrontLine(ctx.side, Utils.ToWorld, function(p) return Intel.AAThreat(ctx.side, p) end, ctx.airZones)
     local key = LineKey(line)
@@ -709,6 +770,7 @@ local function FightersStep(brain, ctx, now)
     for _, u in ipairs(fresh) do table.insert(ctx.fighters, u) end
 
     Intercept(brain, ctx, now)
+    SweepStep(brain, ctx, now)
 
     -- Back to the patrol: interceptors that are done, new fighters, and
     -- everyone when the line moved.
@@ -831,7 +893,11 @@ function GunshipStep(brain, ctx, park)
     local target
     if ctx.helpTarget then target = ctx.helpTarget.pos end
     if not target then
+        -- Over the front, or with the land wave that is out pushing.
         local front = ctx.frontPoint or ctx.choke or Routes.GetPoint('Choke', ctx.side)
+        for _, w in ipairs(ctx.waves or {}) do
+            if w.kind == 'LAND' and table.getn(Utils.FilterAlive(w.units)) > 0 then front = Centroid(Utils.FilterAlive(w.units)) end
+        end
         local e = NearestKnown(brain, CatEnemyLand, front, Config.GunshipFrontRadius)
         if e then target = e:GetPosition() end
     end
@@ -904,10 +970,14 @@ local function AirStep(brain, ctx)
     local inOp = JoinAirT4Op(brain, ctx, bombers, now)
     if inOp then bombers = {} end
     local massed = (not defended) and (not inOp) and MassAirStep(brain, ctx, staging, bombers, now)
-    if not massed and Utils.Count(bombers) >= Config.AirStrikeSize and AirCount(brain) < Config.AirRaidMaxAir then
-        -- The bigger the group, the more AA it may fly into.
+    if not massed and Utils.Count(bombers) >= Config.AirStrikeSize then
+        -- The bigger the group, the more AA it may fly into. Past
+        -- AirRaidMaxAir the strategic targets wait for the mass attack, but
+        -- enemy armies at the front still get bombed.
         local maxAA = Config.AAThreat + Utils.Count(bombers) / Config.BomberAAPerUnit
-        local target = BomberTarget(brain, ctx, maxAA)
+        local target
+        if AirCount(brain) < Config.AirRaidMaxAir then target = BomberTarget(brain, ctx, maxAA)
+        else target = ArmyTarget(brain, ctx, maxAA) end
         if target then LaunchStrike(brain, ctx, bombers, target, staging, now) end
     end
 
@@ -1359,11 +1429,39 @@ end
 -- ACU on land (assassination), a game ender, the enemy anti-nuke while the
 -- team owns a nuke; else nothing - bombing mexes is a waste.
 -- c: { acu = bool, ender = bool, antiNuke = bool, ownNuke = bool }
+-- Then a big enemy army (helping our ground), then T3 power generators
+-- (they blow up their neighbours); never mexes.
 function BomberTargetKind(c)
     if c.acu then return 'ACU' end
     if c.ender then return 'ENDER' end
     if c.antiNuke and c.ownNuke then return 'ANTINUKE' end
+    if c.army then return 'ARMY' end
+    if c.power then return 'POWER' end
     return nil
+end
+
+local CatArmyTarget = categories.MOBILE * (categories.LAND + categories.NAVAL) - categories.ENGINEER - categories.COMMAND
+
+-- The known enemy unit in the heaviest army cluster (Config.ArmyStrikeMass
+-- or more), the nearest to our front first; known AA below maxAA.
+function ArmyTarget(brain, ctx, maxAA)
+    local front = ctx.frontPoint or ctx.choke or ctx.startPos
+    local best, bestScore
+    for _, e in ipairs(KnownNear(brain, CatArmyTarget, front, MapRadius())) do
+        local p = e:GetPosition()
+        if not maxAA or Intel.AAThreat(ctx.side, p, 50) < maxAA then
+            local m = 0
+            for _, o in ipairs(KnownNear(brain, CatArmyTarget, p, Config.ArmyStrikeRadius)) do
+                local eco = o:GetBlueprint().Economy
+                m = m + ((eco and eco.BuildCostMass) or 0)
+            end
+            if m >= Config.ArmyStrikeMass then
+                local score = m / (1 + Utils.Dist2D(p, front) / 200)
+                if not bestScore or score > bestScore then best, bestScore = e, score end
+            end
+        end
+    end
+    return best
 end
 
 local function OwnTeamNuke(brain)
@@ -1392,9 +1490,12 @@ function BomberTarget(brain, ctx, maxAA, ok)
     t = pick(enders)
     if t then return t end
     if OwnTeamNuke(brain) then
-        return pick(KnownNear(brain, categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE, ctx.startPos, MapRadius()))
+        t = pick(KnownNear(brain, categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE, ctx.startPos, MapRadius()))
+        if t then return t end
     end
-    return nil
+    t = ArmyTarget(brain, ctx, maxAA)
+    if t and (not ok or ok(t)) then return t end
+    return pick(KnownNear(brain, categories.ENERGYPRODUCTION * categories.TECH3 * categories.STRUCTURE, ctx.startPos, MapRadius()))
 end
 
 -- Scouted game enders first (if endersOk), then `cat`; among them the

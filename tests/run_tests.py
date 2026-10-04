@@ -1075,7 +1075,7 @@ return A.BomberTargetKind({ acu = true, ender = true, antiNuke = true, ownNuke =
        A.BomberTargetKind({})
 """)
 check(bt[0] == 'ACU' and bt[1] == 'ENDER' and bt[2] == 'ANTINUKE', 'bombers: ACU (assassination) > game ender > anti-nuke (own nuke)')
-check(bt[3] is None and bt[4] is None, 'bombers: no strike on mexes - nothing worth it, they wait')
+check(bt[3] is None and bt[4] is None, 'bombers: no strike on mexes')
 
 pa = lua.execute(r"""
 local E = import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua')
@@ -1103,6 +1103,19 @@ return E.FactoryAllowed(2, 10, 0, 1), E.FactoryAllowed(5, 10, 0, 1), E.FactoryAl
 check(fa[0] and not fa[1] and fa[2] and not fa[3], 'production factories: first half even without stored mass, the rest with it, never without energy')
 check(fa[4] >= 180, 'AIR sends at most one scout pack every few minutes')
 check(fa[5], 'allied bases get a smaller SAM ring than AIR\'s own base')
+
+ac = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local gb = {2,0,2}
+local s = A.LandFallbackStops({1,0,1}, gb, { gb, {3,0,3} })
+return A.BomberTargetKind({ army = true, power = true }), A.BomberTargetKind({ power = true }),
+       A.BomberTargetKind({ ender = true, army = true }),
+       A.SweepWanted(40, 10, 500), A.SweepWanted(40, 30, 500), A.SweepWanted(10, 0, 500), A.SweepWanted(40, 10, 30),
+       table.getn(s), s[1][1], s[2][1], s[3][1]
+""")
+check(ac[0] == 'ARMY' and ac[1] == 'POWER' and ac[2] == 'ENDER', 'bombers: enemy army at the front, then T3 power, after the strategic targets')
+check(ac[3] and not ac[4] and not ac[5] and not ac[6], 'air sweep: enough fighters, clearly more than the enemy\'s, not too often')
+check(ac[7] == 3 and ac[8] == 1 and ac[9] == 2 and ac[10] == 3, 'land waves with nothing scouted walk on: enemy mid, its base, the other bases')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

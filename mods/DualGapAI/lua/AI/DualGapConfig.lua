@@ -431,7 +431,22 @@ AirParkBack = 25
 -- Gunships (GunshipGroupMin or more) go for known enemy army within
 -- GunshipFrontRadius of the own mid front, or to an ally calling for help.
 GunshipGroupMin    = 4
-GunshipFrontRadius = 150
+GunshipFrontRadius = 250
+
+-- Air superiority sweep: with AirSweepMin free fighters and AirSweepRatio
+-- times the known enemy fighters, AIR sends its fighters (all but
+-- AirSweepHomeShare) over the enemy's side of the front for AirSweepSeconds
+-- to kill its fighters, at most once per AirSweepCooldown.
+AirSweepMin       = 25
+AirSweepRatio     = 1.5
+AirSweepHomeShare = 0.25
+AirSweepSeconds   = 90
+AirSweepCooldown  = 120
+
+-- Bombers on enemy armies: a cluster of known enemy land / sea units worth
+-- at least ArmyStrikeMass within ArmyStrikeRadius (near our front first).
+ArmyStrikeMass    = 1200
+ArmyStrikeRadius  = 40
 
 SiloPauseEnergy  = 0.1
 SiloResumeEnergy = 0.4
