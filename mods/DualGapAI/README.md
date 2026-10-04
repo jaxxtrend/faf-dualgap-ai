@@ -90,7 +90,9 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   40 s while both AIR players send 80% of their free fighters and all free bombers to guard it. Then
   it goes for the enemy ECO's commander (on land; else the heart of the enemy ECO base) and the bombers dive in on the
   target once the T4 is within 140 of it. On the march the fighters are held on a screen 30 ahead of the T4 and the bombers
-  20 behind it, renewed every 5 s: nobody races ahead, the escort meets enemy fighters and ground AA fire before the T4 does. Novax satellites also go for the enemy ECO commander first when it is seen and unshielded.
+  20 behind it, renewed every 5 s: nobody races ahead, the escort meets enemy fighters and ground AA fire before the T4 does.
+  The group flies round the map edge, not over the mid and its AA (routes drawn by a player): to an upper base along the
+  north edge, to a lower base along the south edge under the basin, turning up into the base from below. Novax satellites also go for the enemy ECO commander first when it is seen and unshielded.
 - **Everyone on a game ender.** A scouted enemy game ender is the whole team's target: AIR strikes it once 30+ planes are home and free, land waves
   leave with a smaller size (fleets at full size) and take the less defended mid lane to it, fleets sail to the water next to it, nukes and artillery
   already put it first.
