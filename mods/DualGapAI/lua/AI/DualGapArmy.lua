@@ -519,7 +519,7 @@ end
 
 -- Exposed for tests: escort size for a strike, or nil to hold it.
 function EscortSize(enemyFighters, available)
-    if enemyFighters > 0 and available < math.ceil(enemyFighters * Config.EscortLaunchRatio) then return nil end
+    if enemyFighters > Config.EscortIgnore and available < math.ceil(enemyFighters * Config.EscortLaunchRatio) then return nil end
     return math.min(available, math.max(Config.EscortMin, math.ceil(enemyFighters * Config.EscortRatio)))
 end
 

@@ -167,6 +167,7 @@ InterceptSeconds   = 30
 -- that many fighters are free (people go in at rough parity too).
 EscortRatio        = 1.2
 EscortLaunchRatio  = 0.8
+EscortIgnore       = 2      -- this few known enemy fighters: go even without an escort
 EscortMin          = 4
 BomberFlankShare   = 0.35
 BomberDelay        = 6

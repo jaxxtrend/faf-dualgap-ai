@@ -674,6 +674,7 @@ check(A.EscortSize(10, 7) is None and A.EscortSize(10, 8) == 8,
       'a strike waits only while the escort is below 0.8x the known enemy fighters')
 check(A.EscortSize(10, 30) == 12, 'escort = 1.2x the known enemy fighters')
 check(A.EscortSize(0, 2) == 2 and A.EscortSize(0, 20) == 4, 'with no enemy fighters known, up to 4 escorts go')
+check(A.EscortSize(2, 0) == 0 and A.EscortSize(3, 0) is None, 'one or two enemy fighters do not hold a strike without escorts')
 
 F = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapFactories.lua')")
 pick = lua.execute(r"""
@@ -812,6 +813,19 @@ local d = math.sqrt((sp[1] - 900) ^ 2 + (sp[3] - 390) ^ 2)
 return d, sp[1] < 900 and sp[1] > 446
 """)
 check(abs(hide[0] - 100) < 0.01 and hide[1], 'siege camp sits 100 from the enemy base, on the way from the mid')
+
+deep = lua.execute(r"""
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local best = U.DeepestRearWater('LEFT')
+local okEmpty, e1 = pcall(U.DeepestRearWater, 'LEFT', {}, 150)
+local okPoint, p1 = pcall(U.DeepestRearWater, 'LEFT', best, 150)
+local okList, p2 = pcall(U.DeepestRearWater, 'LEFT', { best }, 150)
+local apart = p1 and math.sqrt((p1[1] - best[1]) ^ 2 + (p1[3] - best[3]) ^ 2) >= 150
+local same = p1 and p2 and p1[1] == p2[1] and p1[3] == p2[3]
+return best ~= nil, okEmpty and e1 ~= nil, okPoint and okList and apart and same
+""")
+check(deep[0] and deep[1], 'hiding spot search works with an empty list of allied spots')
+check(deep[2], 'a second ACU hides 150+ away from the first (point or list of points)')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

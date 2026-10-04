@@ -244,7 +244,8 @@ RearDepth = 0.35
 function DeepestRearWater(side, avoid, minDist)
     -- avoid: one point or a list of points.
     local avoidList = {}
-    if avoid and type(avoid[1]) == 'table' then avoidList = avoid elseif avoid then avoidList = { avoid } end
+    -- A point is {x, y, z}; anything else (incl. an empty table) is a list.
+    if avoid and type(avoid[1]) == 'number' then avoidList = { avoid } elseif avoid then avoidList = avoid end
     local x0, z0, x1, z1 = MapBounds()
     local best, bestDepth
     local x = x0 + 4
