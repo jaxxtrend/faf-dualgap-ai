@@ -71,13 +71,21 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   a second one at 2+ nukes). Without enemy nukes the anti-nuke goes up after the first T3 power generator.
   The anti-nuke is first in the project queue, so ECO's game ender can't hold it up. Enemy T3/T4 artillery spotted → the heavy shield ring grows from 3 to 5.
   Bombers and air experimentals hit scouted game enders first, picking the one with the least AA around.
-  Own nuke and anti-nuke missiles load automatically. Nukes hit scouted targets not covered by an enemy anti-nuke.
+  Own nuke and anti-nuke missiles load automatically. Nukes fire in salvos timed to land together: against a target covered by N known
+  enemy anti-nukes they wait for N + 1 loaded missiles and then fire N + 2 if they have them (game enders, an ACU on land, or a spot worth
+  8000+ mass). ECO keeps at most 3 nuke launchers (4 T3 artillery, 2 T4 artillery).
+  Enemy Yolona Oss spotted → every base stacks 6 anti-nukes, and idle engineers assist them so interceptors load faster.
   Artillery (T2 at the proxy, T3, T4) and Novax satellites (anywhere on the map) pick targets by priority: game enders (T3/T4 artillery, nukes, Yolona Oss, Paragon, the Novax satellite centre and any other experimental structure) → the enemy anti-nuke while we own a nuke →
-  the ACU if it is in sight, not underwater and not under a shield → mexes and power → factories.
+  the ACU if it is in sight, not underwater and not under a shield → T3 mexes → T3 power → factories. Long-range guns (T3/T4 artillery,
+  satellites) don't waste shells on T1/T2 mexes; the T2 proxy artillery does hit them. Structures are hit by ground fire on their spot,
+  so a structure seen earlier is still hit; a T2 gun with an enemy army in range and nothing better than eco to shoot fires on its own
+  at the army.
   A target under enemy shields that are up is worth 1 + 2×(shields) times less, so the guns hit something unshielded instead of pounding a shield.
   Targets are re-picked every 10 seconds, so an ACU walking into range becomes the target at once.
 - **Base shields.** Every base gets two T2 shields over its core at T2 and a ring of 3 heavy shields at T3 (5 once enemy artillery is scouted).
   Lost shields are rebuilt; shields climb their upgrade chain when the economy allows.
+- **Realistic building.** A bot has at most 3 new structures going up at a time (an expensive one counts double; mexes and storages
+  are free, power is free while energy is nearly gone, the anti-nuke always may start). Other engineers assist what is being built.
 - **Base upkeep.** Every structure near the start is remembered by its spot; when one is destroyed, an engineer rebuilds it there
   (an upgraded one from the bottom of its chain). Mexes, factories, AA, shields, anti-nuke and artillery are rebuilt by their own planners.
 - **Base anti-air.** Each base gets one T1 AA from the start, three T2 flak around it at T2 and a full ring of 8 T3 SAMs at T3. Lost ones are rebuilt.
@@ -97,7 +105,10 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
 - **Search.** If the team has known nothing about the enemy for 90 seconds (usually the last ACU hiding underwater), search mode starts:
   torpedo bombers and spy planes with sonar sweep the enemy's deepest water, fleets sail there even two ships at a time,
   land waves walk the enemy bases. Torpedo bombers attack a submerged ACU once it is found.
-- **ACU underwater.** Helps a naval factory or an experimental under construction within 150 of its hiding spot.
+- **ACU underwater.** A known enemy land experimental near the GROUND / NAVAL ACU sends it underwater, where land T4s can't hurt it.
+  Underwater only warships are a danger: a known fleet close by makes it move to another deep spot (or home).
+  While hiding it builds 2 torpedo launchers around the spot and 2 T3 SAMs on the nearest shore, then helps a naval factory
+  or an experimental under construction within 150 of the spot.
 - **Placement.** Building sizes come from the skirt (8 cells for a factory, not the 5-cell footprint), so grid buildings really touch.
   Other structures keep 2-cell gaps, nothing is placed in front of factory exits,
   and power generators never go on a factory's exit side. This keeps units from getting stuck in the base.

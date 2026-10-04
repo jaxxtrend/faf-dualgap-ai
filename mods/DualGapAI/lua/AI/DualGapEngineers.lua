@@ -14,6 +14,15 @@
 -- Grid: power goes next to air factories first (adjacency cuts their energy
 -- cost), then next to mass fabricators, then next to any factory; mass
 -- fabricators go next to T3 power.
+--
+-- Like a human player, a bot only has a few new structures going up at a
+-- time (Utils.CanStartBuild / Config.MaxConcurrentBuilds): when the slots
+-- are full, engineers assist what is already being built instead of
+-- starting more. Mexes and storages are exempt, and so is power while
+-- energy is running out.
+--
+-- Enemy Yolona Oss known: idle engineers assist own anti-nukes so they
+-- build interceptor missiles faster (Config.SMDAmmoWanted).
 
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
@@ -492,6 +501,8 @@ local function TryPower(brain, ctx, u)
     if not EnergyLow(brain) or PowerUnderConstruction(brain) >= 2 then return false end
     local id = BestPowerId(brain, u)
     if not id then return false end
+    -- Power may skip the queue only when energy is nearly gone.
+    if brain:GetEconomyStoredRatio('ENERGY') > 0.1 and not Utils.CanStartBuild(brain, id) then return false end
     local spot = GridSpot(brain, id, PowerAnchors(brain))
         or PickSpots(brain, id, 1, nil, BaseSite(ctx, -12))[1]
     if not spot then return false end
@@ -580,7 +591,9 @@ local function TryRebuild(brain, ctx, u)
             local c = ctx.rebuildClaims[key]
             if not (c and c.expires > now and c.unit ~= u and Alive(c.unit)) then
                 local id = BuildableRoot(r.id, canBuild, __blueprints)
-                if id and brain:CanBuildStructureAt(id, r.pos) then
+                if id and not Utils.CanStartBuild(brain, id) then
+                    id = nil        -- slots full: rebuild later
+                elseif id and brain:CanBuildStructureAt(id, r.pos) then
                     if not Unsafe(brain, r.pos) then
                         local d = Utils.Dist2D(from, r.pos)
                         if not bestD or d < bestD then best, bestD, bestId, bestKey = r, d, id, key end
@@ -601,13 +614,37 @@ local function TryRebuild(brain, ctx, u)
     return true
 end
 
+-- Yolona Oss: speed up interceptor missiles by assisting own anti-nukes.
+local CatSMD = categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE
+
+local function TryAssistSMD(brain, ctx, u)
+    local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+    if table.getn(Intel.Enders(ctx.side, 'YOLONA')) == 0 then return false end
+    for _, s in ipairs(brain:GetListOfUnits(CatSMD, false)) do
+        if Alive(s) and s:GetFractionComplete() >= 1 and s.GetTacticalSiloAmmoCount
+            and s:GetTacticalSiloAmmoCount() < Config.SMDAmmoWanted then
+            local helpers = {}
+            for _, h in ipairs(s.DGHelpers or {}) do
+                if Alive(h) and not h:IsIdleState() then table.insert(helpers, h) end
+            end
+            s.DGHelpers = helpers
+            if table.getn(helpers) < Config.SMDHelpers then
+                table.insert(s.DGHelpers, u)
+                IssueGuard({ u }, s)
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- Mass fabricators next to T3 power while energy overflows.
 local function TryMassFab(brain, ctx, u)
     local id = Utils.FactionId(brain, 'MassFabT3')
     if not id or not u:CanBuild(id) then return false end
     if brain:GetEconomyStoredRatio('ENERGY') < 0.9 or brain:GetEconomyStoredRatio('MASS') > 0.5 then return false end
     if brain:GetEconomyTrend('ENERGY') * 10 < Config.MassFabEnergySurplus then return false end
-    if FirstUnfinished(brain, CatMassFab) then return false end
+    if FirstUnfinished(brain, CatMassFab) or not Utils.CanStartBuild(brain, id) then return false end
     local anchors = {}
     for _, g in ipairs(brain:GetListOfUnits(CatPowerT3, false)) do
         if Alive(g) and g:GetFractionComplete() >= 1 then table.insert(anchors, g) end
@@ -634,6 +671,7 @@ local function TryFactories(brain, ctx, u)
                 return true
             end
             local id = Utils.FactoryId(brain, kind, 1)
+            if not Utils.CanStartBuild(brain, id) then return false end
             local site = BaseSite(ctx, 0)
             if kind == 'Naval' then
                 site = ctx.yardPos or Utils.FindNearestWater(ctx.startPos, 1.5, 250)
@@ -651,6 +689,12 @@ local function TryFactories(brain, ctx, u)
 end
 
 local function TryAssist(brain, ctx, u)
+    -- Finish what is being built before helping the factory.
+    local building = FirstUnfinished(brain, categories.STRUCTURE - categories.MASSEXTRACTION, ctx.startPos, 80)
+    if building then
+        IssueRepair({ u }, building)
+        return true
+    end
     local f = MainFactory(brain, ctx)
     if f and not f:IsIdleState() then
         IssueGuard({ u }, f)
@@ -668,6 +712,7 @@ end
 -- baseOnly: the ACU in base-builder mode never wanders off.
 local function GeneralTask(brain, ctx, u, baseOnly)
     if not baseOnly and Projects().Offer(brain, ctx, u) then return end
+    if not baseOnly and TryAssistSMD(brain, ctx, u) then return end
     if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end
     if TryPower(brain, ctx, u) then return end

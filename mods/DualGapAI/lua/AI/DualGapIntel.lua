@@ -64,6 +64,8 @@ function Known(e, army)
 end
 
 local function EnderKind(e)
+    -- Yolona Oss: an experimental launcher that fires nukes one after another.
+    if EntityCategoryContains(categories.NUKE * categories.EXPERIMENTAL, e) then return 'YOLONA' end
     if EntityCategoryContains(categories.NUKE, e) then return 'NUKE' end
     if EntityCategoryContains(categories.ARTILLERY, e) then return 'ARTY' end
     return 'T4'
@@ -88,7 +90,9 @@ local function Scan(side, brain)
             t.enders[key] = { unit = e, kind = EnderKind(e), pos = e:GetPosition() }
             Utils.Log(brain, 'scouted enemy game ender: ' .. EnderKind(e) .. ' '
                 .. tostring(e:GetBlueprint().BlueprintId))
-            local what = (EnderKind(e) == 'NUKE') and 'Enemy NUKE' or ('Enemy ' .. Comms.UnitName(e))
+            local what = 'Enemy ' .. Comms.UnitName(e)
+            if EnderKind(e) == 'NUKE' then what = 'Enemy NUKE' end
+            if EnderKind(e) == 'YOLONA' then what = 'Enemy YOLONA OSS (rapid nukes), build anti-nukes!' end
             local state = (e:GetFractionComplete() < 1) and ' under construction' or ''
             Comms.Say(brain, side, 'ender:' .. key, what .. state .. ' spotted here!', e:GetPosition(), 'alert')
         end
@@ -200,10 +204,16 @@ end
 
 -- Is pos covered by a known enemy anti-nuke (SMD range 90)?
 function UnderEnemyAntiNuke(side, pos)
+    return AntiNukesCovering(side, pos) > 0
+end
+
+-- How many known enemy anti-nukes cover pos.
+function AntiNukesCovering(side, pos)
+    local n = 0
     for _, p in ipairs(Team(side).antiNukes) do
-        if Utils.Dist2D(p, pos) <= 92 then return true end
+        if Utils.Dist2D(p, pos) <= 92 then n = n + 1 end
     end
-    return false
+    return n
 end
 
 -- Exposed for tests: replace a side's memory.

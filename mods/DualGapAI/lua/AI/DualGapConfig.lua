@@ -203,6 +203,46 @@ MassFabEnergySurplus = 1500     -- energy/s trend needed before a fabricator
 -- no unit) for this long, it starts searching the enemy's deep water.
 StaleSeconds = 90
 
+-- Game enders ECO keeps building, at most this many of a kind alive
+-- (nil = no limit).
+GameEnderMax = { NukeSilo = 3, StratArtyT3 = 4, ArtilleryT4 = 2 }
+
+-- Nukes fire in salvos timed to land together: against a target covered by
+-- N known enemy anti-nukes, N + NukeSalvoMargin missiles (at least N + 1
+-- must be loaded). A target must be worth at least NukeMinValue mass
+-- (known enemy units within 30 of it) unless it is a game ender or an ACU.
+NukeSalvoMargin = 1
+NukeMinValue    = 8000
+
+-- Enemy Yolona Oss scouted: every base puts up YolonaAntiNukes anti-nukes
+-- and idle engineers assist them (faster interceptor missiles) until each
+-- holds SMDAmmoWanted missiles; up to SMDHelpers engineers per anti-nuke.
+YolonaAntiNukes = 6
+SMDAmmoWanted   = 4
+SMDHelpers      = 4
+
+-- Realistic building: at most MaxConcurrentBuilds new structures under
+-- construction per player (mexes and storages don't count; one costing
+-- ExpensiveMass or more counts double; top-priority projects such as the
+-- anti-nuke always may start). Engineers that can't start something new
+-- assist what is already being built.
+MaxConcurrentBuilds = 3
+ExpensiveMass       = 2500
+
+-- ACU and water. A known enemy land experimental within T4DangerRadius of
+-- the GROUND / NAVAL ACU sends it underwater (land T4s can't hurt it
+-- there). Underwater, known enemy warships within NavalDangerRadius worth
+-- NavalDangerStrength (T1 = 1, T2 = 3, T3 = 8, T4 = 20) make it move to
+-- another deep spot at least NavalEvadeDistance away (or home, on land).
+-- While hiding it guards its spot with HideTorpedoes torpedo launchers and
+-- HideSAMs T3 SAMs on the nearest shore.
+T4DangerRadius      = 120
+NavalDangerRadius   = 90
+NavalDangerStrength = 3
+NavalEvadeDistance  = 150
+HideTorpedoes       = 2
+HideSAMs            = 2
+
 -- Telemetry (DualGapStats): a DGSTAT snapshot line in the game log every
 -- StatsInterval seconds, the full structure layout every
 -- StatsLayoutInterval seconds. Read by tools/parse_match.py & co.

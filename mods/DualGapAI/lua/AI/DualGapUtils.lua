@@ -235,9 +235,10 @@ end
 -- Deepest water in the own rear (layout nx <= RearDepth for LEFT, mirrored
 -- for RIGHT), inside the current playable area. Sampled on an 8-unit grid;
 -- recomputed per call because the adaptive map can grow its playable area.
+-- avoid / minDist: skip spots closer than minDist to avoid.
 RearDepth = 0.35
 
-function DeepestRearWater(side)
+function DeepestRearWater(side, avoid, minDist)
     local x0, z0, x1, z1 = MapBounds()
     local best, bestDepth
     local x = x0 + 4
@@ -248,7 +249,8 @@ function DeepestRearWater(side)
             local z = z0 + 4
             while z < z1 do
                 local d = WaterDepth(x, z)
-                if d >= Config.DeepWaterDepth and (not bestDepth or d > bestDepth) then
+                local far = not avoid or math.sqrt((x - avoid[1]) * (x - avoid[1]) + (z - avoid[3]) * (z - avoid[3])) >= minDist
+                if far and d >= Config.DeepWaterDepth and (not bestDepth or d > bestDepth) then
                     best, bestDepth = { x, GetSurfaceHeight(x, z), z }, d
                 end
                 z = z + 8
@@ -328,6 +330,33 @@ function BuildNear(brain, builder, bpId, pos, maxRadius, gap)
     if not spot then return false end
     IssueBuildMobile({ builder }, spot, bpId, {})
     return true
+end
+
+-- Realistic building (Config.MaxConcurrentBuilds): may this player start
+-- one more new structure of bpId? Mexes and storages are always fine.
+local CatFree = categories.MASSEXTRACTION + categories.MASSSTORAGE + categories.ENERGYSTORAGE + categories.WALL
+
+function BuildWeight(bp)
+    local eco = bp and bp.Economy
+    if eco and (eco.BuildCostMass or 0) >= Config.ExpensiveMass then return 2 end
+    return 1
+end
+
+-- Exposed for tests: the decision itself.
+function SlotsAllow(usedWeight, newWeight)
+    return usedWeight + newWeight <= Config.MaxConcurrentBuilds
+end
+
+function CanStartBuild(brain, bpId)
+    local bp = __blueprints[bpId]
+    if not bp then return true end
+    local cats = bp.CategoriesHash or {}
+    if cats.MASSEXTRACTION or cats.MASSSTORAGE or cats.ENERGYSTORAGE or cats.WALL then return true end
+    local used = 0
+    for _, u in ipairs(brain:GetListOfUnits(categories.STRUCTURE - CatFree, false)) do
+        if Alive(u) and u:GetFractionComplete() < 1 then used = used + BuildWeight(u:GetBlueprint()) end
+    end
+    return SlotsAllow(used, BuildWeight(bp))
 end
 
 function CountAround(brain, category, pos, radius, alliance)

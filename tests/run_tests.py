@@ -739,6 +739,31 @@ import runpy
 sim = runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sim_opening.py'))
 failures.extend(sim['failures'])
 
+# ---------------------------------------------------------------- feedback round 7
+print('\nLong-range targets, nuke salvos, build slots, ACU vs land T4')
+P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
+S = P.ArtilleryScore
+check(S('MEX3', 0, False, False, True) > S('ECO3', 0, False, False, True) > S('FACTORY', 0, False, False, True)
+      > S('MEX', 0, False, False, True),
+      'long-range artillery: T3 mexes > T3 power > factories > T1/T2 mexes')
+check(S('MEX', 0, False, False, True) <= 2 and S('MEX', 0, False, False, False) >= 35,
+      'T1/T2 mexes are not worth a T3/T4 shell, but are fine for the T2 proxy artillery')
+check(S('MEX3', 0, False, False, True) > S('MEX3', 1, False, False, True),
+      'an unshielded T3 mex is preferred to a shielded one')
+check(P.SalvoSize(0, 1) == 1 and P.SalvoSize(0, 3) == 2, 'no anti-nuke: one missile (plus margin if loaded)')
+check(P.SalvoSize(2, 2) == 0, 'two anti-nukes and two missiles: hold fire')
+check(P.SalvoSize(2, 3) == 3 and P.SalvoSize(2, 9) == 4, 'two anti-nukes: salvo of 3, or 4 with spare missiles')
+U = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')")
+check(U.SlotsAllow(0, 1) and U.SlotsAllow(2, 1) and not U.SlotsAllow(3, 1),
+      'at most 3 new structures under construction at once')
+check(U.SlotsAllow(1, 2) and not U.SlotsAllow(2, 2), 'an expensive structure takes two of the three slots')
+A = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')")
+check(A.SafetyDecision(1.0, False, False, 0, 0, 0, True) == 'DEEP',
+      'a land experimental nearby sends the ACU underwater (it cannot reach it there)')
+check(A.SafetyDecision(1.0, False, False, 8, 0, 0, True) == 'LAND',
+      '...unless torpedo bombers own the water')
+check(A.SafetyDecision(1.0, False, False, 0, 0, 0, False) is None, 'no threat: the ACU keeps working')
+
 # ---------------------------------------------------------------- telemetry
 print('\nTelemetry (DGSTAT lines) and the analysis tools')
 import json as _json

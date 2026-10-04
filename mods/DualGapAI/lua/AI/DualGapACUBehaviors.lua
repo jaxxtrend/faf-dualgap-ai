@@ -8,6 +8,8 @@ local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
 local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
+local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
 
 local Alive = Utils.Alive
 
@@ -73,14 +75,33 @@ end
 
 ---------------------------------------------------------------------------
 -- Safety. GROUND / NAVAL ACUs hide at maximum depth in the rear at the end of
--- the T2 phase (ctx.t2EndTime), on low HP, against enemy strategic artillery
--- or when many bombers are around. If the air threat is mostly torpedo
--- bombers, water is the dangerous place: stay on land and build in base.
+-- the T2 phase (ctx.t2EndTime), on low HP, against enemy strategic artillery,
+-- when many bombers are around, or when a known enemy land experimental
+-- comes close (land T4s can't hurt an ACU underwater). If the air threat is
+-- mostly torpedo bombers, water is the dangerous place: stay on land and
+-- build in base. Underwater, only warships are a danger: a strong enough
+-- known fleet close by makes the ACU move to another deep spot (or home).
 -- AIR / ECO ACUs never leave the base and only fall back to the start.
 ---------------------------------------------------------------------------
 local CatEnemyAir = categories.AIR * categories.MOBILE - categories.SCOUT
 local CatTorpAir = CatEnemyAir * categories.ANTINAVY
 local CatBomberAir = CatEnemyAir * (categories.BOMBER + categories.GROUNDATTACK) - categories.ANTINAVY
+
+local CatEnemyLandT4 = categories.LAND * categories.MOBILE * categories.EXPERIMENTAL
+local CatEnemyWarship = categories.NAVAL * categories.MOBILE
+
+-- Known enemy strength near pos: T1 = 1, T2 = 3, T3 = 8, T4 = 20.
+function KnownStrength(brain, cat, pos, radius)
+    local army = brain:GetArmyIndex()
+    local s = 0
+    for _, e in ipairs(brain:GetUnitsAroundPoint(cat, pos, radius, 'Enemy') or {}) do
+        if Intel.Known(e, army) then
+            if EntityCategoryContains(categories.EXPERIMENTAL, e) then s = s + 20
+            else s = s + ({ 1, 3, 8 })[Utils.TechOf(e)] end
+        end
+    end
+    return s
+end
 
 local function EnemyStratArtyPresent(brain, pos)
     return Utils.CountAround(brain, CatStratArty, pos, Config.StratArtyScanRadius, 'Enemy') > 0
@@ -96,11 +117,12 @@ function AirThreat(brain, pos)
 end
 
 -- Pure decision, exposed for tests. Returns 'DEEP', 'LAND' or nil.
-function SafetyDecision(hp, lateT2, stratArty, torp, bombers, otherAir)
+-- landT4: a known enemy land experimental is close.
+function SafetyDecision(hp, lateT2, stratArty, torp, bombers, otherAir, landT4)
     local torpHeavy = torp >= Config.TorpThreat and otherAir < Config.FewAir
     local airHeavy = bombers >= Config.BomberThreat
     if airHeavy then return 'DEEP' end
-    local wantsWater = hp < Config.ACURetreatHealth or lateT2 or stratArty
+    local wantsWater = hp < Config.ACURetreatHealth or lateT2 or stratArty or landT4
     if wantsWater and torpHeavy then return 'LAND' end
     if wantsWater then return 'DEEP' end
     return nil
@@ -116,7 +138,8 @@ local function SafetyStep(brain, ctx)
     if role == 'GROUND' or role == 'NAVAL' then
         local lateT2 = ctx.t2EndTime ~= nil and GetGameTimeSeconds() >= ctx.t2EndTime
         local torp, bombers, otherAir = AirThreat(brain, pos)
-        local want = SafetyDecision(hp, lateT2, EnemyStratArtyPresent(brain, pos), torp, bombers, otherAir)
+        local landT4 = KnownStrength(brain, CatEnemyLandT4, pos, Config.T4DangerRadius) > 0
+        local want = SafetyDecision(hp, lateT2, EnemyStratArtyPresent(brain, pos), torp, bombers, otherAir, landT4)
 
         if want == 'DEEP' and ctx.acuState ~= 'SUBMERGED' then
             local water = Utils.DeepestRearWater(ctx.side)
@@ -278,12 +301,68 @@ function JoinNavalStep(brain, ctx, acu)
     Utils.BuildNear(brain, acu, Utils.FactionId(brain, 'NavalFactoryT1'), spot, 40)
 end
 
+-- Centre of the known enemy warships near pos.
+local function FleetCentre(brain, pos, radius)
+    local army = brain:GetArmyIndex()
+    local x, z, n = 0, 0, 0
+    for _, e in ipairs(brain:GetUnitsAroundPoint(CatEnemyWarship, pos, radius, 'Enemy') or {}) do
+        if Intel.Known(e, army) then
+            local p = e:GetPosition()
+            x, z, n = x + p[1], z + p[3], n + 1
+        end
+    end
+    if n == 0 then return nil end
+    return { x / n, 0, z / n }
+end
+
+-- Guard the hiding spot: torpedo launchers in the water around it, T3 SAMs
+-- on the nearest shore. Returns true if a build order was given.
+local CatTorpedoDef = categories.STRUCTURE * categories.ANTINAVY
+local CatSAM = categories.STRUCTURE * categories.ANTIAIR * categories.TECH3
+
+local function GuardHidingSpot(brain, ctx, acu, home)
+    if brain:GetEconomyStoredRatio('MASS') < 0.1 then return false end
+    if Utils.CountAround(brain, CatTorpedoDef, home, 30, 'Ally') < Config.HideTorpedoes then
+        local id = Utils.FactionId(brain, 'TorpedoT2')
+        if not (id and acu:CanBuild(id)) then id = Utils.FactionId(brain, 'TorpedoT1') end
+        if Utils.BuildNear(brain, acu, id, home, 25, 1) then return true end
+    end
+    if Utils.CountAround(brain, CatSAM, home, 50, 'Ally') < Config.HideSAMs then
+        local id = Utils.FactionId(brain, 'AntiAirT3')
+        -- SAMs stand on land: the spiral search finds the nearest shore.
+        if id and acu:CanBuild(id) and Utils.BuildNear(brain, acu, id, home, 45, 1) then return true end
+    end
+    return false
+end
+
 function SubmergedStep(brain, ctx)
     local acu = Utils.Commander(brain)
-    if not acu or ctx.acuState ~= 'SUBMERGED' or not Utils.IsIdle(acu) then return end
-    local home = ctx.submergePos or acu:GetPosition()
-    -- Stay near the hiding spot: only help what is within reach of it.
-    if Utils.Dist2D(acu:GetPosition(), home) > 160 then return end
+    if not acu or ctx.acuState ~= 'SUBMERGED' then return end
+    local pos = acu:GetPosition()
+
+    -- Warships are the only real danger underwater.
+    if KnownStrength(brain, CatEnemyWarship, pos, Config.NavalDangerRadius) >= Config.NavalDangerStrength then
+        local fleet = FleetCentre(brain, pos, Config.NavalDangerRadius)
+        local spot = fleet and Utils.DeepestRearWater(ctx.side, fleet, Config.NavalEvadeDistance)
+        IssueClearCommands({ acu })
+        if spot then
+            Utils.Log(brain, 'ACU moves away from an enemy fleet to another deep spot')
+            IssueMove({ acu }, spot)
+            ctx.submergePos = spot
+        else
+            Utils.Log(brain, 'ACU leaves the water: enemy fleet close and no other deep spot')
+            IssueMove({ acu }, ctx.startPos)
+            ctx.acuState = 'LANDBUILD'
+        end
+        Comms.Say(brain, ctx.side, 'acufleet:' .. brain.Name, 'Enemy navy at my hidden ACU, moving it!', pos, 'alert')
+        return
+    end
+
+    if not Utils.IsIdle(acu) then return end
+    local home = ctx.submergePos or pos
+    -- Stay near the hiding spot: only work within reach of it.
+    if Utils.Dist2D(pos, home) > 160 then return end
+    if GuardHidingSpot(brain, ctx, acu, home) then return end
     HelpNavy(brain, ctx, acu, home, 150)
 end
 
