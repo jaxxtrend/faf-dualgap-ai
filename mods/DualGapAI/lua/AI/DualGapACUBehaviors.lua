@@ -226,6 +226,57 @@ local function RefugeSpot(brain, ctx)
     return best
 end
 
+-- Exposed for tests: the spot to dodge a nuke at: the least built-up one
+-- (a nuke goes for the densest, most valuable cluster). cands: { {pos,
+-- value} }, value = own structure mass within the blast.
+function NukeDodgePick(cands)
+    local best, bestV
+    for _, c in ipairs(cands) do
+        if not bestV or c.value < bestV then best, bestV = c.pos, c.value end
+    end
+    return best
+end
+
+-- Candidate dodge spots: a ring around the start, valued by the own
+-- structures within the blast radius.
+local function NukeDodgeSpot(brain, ctx)
+    local cands = {}
+    for i = 0, 7 do
+        local a = i * math.pi / 4
+        local x = ctx.startPos[1] + math.cos(a) * Config.NukeDodgeDistance
+        local z = ctx.startPos[3] + math.sin(a) * Config.NukeDodgeDistance
+        local p = { x, GetSurfaceHeight(x, z), z }
+        local v = 0
+        for _, u in ipairs(brain:GetUnitsAroundPoint(categories.STRUCTURE, p, 35, 'Ally') or {}) do
+            local eco = Alive(u) and u:GetBlueprint().Economy
+            v = v + ((eco and eco.BuildCostMass) or 0)
+        end
+        table.insert(cands, { pos = p, value = v })
+    end
+    return NukeDodgePick(cands)
+end
+
+-- AIR / ECO ACU: an enemy nuke in the air and no loaded anti-nuke over the
+-- base -> out of the dense part of the base until it has landed.
+local function NukeDodgeStep(brain, ctx, acu, pos)
+    local now = GetGameTimeSeconds()
+    local inFlight, loaded = NukeDanger(brain, ctx, pos)
+    if inFlight and not loaded then
+        if not ctx.dodgeSpot then
+            ctx.dodgeSpot = NukeDodgeSpot(brain, ctx)
+            Utils.Log(brain, 'ACU leaves the dense base: enemy nuke launched, no loaded anti-nuke')
+        end
+        if ctx.dodgeSpot and Utils.Dist2D(pos, ctx.dodgeSpot) > 6 then
+            IssueClearCommands({ acu })
+            IssueMove({ acu }, ctx.dodgeSpot)
+        end
+        ctx.refugeUntil = now + 5          -- the engineers leave the ACU be meanwhile
+        return true
+    end
+    ctx.dodgeSpot = nil
+    return false
+end
+
 -- AIR / ECO ACU: an enemy air experimental coming -> under the guns.
 -- Returns true while the ACU is taking refuge (the engineers leave it be).
 function RefugeStep(brain, ctx, acu, pos)
@@ -294,6 +345,7 @@ local function SafetyStep(brain, ctx)
             SetHideSpot(brain, ctx, nil)
         end
     else
+        if NukeDodgeStep(brain, ctx, acu, pos) then return end
         if RefugeStep(brain, ctx, acu, pos) then return end
         if hp < Config.ACURetreatHealth and Utils.Dist2D(pos, ctx.startPos) > 20 then
             IssueClearCommands({ acu })

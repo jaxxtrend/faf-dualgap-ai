@@ -1202,6 +1202,13 @@ return B.RefugeScore(3, 0, true) > B.RefugeScore(3, 0, false), B.RefugeScore(2, 
 """)
 check(rf[0] and rf[1], 'an ACU hides from an air T4 where the T3 anti-air and the shields are')
 
+nd = lua.execute(r"""
+local B = import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
+local p = B.NukeDodgePick({ { pos = { 1, 0, 1 }, value = 9000 }, { pos = { 2, 0, 2 }, value = 300 }, { pos = { 3, 0, 3 }, value = 4000 } })
+return p[1]
+""")
+check(nd == 2, 'a base ACU dodges a nuke to the least built-up spot')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

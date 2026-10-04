@@ -213,6 +213,9 @@ FewAir                 = 4
 -- T4 was last seen near.
 RefugeRadius           = 220
 RefugeSeconds          = 20
+-- ...and while an enemy nuke is in the air with no loaded anti-nuke over
+-- the base, they step out of the dense base this far from the start.
+NukeDodgeDistance      = 50
 LandHoldSeconds        = 60     -- an ACU that stayed on land for torpedo bombers keeps to it this long
 -- Reclaim: engineers look for props within this radius of the base.
 ReclaimRadius          = 120
