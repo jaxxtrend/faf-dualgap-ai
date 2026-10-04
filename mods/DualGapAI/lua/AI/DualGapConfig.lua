@@ -393,6 +393,11 @@ EvadeCooldown = 25
 -- enemy is (the start positions); scouts are built from then on.
 ScoutStartSeconds = 600
 
+-- Group anti-nuke: started by the member with the most resources at that
+-- moment (the pick holds this long); the other members' engineers assist it.
+AntiNukePickSeconds = 120
+AntiNukeHelpers     = 6
+
 SiloPauseEnergy  = 0.1
 SiloResumeEnergy = 0.4
 

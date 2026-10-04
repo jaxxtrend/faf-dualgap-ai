@@ -631,6 +631,24 @@ end
 -- Yolona Oss: speed up interceptor missiles by assisting own anti-nukes.
 local CatSMD = categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE
 
+-- The group's anti-nuke going up at the group centre (whoever started it):
+-- help build it, up to Config.AntiNukeHelpers engineers on it.
+local function TryAssistGroupSMD(brain, ctx, u)
+    local center = Projects().GroupCenter(brain, ctx.side)
+    if not center then return false end
+    for _, s in ipairs(brain:GetUnitsAroundPoint(CatSMD, center, 40, 'Ally') or {}) do
+        if Alive(s) and s:GetFractionComplete() < 1 then
+            s.DGBuildHelpers = Utils.FilterAlive(s.DGBuildHelpers or {})
+            if table.getn(s.DGBuildHelpers) < Config.AntiNukeHelpers then
+                table.insert(s.DGBuildHelpers, u)
+                IssueRepair({ u }, s)
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function TryAssistSMD(brain, ctx, u)
     local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
     if table.getn(Intel.Enders(ctx.side, 'YOLONA')) == 0 then return false end
@@ -766,6 +784,7 @@ end
 local function GeneralTask(brain, ctx, u, baseOnly)
     if EnergyStalled(brain) and TryPower(brain, ctx, u) then return end
     if not baseOnly and Projects().Offer(brain, ctx, u, 1) then return end
+    if not baseOnly and TryAssistGroupSMD(brain, ctx, u) then return end
     if not baseOnly and TryAssistSMD(brain, ctx, u) then return end
     if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end

@@ -69,7 +69,7 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   or an enemy experimental has been scouted. NAVAL — the same for the water. They are built on the map's "Protected Experimental Construction"
   markers next to the base; naval experimentals on the water. At the start of its strategic phase ECO randomly picks a game ender
   (T3 artillery, nuke, T4 artillery or T4 air) and keeps building it.
-- **Responses to scouting.** Enemy nuke spotted → anti-nuke right away (one per group of three spawns, at the group's centre, built by ECO > NAVAL > AIR > GROUND;
+- **Responses to scouting.** Enemy nuke spotted → anti-nuke right away (one per group of three spawns, at the group's centre, started by the member with the most resources at that moment while the others' engineers help build it;
   a second one at 2+ nukes). Without enemy nukes the anti-nuke goes up after the first T3 power generator.
   The anti-nuke is first in the project queue, so ECO's game ender can't hold it up. Enemy T3/T4 artillery spotted → the heavy shield ring grows from 3 to 5.
   Bombers and air experimentals hit scouted game enders first, picking the one with the least AA around.
@@ -115,7 +115,9 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   are free, power is free while energy is nearly gone, the anti-nuke always may start). Other engineers assist what is being built.
 - **Base upkeep.** Every structure near the start is remembered by its spot; when one is destroyed, an engineer rebuilds it there
   (an upgraded one from the bottom of its chain). Mexes, factories, AA, shields, anti-nuke and artillery are rebuilt by their own planners.
-- **Base anti-air.** Each base gets one T1 AA from the start, three T2 flak around it at T2 and a full ring of 8 T3 SAMs at T3. Lost ones are rebuilt.
+- **Base anti-air** is the AIR player's job: it builds it around every base of its group of three (its own first) - one T1 AA from the
+  start, three T2 flak at T2 and a full ring of 8 T3 SAMs at T3 per base, and rebuilds lost ones. No other role builds base AA
+  (with a human AIR player, the human does).
 - **Mid.** Each GROUND fortifies the map author's defensive point in its zone. Short walls stand only in front of the point defences, so the gaps stay open.
   At T2 the ACU takes the engineering upgrade, builds a proxy base with T2 engineers (2 T2 shields and 3 T2 artillery ~100 from the enemy's mid defensive point)
   and holds the mid. Once the mid is pushed, the GROUND ACU goes to help the navy.

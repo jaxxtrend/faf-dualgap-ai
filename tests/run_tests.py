@@ -993,6 +993,26 @@ check(rt[2] < 0.12, 'air T4 route to an upper base runs along the north edge (nz
 check(rt[3] == 114 and rt[4] == 1, 'the route ends at the target; already next to it -> straight in')
 check(rt[5], 'the RIGHT team flies the mirrored route (westward)')
 
+an = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+local rich = P.PickAntiNukeBuilder({
+    { name = 'eco', role = 'ECO', stored = 500, income = 20, ready = true },
+    { name = 'air', role = 'AIR', stored = 4000, income = 60, ready = true },
+    { name = 'naval', role = 'NAVAL', stored = 9000, income = 90, ready = false } })
+local tie = P.PickAntiNukeBuilder({
+    { name = 'air', role = 'AIR', stored = 100, income = 10, ready = true },
+    { name = 'eco', role = 'ECO', stored = 100, income = 10, ready = true } })
+local bases = { { name = 'A' }, { name = 'B' }, { name = 'C' } }
+local air = P.AABases('AIR', 'B', bases)
+local eco = P.AABases('ECO', 'A', bases)
+local ground = P.AABases('GROUND', 'A', bases)
+return rich, tie, table.getn(air), air[1].name, table.getn(eco), table.getn(ground)
+""")
+check(an[0] == 'air', 'group anti-nuke: started by the member with the most resources (and a T3 engineer)')
+check(an[1] == 'eco', 'group anti-nuke: a tie goes to ECO')
+check(an[2] == 3 and an[3] == 'B', 'AIR builds the AA rings of all three bases of its group, its own first')
+check(an[4] == 0 and an[5] == 0, 'no other role builds base AA (a human AIR player builds it himself)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

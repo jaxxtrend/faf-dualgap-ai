@@ -353,19 +353,71 @@ local function GroupInfo(side, group)
     return members, { cx / n, GetSurfaceHeight(cx / n, cz / n), cz / n }
 end
 
--- Is this brain the group's anti-nuke builder (best-ranked living DualGap member)?
-local function IsGroupBuilder(brain, members)
-    local best, bestPref
+-- Living DualGap brains of a group.
+local function GroupBrains(members)
+    local out = {}
     for _, m in ipairs(members) do
         for _, b in ipairs(ArmyBrains) do
             if b.Name == m.name and b.DualGap and not Utils.BrainDefeated(b) then
-                local pref = RolePreference[m.role] or 9
-                if not bestPref or pref < bestPref then best, bestPref = b, pref end
+                table.insert(out, { brain = b, role = m.role })
             end
         end
     end
-    return best == brain
+    return out
 end
+
+-- Exposed for tests: the member to start the group's anti-nuke - the one
+-- with the most resources right now (mass stored + half a minute of
+-- income); ties go to the role order ECO, NAVAL, AIR, GROUND.
+-- list: { {name, stored, income (per second), role, ready (T3 engineer)} }
+function PickAntiNukeBuilder(list)
+    local best, bestScore, bestPref
+    for _, m in ipairs(list) do
+        if m.ready then
+            local score = m.stored + 30 * m.income
+            local pref = RolePreference[m.role] or 9
+            if not bestScore or score > bestScore or (score == bestScore and pref < bestPref) then
+                best, bestScore, bestPref = m.name, score, pref
+            end
+        end
+    end
+    return best
+end
+
+-- Is this brain the group's anti-nuke builder? The pick holds for
+-- Config.AntiNukePickSeconds, so two members don't both start one.
+local groupBuilder = {}
+local function IsGroupBuilder(brain, members, key)
+    local now = GetGameTimeSeconds()
+    local rec = groupBuilder[key]
+    local living = GroupBrains(members)
+    if rec and now - rec.at < Config.AntiNukePickSeconds then
+        for _, m in ipairs(living) do
+            if m.brain.Name == rec.name then return rec.name == brain.Name end
+        end
+    end
+    local list = {}
+    for _, m in ipairs(living) do
+        local b = m.brain
+        table.insert(list, { name = b.Name, role = m.role, stored = b:GetEconomyStored('MASS'),
+            income = b:GetEconomyIncome('MASS') * 10,
+            ready = Utils.Count(b:GetListOfUnits(CatEngineer * categories.TECH3, false)) > 0 })
+    end
+    local name = PickAntiNukeBuilder(list)
+    if not name then return false end
+    groupBuilder[key] = { name = name, at = now }
+    return name == brain.Name
+end
+
+-- The centre of this brain's group of three (where the shared anti-nuke stands).
+function GroupCenter(brain, side)
+    local slot = RoleManager.GetSlots()[brain.Name]
+    if not slot then return nil end
+    local _, center = GroupInfo(side, GroupOf(slot.rank))
+    return center
+end
+
+
 
 local CatPowerT3 = categories.ENERGYPRODUCTION * categories.TECH3 * categories.STRUCTURE
 
@@ -387,13 +439,23 @@ local function PlanAntiNuke(brain, ctx)
     local slot = RoleManager.GetSlots()[brain.Name]
     if not slot then return end
     local members, center = GroupInfo(ctx.side, GroupOf(slot.rank))
-    if not members or not IsGroupBuilder(brain, members) then return end
+    if not members then return end
     local nukes = table.getn(Intel.Enders(ctx.side, 'NUKE')) + table.getn(Intel.Enders(ctx.side, 'YOLONA'))
-    local want = AntiNukeWanted(nukes, HasT3Power(brain))
-    if want == 0 or not HasT3Engineer(brain) then return end
+    -- T3 power anywhere in the group counts.
+    local t3 = false
+    for _, m in ipairs(GroupBrains(members)) do if HasT3Power(m.brain) then t3 = true end end
+    local want = AntiNukeWanted(nukes, t3)
+    if want == 0 then return end
     local have = Utils.CountAround(brain, categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE,
         center, 40, 'Ally')
-    if have < want and not Find(ctx, 'AntiNuke') then
+    if have >= want or Find(ctx, 'AntiNuke') then return end
+    -- One being built already: the others assist it (engineers' task).
+    for _, s in ipairs(brain:GetUnitsAroundPoint(categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE,
+        center, 40, 'Ally') or {}) do
+        if Alive(s) and s:GetFractionComplete() < 1 then return end
+    end
+    if not HasT3Engineer(brain) or not IsGroupBuilder(brain, members, ctx.side .. GroupOf(slot.rank)) then return end
+    do
         local p = Add(brain, ctx, { name = 'AntiNuke', key = 'AntiNuke', site = center, crewMax = 4,
             count = want - have, minCrewTech = 2, priority = 1 })
         if p then
@@ -439,12 +501,12 @@ end
 -- A ring of structures around the base: plan the points that have nothing
 -- of `have` (category) within `near` yet. Used for the first build and for
 -- rebuilds alike.
-local function PlanRing(brain, ctx, name, key, have, spec, near, minCrewTech, priority)
+local function PlanRing(brain, ctx, name, key, have, spec, near, minCrewTech, priority, center)
     if Find(ctx, name) then return end
     local dir = (ctx.side == 'LEFT') and 1 or -1
     ctx.badSites = ctx.badSites or {}
     local sites = {}
-    for _, p in ipairs(Ring(ctx.startPos, spec.radius, spec.count, dir)) do
+    for _, p in ipairs(Ring(center or ctx.startPos, spec.radius, spec.count, dir)) do
         p[2] = GetSurfaceHeight(p[1], p[3])
         if not ctx.badSites[SiteKey(p)] and Utils.CountAround(brain, have, p, near, 'Ally') == 0 then
             table.insert(sites, p)
@@ -510,14 +572,42 @@ local function UpgradeIntel(brain, ctx)
     end
 end
 
--- Anti-air ring per tech tier.
+-- Exposed for tests: the bases whose AA ring this player builds. The AIR
+-- player builds the AA of every base of its group of three (its own
+-- first); the others build none (with a human AIR player, the human does).
+-- bases: { {name, pos} } of the group, own: this player's name.
+function AABases(role, own, bases)
+    local out = {}
+    if role == 'AIR' then
+        for _, b in ipairs(bases) do if b.name == own then table.insert(out, b) end end
+        for _, b in ipairs(bases) do if b.name ~= own then table.insert(out, b) end end
+    end
+    return out
+end
+
+-- Anti-air rings per tech tier.
 local function PlanBaseAA(brain, ctx)
     local tech = TopFactoryTech(brain)
-    for t = 1, 3 do
-        local spec = Config.BaseAA[t]
-        if spec and tech >= t then
-            PlanRing(brain, ctx, 'BaseAA' .. t, 'AntiAirT' .. t,
-                categories.ANTIAIR * categories.STRUCTURE * categories['TECH' .. t], spec, 12, t, 4)
+    local slot = RoleManager.GetSlots()[brain.Name]
+    if ctx.role ~= 'AIR' then return end
+    local bases = { { name = brain.Name, pos = ctx.startPos } }
+    if slot then
+        local members = GroupInfo(ctx.side, GroupOf(slot.rank))
+        if members then
+            local slots = RoleManager.GetSlots()
+            for _, m in ipairs(members) do
+                if m.name ~= brain.Name and slots[m.name] then table.insert(bases, { name = m.name, pos = slots[m.name].pos }) end
+            end
+        end
+    end
+    for i, b in ipairs(AABases(ctx.role, brain.Name, bases)) do
+        for t = 1, 3 do
+            local spec = Config.BaseAA[t]
+            if spec and tech >= t then
+                local name = 'BaseAA' .. t .. ((i > 1) and (':' .. b.name) or '')
+                PlanRing(brain, ctx, name, 'AntiAirT' .. t,
+                    categories.ANTIAIR * categories.STRUCTURE * categories['TECH' .. t], spec, 12, t, 4, b.pos)
+            end
         end
     end
 end
