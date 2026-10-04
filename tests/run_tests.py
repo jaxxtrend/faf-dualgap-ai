@@ -975,6 +975,24 @@ check(sk[2] == 'ender' and sk[3] == 2, 'ECO scouts only before its game ender go
 check(sk[4] == 5 and sk[5] == 10, 'AIR scouts fly in packs of 5, later 10 (bases full of AA)')
 check(not sk[6] and sk[7] and sk[8], 'ECO builds scouts once its game ender is 75% done or its air T4 is going in')
 
+rt = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+-- RIGHT attacks the LEFT lower ECO base (114, 639) from its staging.
+local from = U.ToWorld({ 0.10, 0.50 }, 'RIGHT')
+local low = A.T4OpPath('RIGHT', from, { 114, 0, 639 })
+local up = A.T4OpPath('RIGHT', from, { 112, 0, 390 })
+local _, zl = U.Normalise(low[3][1], low[3][3])
+local _, zu = U.Normalise(up[3][1], up[3][3])
+local near = A.T4OpPath('RIGHT', { 130, 0, 640 }, { 114, 0, 639 })
+local n = table.getn(low)
+return table.getn(low), zl, zu, low[n][1], table.getn(near), low[2][1] < from[1]
+""")
+check(rt[0] >= 4 and rt[1] > 0.85, 'air T4 route to a lower base runs along the south edge under the basin (nz %.2f)' % rt[1])
+check(rt[2] < 0.12, 'air T4 route to an upper base runs along the north edge (nz %.2f)' % rt[2])
+check(rt[3] == 114 and rt[4] == 1, 'the route ends at the target; already next to it -> straight in')
+check(rt[5], 'the RIGHT team flies the mirrored route (westward)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

@@ -119,6 +119,16 @@ T4OpBomberRange   = 140
 -- planner tick: they fly at the T4's pace and meet enemy fighters and
 -- ground AA first. The T4's own order is renewed every T4OpReissue seconds
 -- or when the target moved; within T4OpAttackRange it attacks the target.
+-- Flight routes of the air T4 operation, drawn by a player on the map
+-- (attacker's view: own side at small nx, mirrored for the RIGHT team).
+-- They go round the map edges instead of over the mid and its AA: the
+-- upper one along the north edge to the enemy's upper bases, the lower one
+-- along the south edge under the basin, turning up into the enemy's lower
+-- bases from below. A target with nz < T4RouteSplitZ takes the upper one.
+T4RouteUpper  = { { 0.18, 0.17 }, { 0.31, 0.09 }, { 0.50, 0.06 }, { 0.70, 0.06 }, { 0.80, 0.11 } }
+T4RouteLower  = { { 0.12, 0.69 }, { 0.21, 0.82 }, { 0.36, 0.92 }, { 0.60, 0.96 }, { 0.80, 0.94 }, { 0.91, 0.87 } }
+T4RouteSplitZ = 0.45
+T4WaypointReached = 35
 T4OpScreenAhead   = 30
 T4OpBombersBehind = 20
 T4OpReissue       = 15

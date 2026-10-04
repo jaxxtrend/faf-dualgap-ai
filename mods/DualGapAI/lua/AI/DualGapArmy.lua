@@ -860,6 +860,28 @@ function OpReissue(lastAt, now, lastAim, aim, strays)
     return now - lastAt >= Config.T4OpReissue
 end
 
+-- Exposed for tests: the operation's flight path to targetPos for `side`:
+-- the route round the map edge on the target's half, from the waypoint
+-- nearest to `from` on, then the target. Close to the target already (no
+-- waypoint lies between) -> straight at it.
+function T4OpPath(side, from, targetPos)
+    local _, nz = Utils.Normalise(targetPos[1], targetPos[3])
+    local route = (nz < Config.T4RouteSplitZ) and Config.T4RouteUpper or Config.T4RouteLower
+    local pts = {}
+    for _, np in ipairs(route) do table.insert(pts, Utils.ToWorld(np, side)) end
+    local k, kd
+    for i, p in ipairs(pts) do
+        local d = Utils.Dist2D(p, from)
+        if not kd or d < kd then k, kd = i, d end
+    end
+    local path = {}
+    if Utils.Dist2D(from, targetPos) > Utils.Dist2D(pts[k], targetPos) then
+        for i = k, table.getn(pts) do table.insert(path, pts[i]) end
+    end
+    table.insert(path, { targetPos[1], targetPos[2], targetPos[3] })
+    return path
+end
+
 -- Exposed for tests: where the escort and the bombers fly, relative to the
 -- T4 at lp heading for aim: the fighters a screen ahead (between the T4
 -- and what it flies into), the bombers tucked in behind it.
@@ -879,12 +901,20 @@ end
 -- take on enemy fighters around it and soak up ground AA fire first.
 -- (Orders are per player: one formation can't mix units of several armies.)
 local function MarchOp(brain, ctx, op, now)
-    local aim = (Alive(op.target) and op.target:GetPosition()) or op.targetPos
-    if not aim then return end
+    local final = (Alive(op.target) and op.target:GetPosition()) or op.targetPos
+    if not final then return end
+    -- Fly the route round the map edge, waypoint by waypoint, then the target.
+    local aim = final
+    op.path = op.path or {}
+    local n = table.getn(op.path)
+    while op.wp and op.wp < n and Utils.Dist2D(op.lead:GetPosition(), op.path[op.wp]) < Config.T4WaypointReached do
+        op.wp = op.wp + 1
+    end
+    if op.wp and op.wp < n then aim = op.path[op.wp] end
     op.escort = Utils.FilterAlive(op.escort or {})
     op.bombers = Utils.FilterAlive(op.bombers or {})
     local lp = op.lead:GetPosition()
-    local close = Utils.Dist2D(lp, aim) < Config.T4OpAttackRange
+    local close = aim == final and Utils.Dist2D(lp, final) < Config.T4OpAttackRange
     if OpReissue(op.marchAt, now, op.marchAim, aim, false) or close ~= op.wasClose then
         op.marchAt, op.marchAim, op.wasClose = now, { aim[1], aim[2], aim[3] }, close
         IssueClearCommands(op.units)
@@ -943,6 +973,11 @@ function AirT4OpStep(brain, ctx, staging, now)
                 if t ~= op.target or not op.targetPos then
                     op.dived, op.marchAt = false, nil
                     Utils.Log(brain, 'air T4 operation: ' .. (t and Comms.UnitName(t) or 'the enemy ECO base'))
+                end
+                if pos and (t ~= op.target or not op.path) then
+                    op.path = T4OpPath(ctx.side, op.lead:GetPosition(), pos)
+                    op.wp = 1
+                    Utils.Log(brain, 'air T4 operation: route with ' .. (table.getn(op.path) - 1) .. ' waypoints')
                 end
                 op.target, op.targetPos = t, pos
                 op.movedAt = (not t) and now or nil
