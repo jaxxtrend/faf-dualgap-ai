@@ -203,6 +203,16 @@ MassFabEnergySurplus = 1500     -- energy/s trend needed before a fabricator
 -- no unit) for this long, it starts searching the enemy's deep water.
 StaleSeconds = 90
 
+-- Telemetry (DualGapStats): a DGSTAT snapshot line in the game log every
+-- StatsInterval seconds, the full structure layout every
+-- StatsLayoutInterval seconds. Read by tools/parse_match.py & co.
+StatsEnabled        = true
+StatsInterval       = 60
+StatsLayoutInterval = 180
+-- Recorder (all armies, humans too): finished structures and unit
+-- positions every StatsMoveInterval seconds.
+StatsMoveInterval   = 10
+
 -- Team chat and map pings (DualGapComms): the same alert is repeated no more
 -- often than this.
 PingCooldown = 60

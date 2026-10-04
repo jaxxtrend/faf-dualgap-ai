@@ -27,6 +27,32 @@ Roles, build order and settings are described in [mods/DualGapAI/README.md](mods
 Edit build orders and production tables in [DualGapBuildOrders.lua](mods/DualGapAI/lua/AI/DualGapBuildOrders.lua),
 coordinates and thresholds in [DualGapConfig.lua](mods/DualGapAI/lua/AI/DualGapConfig.lua).
 
+## Match analysis (telemetry)
+With the mod enabled, every game writes telemetry into the FAF game log
+(`%APPDATA%\Forged Alliance Forever\logs\game_*.log`), for **every army, human players included**:
+a snapshot of economy and army every minute, every own structure with coordinates every 3 minutes,
+each finished structure (build order and base layout) and unit positions every 10 seconds (movement).
+Watching a replay of such a game writes the same telemetry again.
+In FAF, a game with a sim mod is unranked.
+
+```bash
+python tools/parse_match.py
+```
+The newest match as a short table: one row per army, automatic problem flags (late tech, mass overflow,
+energy stall, idle engineers, stuck projects, power not next to factories, few mex storages...)
+and the human players' build orders. The full report goes to `reports/<log>.json`.
+
+```bash
+python tools/draw_match.py
+```
+An interactive map (`reports/<log>.html`) with a time slider: structures at their true size, units and army trails.
+
+```bash
+python tools/batch_report.py --last 10
+```
+Ten matches in one table: bots by role next to human players (tech timings, economy, base layout quality,
+time of first AA / shield / T3...). It is short enough to paste into a chat for analysis.
+
 ## Tests
 Offline, no game needed (Python 3 and `pip install lupa`):
 

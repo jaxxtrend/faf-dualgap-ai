@@ -379,5 +379,7 @@ function SideOf(pos)
 end
 
 function Log(brain, msg)
-    LOG('DualGap [' .. tostring(brain.Nickname or brain.Name) .. ']: ' .. msg)
+    -- '@<game seconds>' lets tools/parse_match.py put events on a timeline.
+    LOG('DualGap [' .. tostring(brain.Nickname or brain.Name) .. '] @' .. math.floor(GetGameTimeSeconds())
+        .. ': ' .. msg)
 end
