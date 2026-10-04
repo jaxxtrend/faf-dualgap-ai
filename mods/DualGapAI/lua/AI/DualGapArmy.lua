@@ -630,8 +630,11 @@ local function NavalStep(brain, ctx)
     local rally = Routes.GetPoint('NavalRally', ctx.side)
     local ready = {}
     for _, u in ipairs(FreeUnits(brain, CatNaval)) do
-        if Utils.Dist2D(u:GetPosition(), rally) > 25 then IssueMove({ u }, rally)
-        else table.insert(ready, u) end
+        local d = Utils.Dist2D(u:GetPosition(), rally)
+        -- FreeUnits are idle: near enough counts as gathered (a big fleet
+        -- doesn't fit a small circle), the rest are sent there.
+        if d <= Config.NavalRallyIdleRadius then table.insert(ready, u)
+        else IssueMove({ u }, rally) end
     end
     local size = Config.NavalFleetSize[TopTech(brain)] or 6
     -- Searching for a hidden ACU: any two ships go.

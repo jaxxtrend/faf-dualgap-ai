@@ -134,16 +134,28 @@ local function PickHideSpot(brain, ctx, extra)
         or (not extra and Utils.DeepestRearWater(ctx.side))
 end
 
-local function EnemyStratArtyPresent(brain, pos)
-    return Utils.CountAround(brain, CatStratArty, pos, Config.StratArtyScanRadius, 'Enemy') > 0
+-- Only what this army can see (or has seen, for structures): no peeking
+-- into the fog.
+local function KnownCount(brain, cat, pos, radius)
+    local army = brain:GetArmyIndex()
+    local n = 0
+    for _, e in ipairs(brain:GetUnitsAroundPoint(cat, pos, radius, 'Enemy') or {}) do
+        if Intel.Known(e, army) then n = n + 1 end
+    end
+    return n
 end
 
--- Returns torpedo bombers, bombers/gunships, all other aircraft near pos.
+local function EnemyStratArtyPresent(brain, pos)
+    return KnownCount(brain, CatStratArty, pos, Config.StratArtyScanRadius) > 0
+end
+
+-- Returns torpedo bombers, bombers/gunships, all other aircraft near pos
+-- (the ones seen or on radar).
 function AirThreat(brain, pos)
     local r = Config.AirThreatRadius
-    local torp = Utils.CountAround(brain, CatTorpAir, pos, r, 'Enemy')
-    local bombers = Utils.CountAround(brain, CatBomberAir, pos, r, 'Enemy')
-    local all = Utils.CountAround(brain, CatEnemyAir, pos, r, 'Enemy')
+    local torp = KnownCount(brain, CatTorpAir, pos, r)
+    local bombers = KnownCount(brain, CatBomberAir, pos, r)
+    local all = KnownCount(brain, CatEnemyAir, pos, r)
     return torp, bombers, all - torp
 end
 

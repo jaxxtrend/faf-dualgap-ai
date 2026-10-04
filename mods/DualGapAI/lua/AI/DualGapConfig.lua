@@ -161,6 +161,14 @@ FollowUpMax       = 3
 -- or anywhere within RallyIdleRadius once they stand idle (a big army does
 -- not fit into a small circle and would never be "ready").
 RallyRadius       = 40
+-- Fleets: the same, ships take more room.
+NavalRallyIdleRadius = 110
+-- Engineers guarding (assisting) a factory or an anti-nuke drop it after
+-- this long and look for work again; a guard order never ends by itself.
+AssistSeconds     = 40
+-- A project that found no spot for its building three times is dropped and
+-- not planned again for ProjectRetrySeconds; its engineers go back to work.
+ProjectRetrySeconds = 90
 -- GROUND builds its land experimentals this far from the start toward the choke.
 LandT4Ahead       = 60
 RallyIdleRadius   = 100

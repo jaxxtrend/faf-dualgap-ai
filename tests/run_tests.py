@@ -1150,6 +1150,12 @@ check(f3[1] == 0, 'game ender plan: a destroyed silo or artillery piece is rebui
 check(f3[3] == 'bombers' and f3[4] is None, 'a big bomber stack goes in as a mass attack')
 check(f3[5] and not f3[6] and f3[7] and not f3[8], 'a big army counts as gathered around the rally, not only inside a small circle')
 
+ge = lua.execute(r"""
+local E = import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua')
+return E.GuardExpired(100, 120), E.GuardExpired(100, 90), E.GuardExpired(nil, 500)
+""")
+check(ge[0] and not ge[1] and not ge[2], 'engineers assisting by guard go back to work after a while')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

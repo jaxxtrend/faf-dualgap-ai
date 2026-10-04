@@ -68,6 +68,8 @@ end
 
 function Add(brain, ctx, spec)
     if Find(ctx, spec.name) then return Find(ctx, spec.name) end
+    local retry = ctx.projectRetry and ctx.projectRetry[spec.name]
+    if retry and GetGameTimeSeconds() < retry then return nil end
     spec.id = spec.id or Utils.FactionId(brain, spec.key)
     if not spec.id or not __blueprints[spec.id] then return nil end
     spec.crew = {}
@@ -87,7 +89,11 @@ end
 
 local function Release(p)
     for _, u in ipairs(p.crew) do
-        if Alive(u) then u.DualGapAssigned = nil end
+        if Alive(u) then
+            u.DualGapAssigned = nil
+            -- A crew member guarding the lead or repairing would never go idle.
+            if u ~= p.lead or not Alive(p.unit) then IssueClearCommands({ u }) end
+        end
     end
     p.crew = {}
 end
@@ -182,6 +188,23 @@ end
 local function ProjectTick(brain, ctx, p)
     p.crew = Utils.FilterAlive(p.crew)
     local now = GetGameTimeSeconds()
+    -- More hands than wanted (a throttled experimental): the extra ones go
+    -- back to work instead of standing in the crew.
+    local extra = table.getn(p.crew) - CrewWanted(brain, p)
+    if extra > 0 then
+        local keep = {}
+        for i = table.getn(p.crew), 1, -1 do
+            local u = p.crew[i]
+            if extra > 0 and u ~= p.lead then
+                extra = extra - 1
+                u.DualGapAssigned = nil
+                IssueClearCommands({ u })
+            else
+                table.insert(keep, 1, u)
+            end
+        end
+        p.crew = keep
+    end
 
     -- Track the structure / unit being built at the site.
     if not Alive(p.unit) and p.startedAt then
@@ -242,6 +265,16 @@ local function ProjectTick(brain, ctx, p)
         end
         -- A builder tried and found no spot: give up this site (multi-site
         -- projects move on, the planner won't offer it again).
+        if not p.startedAt and tried and not p.sites then
+            p.failed = (p.failed or 0) + 1
+            if p.failed >= 3 then
+                ctx.projectRetry = ctx.projectRetry or {}
+                ctx.projectRetry[p.name] = now + Config.ProjectRetrySeconds
+                Utils.Log(brain, 'project ' .. p.name .. ' dropped: no spot for it')
+                Remove(ctx, p)
+                return
+            end
+        end
         if not p.startedAt and tried and p.sites then
             p.failed = (p.failed or 0) + 1
             if p.failed >= 3 then

@@ -466,6 +466,18 @@ end
 ---------------------------------------------------------------------------
 -- General tasks
 ---------------------------------------------------------------------------
+-- Assist by guarding, for Config.AssistSeconds: a guard order never ends on
+-- its own, and a guarding engineer is never idle, so without the timeout it
+-- would never take another job (EngineersStep drops the order).
+function GuardExpired(untilAt, now)
+    return untilAt ~= nil and now >= untilAt
+end
+
+function Guard(u, target)
+    IssueGuard({ u }, target)
+    u.DGGuardUntil = GetGameTimeSeconds() + Config.AssistSeconds
+end
+
 local function EnergyLow(brain)
     local ratio = brain:GetEconomyStoredRatio('ENERGY')
     if ratio < 0.25 or (ratio < 0.6 and brain:GetEconomyTrend('ENERGY') < 0) then return true end
@@ -733,7 +745,7 @@ local function TryAssistSMD(brain, ctx, u)
             s.DGHelpers = helpers
             if table.getn(helpers) < Config.SMDHelpers then
                 table.insert(s.DGHelpers, u)
-                IssueGuard({ u }, s)
+                Guard(u, s)
                 return true
             end
         end
@@ -891,7 +903,7 @@ local function TryAssistUpgrade(brain, ctx, u)
     end
     if not best then return false end
     table.insert(best.DGHelpers, u)
-    IssueGuard({ u }, best)
+    Guard(u, best)
     return true
 end
 
@@ -905,7 +917,7 @@ local function TryAssist(brain, ctx, u)
     if TryAssistUpgrade(brain, ctx, u) then return true end
     local f = MainFactory(brain, ctx)
     if f and not f:IsIdleState() then
-        IssueGuard({ u }, f)
+        Guard(u, f)
         return true
     end
     -- Anything of ours still under construction in the base.
@@ -973,6 +985,10 @@ function EngineersStep(brain, ctx)
                     u.DGRole = BO.T1Engineers[ctx.t1Seen]
                     u.DGRoleUntil = GetGameTimeSeconds() + Config.ReclaimRoleSeconds
                 end
+            end
+            if GuardExpired(u.DGGuardUntil, GetGameTimeSeconds()) then
+                u.DGGuardUntil = nil
+                IssueClearCommands({ u })
             end
             local task = u.DGRole and RoleTasks[u.DGRole]
             if task then
