@@ -771,12 +771,24 @@ local function Intercept(brain, ctx, now)
         local p = e:GetPosition()
         if BehindFront(ctx, p) or OverMid(brain, ctx, p) or InOwnHalfT4(ctx, e, p) then table.insert(threats, e) end
     end
+    -- Air experimentals first: their escort must not soak up the fighters.
+    local ordered = {}
+    for _, e in ipairs(threats) do
+        if EntityCategoryContains(categories.EXPERIMENTAL, e) then table.insert(ordered, 1, e) else table.insert(ordered, e) end
+    end
+    threats = ordered
     for _, e in ipairs(threats) do
         local p = e:GetPosition()
+        local isT4 = EntityCategoryContains(categories.EXPERIMENTAL, e)
         local covered = false
+        local onIt = 0
         for _, u in ipairs(ctx.fighters) do
-            if u.DGIntercept and u.DGInterceptPos and Utils.Dist2D(u.DGInterceptPos, p) < 60 then covered = true; break end
+            if u.DGIntercept and u.DGInterceptTarget == e then onIt = onIt + 1 end
+            -- A plane is covered by fighters already busy around it; a T4
+            -- only by fighters sent at the T4 itself.
+            if not isT4 and u.DGIntercept and u.DGInterceptPos and Utils.Dist2D(u.DGInterceptPos, p) < 60 then covered = true end
         end
+        if isT4 and onIt >= Config.InterceptT4 then covered = true end
         if not covered then
             local group, heavy = 0, 0
             for _, o in ipairs(threats) do
@@ -790,6 +802,7 @@ local function Intercept(brain, ctx, now)
                 Config.MidCoverPerBomber * heavy)
             -- An air experimental (a Czar going for our ECO): every free fighter.
             if EntityCategoryContains(categories.EXPERIMENTAL, e) then want = math.max(want, Config.InterceptT4) end
+            if isT4 then want = math.max(0, want - onIt) end
             local units = Nearest(FreeFighters(ctx), p, want)
             if table.getn(units) > 0 then
                 IssueClearCommands(units)
@@ -797,6 +810,7 @@ local function Intercept(brain, ctx, now)
                 IssueAggressiveMove(units, p)
                 for _, u in ipairs(units) do
                     u.DGIntercept, u.DGInterceptPos, u.DGLine = now + Config.InterceptSeconds, p, nil
+                    u.DGInterceptTarget = e
                 end
                 Utils.Log(brain, table.getn(units) .. ' fighters intercept ' .. group .. ' aircraft behind the front')
             end
@@ -862,7 +876,7 @@ local function FightersStep(brain, ctx, now)
     local patrol = {}
     for _, u in ipairs(ctx.fighters) do
         if u.DGIntercept and (now > u.DGIntercept or u:IsIdleState()) then
-            u.DGIntercept, u.DGInterceptPos = nil, nil
+            u.DGIntercept, u.DGInterceptPos, u.DGInterceptTarget = nil, nil, nil
         end
         if not u.DGIntercept and not u.DGEscort and u.DGLine ~= key then
             u.DGLine = key
