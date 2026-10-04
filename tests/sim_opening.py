@@ -117,6 +117,7 @@ function MakeBrain(name)
     function b:GetEconomyStoredRatio() return 1 end
     function b:GetEconomyTrend() return 1 end
     function b:GetEconomyIncome() return 1 end
+    function b:GetEconomyRequested() return 0 end
     function b:GetListOfUnits(cat)
         local out = {}
         for _, u in ipairs(WORLD) do if u.brain == self and not u.Dead and Match(cat, u) then table.insert(out, u) end end

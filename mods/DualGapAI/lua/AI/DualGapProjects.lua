@@ -106,10 +106,20 @@ local function CrewWanted(brain, p)
 end
 
 -- Offer an idle engineer to the projects. Returns true if it was taken.
-function Offer(brain, ctx, u)
+-- maxPriority: only projects at least this urgent (nil = all). Projects
+-- below the top priority share at most Config.ProjectCrewShare of the
+-- engineers, so mexes, power and factories always have hands.
+function Offer(brain, ctx, u, maxPriority)
+    local held = 0
     for _, p in ipairs(ctx.projects or {}) do
         p.crew = Utils.FilterAlive(p.crew)
-        if Utils.Count(p.crew) < CrewWanted(brain, p)
+        if p.priority > 1 then held = held + Utils.Count(p.crew) end
+    end
+    local total = Utils.Count(brain:GetListOfUnits(CatEngineer, false))
+    for _, p in ipairs(ctx.projects or {}) do
+        local capped = p.priority > 1 and held >= math.max(1, math.floor(total * Config.ProjectCrewShare))
+        if (not maxPriority or p.priority <= maxPriority) and not capped
+            and Utils.Count(p.crew) < CrewWanted(brain, p)
             and Utils.TechOf(u) >= (p.minCrewTech or 1) then
             u.DualGapAssigned = true
             table.insert(p.crew, u)

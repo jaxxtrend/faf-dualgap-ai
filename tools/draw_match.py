@@ -154,6 +154,7 @@ def main():
     ap.add_argument('log', nargs='?')
     ap.add_argument('--out')
     ap.add_argument('--markers', help='map *_save.lua (default: Dual Gap Adaptive v14 markers)')
+    ap.add_argument('--open', action='store_true', help='open the map in the default browser')
     args = ap.parse_args()
     path = args.log or (dglog.latest_logs(1) or [None])[0]
     if not path:
@@ -171,6 +172,9 @@ def main():
     with open(out, 'w', encoding='utf-8') as fh:
         fh.write(html)
     print('map: ' + dglog.shown(out))
+    if args.open:
+        import webbrowser
+        webbrowser.open('file:///' + os.path.abspath(out).replace(os.sep, '/'))
 
 
 if __name__ == '__main__':

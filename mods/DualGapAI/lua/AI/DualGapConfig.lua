@@ -182,6 +182,17 @@ BaseAA = {
     { count = 8, radius = 40 },
 }
 
+-- Engineers and the economy. The opening roles of the first T1 engineers
+-- are temporary: reclaimers turn into general engineers ReclaimRoleSeconds
+-- after they appear (at once when energy runs dry), ACU assistants once the
+-- ACU's opening is done or it leaves the base. Energy below EnergyStall
+-- (stored share) makes power every engineer's first job. Projects other
+-- than the top priority (anti-nuke) hold at most ProjectCrewShare of the
+-- engineers, and only after own mexes and power are taken care of.
+ReclaimRoleSeconds = 240
+EnergyStall        = 0.1
+ProjectCrewShare   = 0.5
+
 -- Forward production. After the first T2 factory GROUND puts
 -- ForwardFactories land factories ForwardLandBack behind its mid point, and
 -- NAVAL puts ForwardFactories naval yards on the water ForwardNavalBack

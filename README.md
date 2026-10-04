@@ -35,6 +35,9 @@ each finished structure (build order and base layout) and unit positions every 1
 Watching a replay of such a game writes the same telemetry again.
 In FAF, a game with a sim mod is unranked.
 
+The quickest way: double-click `analyze.cmd` in the project folder. It prints the report of the newest match and opens its map.
+The scripts must be run from the project folder (`analyze.cmd` takes care of that).
+
 ```bash
 python tools/parse_match.py
 ```

@@ -421,8 +421,14 @@ local function StorageTask(brain, ctx, u)
 end
 
 local function AssistACUTask(brain, ctx, u)
-    if not u:IsIdleState() then return end
     local acu = Utils.Commander(brain)
+    -- The ACU's opening is over or it left the base: become a general engineer.
+    if ctx.acuBODone or not acu or Utils.Dist2D(acu:GetPosition(), ctx.startPos) > 60 then
+        u.DGRole = nil
+        IssueClearCommands({ u })
+        return
+    end
+    if not u:IsIdleState() then return end
     -- Don't follow the ACU into the water.
     if acu and ctx.acuState ~= 'SUBMERGED' then
         IssueGuard({ u }, acu)
@@ -436,7 +442,13 @@ end
 ---------------------------------------------------------------------------
 local function EnergyLow(brain)
     local ratio = brain:GetEconomyStoredRatio('ENERGY')
-    return ratio < 0.25 or (ratio < 0.6 and brain:GetEconomyTrend('ENERGY') < 0)
+    if ratio < 0.25 or (ratio < 0.6 and brain:GetEconomyTrend('ENERGY') < 0) then return true end
+    -- Spending more than the income, even with full storage.
+    return brain:GetEconomyIncome('ENERGY') < brain:GetEconomyRequested('ENERGY') * 1.05
+end
+
+local function EnergyStalled(brain)
+    return brain:GetEconomyStoredRatio('ENERGY') < Config.EnergyStall
 end
 
 local function BestPowerId(brain, u)
@@ -498,7 +510,8 @@ local function GridSpot(brain, id, anchors)
 end
 
 local function TryPower(brain, ctx, u)
-    if not EnergyLow(brain) or PowerUnderConstruction(brain) >= 2 then return false end
+    local building = PowerUnderConstruction(brain)
+    if not EnergyLow(brain) or building >= 3 or (building >= 2 and not EnergyStalled(brain)) then return false end
     local id = BestPowerId(brain, u)
     if not id then return false end
     -- Power may skip the queue only when energy is nearly gone.
@@ -711,12 +724,16 @@ local function TryAssist(brain, ctx, u)
 end
 
 -- baseOnly: the ACU in base-builder mode never wanders off.
+-- Economy first, like a player: no energy -> power; then the anti-nuke,
+-- own mexes, power, and only then the other projects.
 local function GeneralTask(brain, ctx, u, baseOnly)
-    if not baseOnly and Projects().Offer(brain, ctx, u) then return end
+    if EnergyStalled(brain) and TryPower(brain, ctx, u) then return end
+    if not baseOnly and Projects().Offer(brain, ctx, u, 1) then return end
     if not baseOnly and TryAssistSMD(brain, ctx, u) then return end
     if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end
     if TryPower(brain, ctx, u) then return end
+    if not baseOnly and Projects().Offer(brain, ctx, u) then return end
     if TryRebuild(brain, ctx, u) then return end
     if TryMexStorage(brain, ctx, u) then return end
     if TryMassFab(brain, ctx, u) then return end
@@ -728,6 +745,13 @@ end
 ---------------------------------------------------------------------------
 local RoleTasks = {
     Reclaim = function(brain, ctx, u)
+        -- Temporary: after a while (at once if energy runs dry) the
+        -- reclaimer becomes a general engineer.
+        if GetGameTimeSeconds() > (u.DGRoleUntil or 0) or EnergyStalled(brain) then
+            u.DGRole = nil
+            IssueClearCommands({ u })
+            return
+        end
         if u:IsIdleState() and not ReclaimTask(brain, ctx, u) then u.DGRole = nil end
     end,
     Hydro = HydroTask,
@@ -749,6 +773,7 @@ function EngineersStep(brain, ctx)
                 if Utils.TechOf(u) == 1 and ctx.t1Seen < table.getn(BO.T1Engineers) then
                     ctx.t1Seen = ctx.t1Seen + 1
                     u.DGRole = BO.T1Engineers[ctx.t1Seen]
+                    u.DGRoleUntil = GetGameTimeSeconds() + Config.ReclaimRoleSeconds
                 end
             end
             local task = u.DGRole and RoleTasks[u.DGRole]
