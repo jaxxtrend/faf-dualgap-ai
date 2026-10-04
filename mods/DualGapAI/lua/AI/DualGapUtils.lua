@@ -29,6 +29,7 @@ UnitIds = {
     EnergyStorage  = { 'ueb1105', 'uab1105', 'urb1105', 'xsb1105' },
     MassStorage    = { 'ueb1106', 'uab1106', 'urb1106', 'xsb1106' },
     MassFabT3      = { 'ueb1303', 'uab1303', 'urb1303', 'xsb1303' },
+    MassFabT2      = { 'ueb1104', 'uab1104', 'urb1104', 'xsb1104' },
 
     EngineerT1     = { 'uel0105', 'ual0105', 'url0105', 'xsl0105' },
     EngineerT2     = { 'uel0208', 'ual0208', 'url0208', 'xsl0208' },

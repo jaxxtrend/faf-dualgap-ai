@@ -1032,6 +1032,18 @@ return h, self, none == nil, U.HasDuty(ctx, 'ECO'), U.HasDuty(ctx, 'NAVAL'), U.H
 check(du[0] == 'ground' and du[1] == 'ground' and du[2], 'adaptive roles: a defeated player\'s role passes to its heir, on down the line')
 check(du[3] and not du[4] and du[5], 'adaptive roles: a player does its own role plus the inherited ones')
 
+lay = lua.execute(r"""
+local E = import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua')
+-- The player's base: start (864.5, 609.5), hydro (883, 610): factory at (876, 610).
+local spot = E.HydroFactorySpot({ 883, 0, 610 }, { 864.5, 0, 609.5 }, 6, 8, function() return true end)
+local blocked = E.HydroFactorySpot({ 883, 0, 610 }, { 864.5, 0, 609.5 }, 6, 8, function(p) return p[1] > 880 end)
+local c = E.MexCorners({ 100, 0, 200 }, 2)
+return spot[1], spot[3], blocked[1] >= 883, c[1][1], c[1][3], table.getn(c)
+""")
+check(lay[0] == 876 and lay[1] == 610, 'first factory against the hydrocarbon plant, on the start side (as the player does)')
+check(lay[2], 'factory spot falls back to another side of the hydro when blocked')
+check(lay[3] == 102 and lay[4] == 202 and lay[5] == 4, 'mex block: T2 fabs go in the 4 corners of the storage cross')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

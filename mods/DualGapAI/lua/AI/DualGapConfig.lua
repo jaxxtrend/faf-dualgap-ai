@@ -398,6 +398,15 @@ ScoutStartSeconds = 600
 AntiNukePickSeconds = 120
 AntiNukeHelpers     = 6
 
+-- Base layout taken from a player's base:
+-- the first factory goes against the base's hydrocarbon spot if it is
+-- within HydroFactoryRadius of the start; T2 mass fabricators fill the
+-- corners of the mex storage crosses once T3 power is up and energy is
+-- at least MexFabEnergyRatio stored with a trend of MexFabEnergyTrend.
+HydroFactoryRadius = 40
+MexFabEnergyRatio  = 0.6
+MexFabEnergyTrend  = 300
+
 SiloPauseEnergy  = 0.1
 SiloResumeEnergy = 0.4
 

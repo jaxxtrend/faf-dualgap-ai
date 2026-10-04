@@ -56,6 +56,12 @@ python tools/batch_report.py --last 10
 Ten matches in one table: bots by role next to human players (tech timings, economy, base layout quality,
 time of first AA / shield / T3...). It is short enough to paste into a chat for analysis.
 
+```bash
+python tools/draw_base.py ARMY_6
+```
+One army's base at 10, 21, 30, 42 and 60 minutes (`reports/<log>_<army>_base.html`) and what touches what (adjacency),
+to compare a bot's base with a player's.
+
 ## Tests
 Offline, no game needed (Python 3 and `pip install lupa`):
 

@@ -93,6 +93,10 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   20 behind it, renewed every 5 s: nobody races ahead, the escort meets enemy fighters and ground AA fire before the T4 does.
   The group flies round the map edge, not over the mid and its AA (routes drawn by a player): to an upper base along the
   north edge, to a lower base along the south edge under the basin, turning up into the base from below. Novax satellites also go for the enemy ECO commander first when it is seen and unshielded.
+- **Base layout like a player's.** The first factory goes against the base's hydrocarbon spot; an air factory gets power on
+  every side (aircraft need no exit lane); generators are placed against factories, shields, nukes / artillery / anti-nukes,
+  mass fabricators, else against other generators - one compact block; no new T1 generators once T2/T3 engineers exist; the
+  mex storage crosses get T2 mass fabricators in their corners once T3 power is up; resource spots stay free.
 - **Adaptive roles.** A defeated player's role passes to the ally that took over its mexes (the nearest one), on top of its own,
   and on down the line: whoever took over ECO enters the strategic phase and builds the game ender, a NAVAL heir builds yards
   and the navy's ships and keeps destroyers at the mid, an AIR heir runs the air attacks, the T4 escort and the base AA. The

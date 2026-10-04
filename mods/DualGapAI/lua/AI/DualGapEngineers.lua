@@ -70,6 +70,25 @@ local function AdjacentSpots(center, centerSize, size)
     return spots
 end
 
+-- Resource deposits (hydrocarbon and mass spots) stay free for their own
+-- buildings: nothing else is placed over them.
+local deposits
+local function OnDeposit(p, size)
+    if not deposits then
+        deposits = {}
+        for _, m in pairs(ScenarioUtils.GetMarkers() or {}) do
+            if m.position and (m.type == 'Hydrocarbon' or m.type == 'Mass') then
+                table.insert(deposits, { pos = m.position, half = (m.type == 'Hydrocarbon') and 3 or 1 })
+            end
+        end
+    end
+    for _, d in ipairs(deposits) do
+        local reach = d.half + size / 2 - 0.01
+        if math.abs(d.pos[1] - p[1]) < reach and math.abs(d.pos[3] - p[3]) < reach then return true end
+    end
+    return false
+end
+
 local function FarFromAll(p, chosen, minD)
     for _, c in ipairs(chosen) do
         if Utils.Dist2D(p, c) < minD then return false end
@@ -90,11 +109,13 @@ local function PickSpots(brain, id, n, anchor, fallback, chosen)
         for _, p in ipairs(AdjacentSpots(ap, Utils.SizeOfBp(anchor:GetBlueprint()), size)) do
             if table.getn(out) >= n then break end
             p[2] = GetSurfaceHeight(p[1], p[3])
-            -- Never on a factory's exit side (+z), units roll out there.
-            local blocksExit = isFactory and p[3] > ap[3] + 0.5
+            -- Never on a land / naval factory's exit side (+z), units roll
+            -- out there; aircraft just fly off, so an air factory gets
+            -- power on every side (as players do).
+            local blocksExit = isFactory and not EntityCategoryContains(categories.AIR, anchor) and p[3] > ap[3] + 0.5
             -- Gap 0: touching the anchor is the point, but other factories'
             -- exit lanes still stay free.
-            if not blocksExit and FarFromAll(p, chosen, size) and brain:CanBuildStructureAt(id, p)
+            if not blocksExit and FarFromAll(p, chosen, size) and not OnDeposit(p, size) and brain:CanBuildStructureAt(id, p)
                 and Utils.HasClearance(brain, id, p, 0) then
                 table.insert(out, p); table.insert(chosen, p)
             end
@@ -108,7 +129,7 @@ local function PickSpots(brain, id, n, anchor, fallback, chosen)
             local a = (i / 12) * 2 * math.pi
             local p = { fallback[1] + math.cos(a) * r, 0, fallback[3] + math.sin(a) * r }
             p[2] = GetSurfaceHeight(p[1], p[3])
-            if FarFromAll(p, chosen, size + 2) and brain:CanBuildStructureAt(id, p)
+            if FarFromAll(p, chosen, size + 2) and not OnDeposit(p, size) and brain:CanBuildStructureAt(id, p)
                 and Utils.HasClearance(brain, id, p, 2) then
                 table.insert(out, p); table.insert(chosen, p)
             end
@@ -153,6 +174,35 @@ end
 ---------------------------------------------------------------------------
 -- ACU opening
 ---------------------------------------------------------------------------
+local function HydroMarker(ctx)
+    if ctx.hydroPos ~= nil then return ctx.hydroPos end
+    local best, bestD
+    for _, m in pairs(ScenarioUtils.GetMarkers() or {}) do
+        if m.type == 'Hydrocarbon' and m.position then
+            local d = Utils.Dist2D(m.position, ctx.startPos)
+            if d <= Config.BaseRadius * 1.5 and (not bestD or d < bestD) then best, bestD = m.position, d end
+        end
+    end
+    ctx.hydroPos = best or false
+    return ctx.hydroPos
+end
+
+-- Exposed for tests: where the first factory goes when the base has a
+-- hydrocarbon spot - touching it (players build the factory against the
+-- hydro: the plant feeds it, and the factory gets the adjacency bonus).
+-- Of the spots around the hydro, the one nearest the start; buildable(p)
+-- filters them.
+function HydroFactorySpot(hydro, start, hydroSize, factorySize, buildable)
+    local off = (hydroSize + factorySize) / 2
+    local best, bestD
+    for _, d in ipairs({ { off, 0 }, { -off, 0 }, { 0, off }, { 0, -off } }) do
+        local p = { hydro[1] + d[1], hydro[2], hydro[3] + d[2] }
+        local dd = Utils.Dist2D(p, start)
+        if buildable(p) and (not bestD or dd < bestD) then best, bestD = p, dd end
+    end
+    return best
+end
+
 local ACUSteps = {}
 
 ACUSteps.Factory = function(brain, ctx, acu, step)
@@ -168,9 +218,24 @@ ACUSteps.Factory = function(brain, ctx, acu, step)
     local unfinished = FirstUnfinished(brain, cat)
     if unfinished then
         IssueRepair({ acu }, unfinished)
-    else
-        Utils.BuildNear(brain, acu, Utils.FactoryId(brain, kind, 1), BaseSite(ctx, 12), 40)
+        return false
     end
+    local id = Utils.FactoryId(brain, kind, 1)
+    local hydro = HydroMarker(ctx)
+    if hydro and kind ~= 'Naval' and Utils.Dist2D(hydro, ctx.startPos) <= Config.HydroFactoryRadius then
+        local hid = Utils.FactionId(brain, 'HydroT1')
+        local spot = HydroFactorySpot(hydro, ctx.startPos, Utils.SizeOfBp(__blueprints[hid]), Utils.SizeOfBp(__blueprints[id]),
+            function(p)
+                p[2] = GetSurfaceHeight(p[1], p[3])
+                return brain:CanBuildStructureAt(id, p)
+            end)
+        if spot then
+            IssueBuildMobile({ acu }, spot, id, {})
+            Utils.Log(brain, 'first factory against the hydrocarbon plant')
+            return false
+        end
+    end
+    Utils.BuildNear(brain, acu, id, BaseSite(ctx, 12), 40)
     return false
 end
 
@@ -366,18 +431,6 @@ end
 ---------------------------------------------------------------------------
 -- Hydro crew: build the hydro, then energy storages next to it, then assist
 ---------------------------------------------------------------------------
-local function HydroMarker(ctx)
-    if ctx.hydroPos ~= nil then return ctx.hydroPos end
-    local best, bestD
-    for _, m in pairs(ScenarioUtils.GetMarkers() or {}) do
-        if m.type == 'Hydrocarbon' and m.position then
-            local d = Utils.Dist2D(m.position, ctx.startPos)
-            if d <= Config.BaseRadius * 1.5 and (not bestD or d < bestD) then best, bestD = m.position, d end
-        end
-    end
-    ctx.hydroPos = best or false
-    return ctx.hydroPos
-end
 
 local function OwnHydro(brain, ctx)
     local pos = HydroMarker(ctx)
@@ -454,7 +507,15 @@ end
 local function BestPowerId(brain, u)
     for _, key in ipairs({ 'PowerT3', 'PowerT2', 'PowerT1' }) do
         local id = Utils.FactionId(brain, key)
-        if id and u:CanBuild(id) then return id end
+        if id and u:CanBuild(id) then
+            -- Players stop T1 generators once T2 power is in reach: T1
+            -- engineers leave power to the T2 / T3 ones (unless stalling).
+            if key == 'PowerT1' and not EnergyStalled(brain)
+                and Utils.Count(brain:GetListOfUnits(CatEngineer * (categories.TECH2 + categories.TECH3), false)) > 0 then
+                return nil
+            end
+            return id
+        end
     end
     return nil
 end
@@ -489,10 +550,16 @@ end
 -- Grid anchors for a power generator, best first: air factories (their
 -- production costs a lot of energy), mass fabricators, then the rest of
 -- the factories.
+local CatPowerUsers = categories.STRUCTURE * (categories.SHIELD + categories.GATE + categories.NUKE
+    + categories.ANTIMISSILE * categories.TECH3 + categories.ARTILLERY * (categories.TECH3 + categories.EXPERIMENTAL))
+
 local function PowerAnchors(brain)
     local out = {}
+    -- Last: other generators - power stays one compact block instead of
+    -- spreading over the base.
     for _, cat in ipairs({ categories.FACTORY * categories.AIR * categories.STRUCTURE, CatMassFab,
-        categories.FACTORY * categories.STRUCTURE - categories.AIR }) do
+        categories.FACTORY * categories.STRUCTURE - categories.AIR, CatPowerUsers,
+        categories.ENERGYPRODUCTION * categories.STRUCTURE }) do
         for _, f in ipairs(brain:GetListOfUnits(cat, false)) do
             if Alive(f) and f:GetFractionComplete() >= 1 then table.insert(out, f) end
         end
@@ -670,6 +737,47 @@ local function TryAssistSMD(brain, ctx, u)
     return false
 end
 
+-- Exposed for tests: the corner spots of a mex's storage cross (the T2
+-- mass fabricators of the player's mex block go there: each touches two
+-- storages).
+function MexCorners(mexPos, off)
+    local out = {}
+    for _, d in ipairs({ { off, off }, { -off, off }, { off, -off }, { -off, -off } }) do
+        table.insert(out, { mexPos[1] + d[1], mexPos[2], mexPos[3] + d[2] })
+    end
+    return out
+end
+
+-- Mex blocks: once T3 power is up and energy is plentiful, T2 mass
+-- fabricators fill the corners of every complete storage cross.
+local function TryMexFab(brain, ctx, u)
+    local id = Utils.FactionId(brain, 'MassFabT2')
+    if not id or not u:CanBuild(id) then return false end
+    if brain:GetEconomyStoredRatio('ENERGY') < Config.MexFabEnergyRatio
+        or brain:GetEconomyTrend('ENERGY') * 10 < Config.MexFabEnergyTrend then return false end
+    if Utils.Count(brain:GetListOfUnits(categories.ENERGYPRODUCTION * categories.TECH3 * categories.STRUCTURE, false)) == 0 then
+        return false
+    end
+    if not Utils.CanStartBuild(brain, id) then return false end
+    local off = (2 + Utils.FootprintOf(id)) / 2
+    local from = u:GetPosition()
+    local best, bestD
+    for _, m in ipairs(brain:GetListOfUnits(CatMex * (categories.TECH2 + categories.TECH3), false)) do
+        if Alive(m) and m:GetFractionComplete() >= 1 and table.getn(Economy().StorageSpots(brain, m)) == 0 then
+            local d = Utils.Dist2D(from, m:GetPosition())
+            if d <= 250 and (not bestD or d < bestD) then
+                for _, c in ipairs(MexCorners(m:GetPosition(), off)) do
+                    c[2] = GetSurfaceHeight(c[1], c[3])
+                    if brain:CanBuildStructureAt(id, c) then best, bestD = c, d; break end
+                end
+            end
+        end
+    end
+    if not best then return false end
+    IssueBuildMobile({ u }, best, id, {})
+    return true
+end
+
 -- Mass fabricators next to T3 power while energy overflows.
 local function TryMassFab(brain, ctx, u)
     local id = Utils.FactionId(brain, 'MassFabT3')
@@ -800,6 +908,7 @@ local function GeneralTask(brain, ctx, u, baseOnly)
     if not baseOnly and Projects().Offer(brain, ctx, u) then return end
     if TryRebuild(brain, ctx, u) then return end
     if TryMexStorage(brain, ctx, u) then return end
+    if TryMexFab(brain, ctx, u) then return end
     if TryMassFab(brain, ctx, u) then return end
     if TryFactories(brain, ctx, u) then return end
     if not baseOnly and ReclaimTask(brain, ctx, u) then return end
