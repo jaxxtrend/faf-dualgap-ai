@@ -554,13 +554,16 @@ local AnchorCats = {
     power = categories.ENERGYPRODUCTION * categories.STRUCTURE * (categories.TECH2 + categories.TECH3) + categories.HYDROCARBON * categories.STRUCTURE,
 }
 
-local function PowerAnchors(brain, tech)
+-- Only anchors in the base: power around a forward factory in the mid
+-- lane walls the lane off for the own waves.
+local function PowerAnchors(brain, ctx, tech)
     local out = {}
     local cats = {}
     for _, name in ipairs(PowerAnchorOrder(tech or 3)) do table.insert(cats, AnchorCats[name]) end
     for _, cat in ipairs(cats) do
         for _, f in ipairs(brain:GetListOfUnits(cat, false)) do
-            if Alive(f) and f:GetFractionComplete() >= 1 then table.insert(out, f) end
+            if Alive(f) and f:GetFractionComplete() >= 1
+                and Utils.Dist2D(f:GetPosition(), ctx.startPos) < Config.PowerAnchorRadius then table.insert(out, f) end
         end
     end
     return out
@@ -584,7 +587,7 @@ local function TryPower(brain, ctx, u)
     if brain:GetEconomyStoredRatio('ENERGY') > 0.1 and not Utils.CanStartBuild(brain, id) then return false end
     local c = (__blueprints[id] and __blueprints[id].CategoriesHash) or {}
     local tech = (c.TECH3 and 3) or (c.TECH2 and 2) or 1
-    local spot = GridSpot(brain, id, PowerAnchors(brain, tech))
+    local spot = GridSpot(brain, id, PowerAnchors(brain, ctx, tech))
         or PickSpots(brain, id, 1, nil, BaseSite(ctx, -12))[1]
     if not spot then return false end
     IssueBuildMobile({ u }, spot, id, {})

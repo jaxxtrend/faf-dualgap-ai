@@ -104,6 +104,7 @@ AirFrontStep      = 0.04
 MidCoverX          = 0.52
 MidCoverRadius     = 90
 MidCoverPerBomber  = 3
+InterceptT4        = 80     -- fighters sent at an enemy air experimental in the own half
 -- Air T4 operation: a finished air experimental (Czar, Ahwassa, Soul
 -- Ripper) gathers at the air staging point for up to T4OpGatherSeconds
 -- while both AIR players send T4OpEscortShare of their free fighters and
@@ -385,6 +386,8 @@ BankedExtraFactories = 3       -- more of the role's production factories
 -- A lagging factory keeps making units until the upgrader picks it; then it
 -- stops for at most FactoryHoldSeconds to go idle and start the upgrade.
 FactoryHoldSeconds          = 60
+-- Generators only go against buildings within this radius of the start.
+PowerAnchorRadius           = 70
 FactoryUpgradesAtOnce       = 2
 FactoryUpgradesAtOnceBanked = 4
 

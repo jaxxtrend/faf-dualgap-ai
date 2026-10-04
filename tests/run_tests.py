@@ -1123,6 +1123,12 @@ return A.WaveStuck(3, false), A.WaveStuck(3, true), A.WaveStuck(80, false)
 """)
 check(ws[0] and not ws[1] and not ws[2], 'a land wave standing still with no enemy around is stuck; fighting or moving is not')
 
+t4h = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+return A.T4InOwnHalf(0.3, true), A.T4InOwnHalf(0.7, true), A.T4InOwnHalf(0.3, false)
+""")
+check(t4h[0] and not t4h[1] and not t4h[2], 'an enemy air T4 anywhere in the own half draws the fighters')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

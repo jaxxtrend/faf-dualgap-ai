@@ -712,11 +712,23 @@ local function OverMid(brain, ctx, pos)
     return MidCover(nx, nz, ctx.airZones or Config.AirPatrolAll, near)
 end
 
+-- Exposed for tests: an enemy air experimental at normalised x (own-team
+-- view) is everyone's business anywhere in the own half.
+function T4InOwnHalf(nx, isExperimental)
+    return isExperimental and nx < 0.5
+end
+
+function InOwnHalfT4(ctx, e, p)
+    local nx = Utils.Normalise(p[1], p[3])
+    if ctx.side == 'RIGHT' then nx = 1 - nx end
+    return T4InOwnHalf(nx, EntityCategoryContains(categories.EXPERIMENTAL, e))
+end
+
 local function Intercept(brain, ctx, now)
     local threats = {}
     for _, e in ipairs(KnownNear(brain, CatEnemyAir, ctx.startPos, MapRadius())) do
         local p = e:GetPosition()
-        if BehindFront(ctx, p) or OverMid(brain, ctx, p) then table.insert(threats, e) end
+        if BehindFront(ctx, p) or OverMid(brain, ctx, p) or InOwnHalfT4(ctx, e, p) then table.insert(threats, e) end
     end
     for _, e in ipairs(threats) do
         local p = e:GetPosition()
@@ -735,6 +747,8 @@ local function Intercept(brain, ctx, now)
             -- Bombers, gunships and air T4s hitting our army get more fighters.
             local want = math.max(Config.InterceptMin, Config.InterceptPerEnemy * group,
                 Config.MidCoverPerBomber * heavy)
+            -- An air experimental (a Czar going for our ECO): every free fighter.
+            if EntityCategoryContains(categories.EXPERIMENTAL, e) then want = math.max(want, Config.InterceptT4) end
             local units = Nearest(FreeFighters(ctx), p, want)
             if table.getn(units) > 0 then
                 IssueClearCommands(units)
