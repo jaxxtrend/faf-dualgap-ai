@@ -960,6 +960,21 @@ return F.ScoutsAllowed(30), F.ScoutsAllowed(599), F.ScoutsAllowed(600)
 """)
 check(not sc[0] and not sc[1] and sc[2], 'no scouts before 10 minutes')
 
+sk = lua.execute(r"""
+local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+local F = import('/mods/DualGapAI/lua/AI/DualGapFactories.lua')
+local n = 0
+for _ in pairs(BO.Keep.GROUND) do n = n + 1 end
+return n, BO.Keep.AIR[1].count, BO.Keep.ECO[1].when, BO.Keep.NAVAL[1].count,
+       I.ScoutPackSize(700), I.ScoutPackSize(1600),
+       F.EnderAlmostReady(0.5, false), F.EnderAlmostReady(0.8, false), F.EnderAlmostReady(0, true)
+""")
+check(sk[0] == 0 and sk[1] >= 10, 'scouting is AIR\'s job: GROUND builds none, AIR keeps 10+')
+check(sk[2] == 'ender' and sk[3] == 2, 'ECO scouts only before its game ender goes in; NAVAL keeps 2 for its ships')
+check(sk[4] == 5 and sk[5] == 10, 'AIR scouts fly in packs of 5, later 10 (bases full of AA)')
+check(not sk[6] and sk[7] and sk[8], 'ECO builds scouts once its game ender is 75% done or its air T4 is going in')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

@@ -141,9 +141,23 @@ function KeepPick(entry, tech, idOf, canBuild)
     return nil
 end
 
+-- Exposed for tests: is the own game ender nearly done (or the air T4
+-- about to attack)? fraction: of the game ender under construction.
+function EnderAlmostReady(fraction, opRunning)
+    return opRunning or (fraction or 0) >= Config.EcoScoutEnderFraction
+end
+
+local function KeepCondition(brain, ctx, k)
+    if k.when ~= 'ender' then return true end
+    local Projects = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+    local ender = Projects.Find(ctx, 'GameEnder')
+    local fraction = ender and Alive(ender.unit) and ender.unit:GetFractionComplete() or 0
+    return EnderAlmostReady(fraction, ctx.t4Op ~= nil)
+end
+
 local function KeepList(brain, ctx, list, f, kind)
     for _, k in ipairs(list or {}) do
-        if k.kind == kind then
+        if k.kind == kind and KeepCondition(brain, ctx, k) then
             local idOf = function(key) return Utils.FactionId(brain, key) end
             local have = 0
             if idOf(k[1]) then have = have + CountId(brain, idOf(k[1])) end

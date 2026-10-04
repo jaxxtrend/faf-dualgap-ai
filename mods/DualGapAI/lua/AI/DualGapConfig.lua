@@ -144,6 +144,16 @@ PushOwnUnits      = 5      --            at least this many own units there
 
 -- Scouting: units kept alive per role (any factory tech), see BuildOrders.Keep.
 ScoutRepathSeconds = 60
+-- AIR scouts fly in packs (enemy bases are full of AA, single scouts die
+-- before they see anything): ScoutPackSize, ScoutPackSizeLate after
+-- ScoutPackLateSeconds. NAVAL's scouts circle over its leading ships
+-- (NavalScoutRadius). ECO builds its scouts once its game ender is
+-- EcoScoutEnderFraction built and sends them over the enemy ECO base.
+ScoutPackSize        = 5
+ScoutPackSizeLate    = 10
+ScoutPackLateSeconds = 1500
+NavalScoutRadius     = 40
+EcoScoutEnderFraction = 0.75
 
 -- Behaviour numbers.
 -- End of the T2 phase: this long after this player's first T2 factory.

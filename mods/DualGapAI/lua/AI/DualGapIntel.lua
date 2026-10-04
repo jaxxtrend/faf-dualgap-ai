@@ -466,19 +466,127 @@ local function AirScoutRoute(ctx, offset)
     return out
 end
 
-local function ScoutStep(brain, ctx)
-    local now = GetGameTimeSeconds()
-    local i = 0
+-- Exposed for tests: scouts per pack at game time `now`.
+function ScoutPackSize(now)
+    if now >= Config.ScoutPackLateSeconds then return Config.ScoutPackSizeLate end
+    return Config.ScoutPackSize
+end
+
+local function FinishedScouts(brain)
+    local out = {}
     for _, u in ipairs(brain:GetListOfUnits(CatAirScout, false)) do
         if Alive(u) and u:GetFractionComplete() >= 1 then
-            i = i + 1
             u.DualGapAssigned = true
-            if u:IsIdleState() or not u.DGScoutAt or now - u.DGScoutAt > Config.ScoutRepathSeconds then
-                u.DGScoutAt = now
-                IssueClearCommands({ u })
-                for _, p in ipairs(AirScoutRoute(ctx, i * 2)) do IssuePatrol({ u }, p) end
+            table.insert(out, u)
+        end
+    end
+    return out
+end
+
+-- AIR: scouts wait at home until a pack is complete, then the pack flies
+-- the scouting loop together; each new pack starts the loop elsewhere.
+local function PackScouts(brain, ctx, scouts, now)
+    ctx.scoutPacks = ctx.scoutPacks or {}
+    local inPack = {}
+    local keep = {}
+    for _, pack in ipairs(ctx.scoutPacks) do
+        pack.units = Utils.FilterAlive(pack.units)
+        if table.getn(pack.units) > 0 then
+            table.insert(keep, pack)
+            for _, u in ipairs(pack.units) do inPack[u] = true end
+            if now - pack.at > Config.ScoutRepathSeconds then
+                pack.at = now
+                IssueClearCommands(pack.units)
+                for _, p in ipairs(AirScoutRoute(ctx, pack.offset)) do IssuePatrol(pack.units, p) end
             end
         end
+    end
+    ctx.scoutPacks = keep
+    local waiting = {}
+    for _, u in ipairs(scouts) do
+        if not inPack[u] then table.insert(waiting, u) end
+    end
+    local size = ScoutPackSize(now)
+    if table.getn(waiting) >= size then
+        local units = {}
+        for k = 1, size do table.insert(units, waiting[k]) end
+        ctx.scoutPackN = (ctx.scoutPackN or 0) + 1
+        local pack = { units = units, at = now, offset = ctx.scoutPackN * 3 }
+        IssueClearCommands(units)
+        for _, p in ipairs(AirScoutRoute(ctx, pack.offset)) do IssuePatrol(units, p) end
+        table.insert(ctx.scoutPacks, pack)
+        Utils.Log(brain, 'scout pack of ' .. size .. ' goes out')
+    else
+        for _, u in ipairs(waiting) do
+            if u:IsIdleState() and Utils.Dist2D(u:GetPosition(), ctx.startPos) > 40 then IssueMove({ u }, ctx.startPos) end
+        end
+    end
+end
+
+-- NAVAL: scouts circle over the leading ships (the one furthest toward the
+-- enemy), widening the fleet's sight; over the naval rally without ships.
+local function NavalScouts(brain, ctx, scouts, now)
+    local dir = (ctx.side == 'LEFT') and 1 or -1
+    local lead, best
+    for _, u in ipairs(brain:GetListOfUnits(categories.NAVAL * categories.MOBILE, false)) do
+        if Alive(u) and u:GetFractionComplete() >= 1 then
+            local x = u:GetPosition()[1] * dir
+            if not best or x > best then lead, best = u, x end
+        end
+    end
+    local c = lead and lead:GetPosition() or Routes.GetPoint('NavalRally', ctx.side)
+    local r = Config.NavalScoutRadius
+    for i, u in ipairs(scouts) do
+        if u:IsIdleState() or not u.DGScoutAt or now - u.DGScoutAt > 15 then
+            u.DGScoutAt = now
+            local a = (i - 1) * 1.6
+            local pts = {}
+            for k = 0, 3 do
+                local ang = a + k * 1.5708
+                local x, z = c[1] + math.cos(ang) * r + dir * 20, c[3] + math.sin(ang) * r
+                table.insert(pts, { x, GetSurfaceHeight(x, z), z })
+            end
+            IssueClearCommands({ u })
+            for _, p in ipairs(pts) do IssuePatrol({ u }, p) end
+        end
+    end
+end
+
+-- ECO: right before its game ender goes in, the scouts fly over the enemy
+-- ECO base together (and its experimental construction spots).
+local function EcoScouts(brain, ctx, scouts, now)
+    if table.getn(scouts) == 0 then return end
+    local busy = false
+    for _, u in ipairs(scouts) do if not u:IsIdleState() then busy = true end end
+    if busy and ctx.ecoScoutAt and now - ctx.ecoScoutAt < Config.ScoutRepathSeconds then return end
+    if table.getn(scouts) < Config.ScoutPackSize and not busy and not ctx.t4Op then return end
+    ctx.ecoScoutAt = now
+    local enemy = OtherSide(ctx.side)
+    local pts = {}
+    for _, sl in pairs(RoleManager.GetSlots()) do
+        if sl.side == enemy and sl.role == 'ECO' then table.insert(pts, sl.pos) end
+    end
+    for _, m in pairs(ScenarioUtils.GetMarkers() or {}) do
+        if m.type == 'Protected Experimental Construction' and m.position and Utils.SideOf(m.position) == enemy
+            and pts[1] and Utils.Dist2D(m.position, pts[1]) < 250 then
+            table.insert(pts, m.position)
+        end
+    end
+    if table.getn(pts) == 0 then return end
+    IssueClearCommands(scouts)
+    for _, p in ipairs(pts) do IssuePatrol(scouts, p) end
+    Utils.Log(brain, table.getn(scouts) .. ' scouts look over the enemy ECO base before our game ender')
+end
+
+local function ScoutStep(brain, ctx)
+    local now = GetGameTimeSeconds()
+    local scouts = FinishedScouts(brain)
+    if ctx.role == 'NAVAL' then
+        NavalScouts(brain, ctx, scouts, now)
+    elseif ctx.role == 'ECO' then
+        EcoScouts(brain, ctx, scouts, now)
+    else
+        PackScouts(brain, ctx, scouts, now)
     end
     local j = 0
     for _, u in ipairs(brain:GetListOfUnits(CatLandScout, false)) do

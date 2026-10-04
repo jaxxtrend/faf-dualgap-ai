@@ -55,10 +55,12 @@ The ACU, engineers and factories are driven by the mod's modules:
 Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factories build engineers in FAF).
 
 ## Scouting, endgame, army
-- **Scouting.** No scouts before minute 10 (everyone knows the start positions); from then on each role keeps a stock of scouts (`Keep`);
-  a T3 air factory builds spy planes instead of T1 scouts.
-  Planes fly over the enemy bases, their experimental build spots, the water, the enemy's deepest water and the front;
-  land scouts stand ahead of the own wall.
+- **Scouting.** No scouts before minute 10 (everyone knows the start positions). Scouting is AIR's job: it keeps 12 scouts
+  and sends them in packs of 5 (10 after minute 25) - the bases are full of AA, single scouts die before they see anything.
+  A pack flies over the enemy bases, their experimental build spots, the water, the enemy's deepest water and the front.
+  NAVAL keeps 2 scouts circling over its leading ships to widen the fleet's sight. ECO builds 5 only when its game ender is
+  75% done (or its air T4 is about to go in) and sends them over the enemy ECO base. GROUND builds none.
+  A T3 air factory builds spy planes instead of T1 scouts.
   The bot only reacts to what the team has actually seen: a structure seen at least once, or a unit in sight, on radar or on sonar.
 - **Team callouts.** Like human players, the bots ping the map and write in team chat: an enemy nuke or other game ender spotted
   (and whether it is still being built), an enemy experimental, "attacking the upper/lower mid", "enemy at my wall", "fleet moving out",

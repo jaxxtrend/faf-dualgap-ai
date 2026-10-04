@@ -109,15 +109,19 @@ Production = {
     },
 }
 
--- Support units kept alive all game, built before army production by any
--- factory of the right kind whatever its tech: scouting never stops.
+-- Support units kept alive, built before army production by any factory of
+-- the right kind whatever its tech (from Config.ScoutStartSeconds on).
 -- `late`: a T3 factory builds this instead (T3 spy planes replace T1 air
--- scouts); both count toward `count`.
+-- scouts); both count toward `count`. `when = 'ender'`: only while the
+-- player's own game ender is nearly done or its air T4 is about to attack.
+-- Scouting is AIR's job (packs of 5, later 10: bases are full of AA);
+-- NAVAL keeps two over its own ships; ECO scouts the target before its
+-- game ender goes in.
 Keep = {
-    GROUND = { { 'LandScout', kind = 'Land', count = 2 }, { 'AirScout', kind = 'Air', count = 1, late = 'SpyPlane' } },
-    AIR    = { { 'AirScout', kind = 'Air', count = 3, late = 'SpyPlane' } },
-    ECO    = { { 'AirScout', kind = 'Air', count = 2, late = 'SpyPlane' } },
-    NAVAL  = { { 'AirScout', kind = 'Air', count = 1, late = 'SpyPlane' } },
+    GROUND = {},
+    AIR    = { { 'AirScout', kind = 'Air', count = 12, late = 'SpyPlane' } },
+    ECO    = { { 'AirScout', kind = 'Air', count = 5, late = 'SpyPlane', when = 'ender' } },
+    NAVAL  = { { 'AirScout', kind = 'Air', count = 2, late = 'SpyPlane' } },
 }
 
 -- Extra units kept in hunt mode (DualGapIntel.HuntMode: the enemy is lost,
