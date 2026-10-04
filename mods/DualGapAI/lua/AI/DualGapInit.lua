@@ -61,8 +61,26 @@ function Start(brain)
         -- around it (engineers included) and sends them at the enemy, which
         -- overrides this mod. It skips bases flagged DistressCall, so keep
         -- the flag up (that also stops its error once a brain is defeated).
+        local Mex = import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua')
+        local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
+        local Say = { ECO = 'Our ECO is gone: I take over the economy and the game ender.',
+            AIR = 'Our AIR is gone: I take over the air and the base anti-air.',
+            NAVAL = 'Our NAVAL is gone: I take over the navy.',
+            GROUND = 'Our GROUND is gone: I take over the mid.' }
         while not Utils.BrainDefeated(brain) do
             for _, loc in pairs(brain.BuilderManagers or {}) do loc.DistressCall = true end
+            -- Adaptive roles: a defeated ally's job passes to whoever took
+            -- over its mexes (the nearest ally), on top of its own.
+            local ok, duties = pcall(Mex.DutiesOf, brain.Name)
+            if ok and duties then
+                for role, _ in pairs(duties) do
+                    if role ~= ctx.role and not (ctx.duties and ctx.duties[role]) then
+                        Utils.Log(brain, 'takes over the ' .. role .. ' role of a defeated ally')
+                        Comms.Say(brain, ctx.side, 'duty:' .. role .. ':' .. brain.Name, Say[role], ctx.startPos, 'move')
+                    end
+                end
+                ctx.duties = duties
+            end
             WaitSeconds(5)
         end
     end)

@@ -821,9 +821,9 @@ local function PlanForwardBase(brain, ctx)
     end
 end
 
-local function PlanExperimentals(brain, ctx)
-    local role = ctx.role
-    if role == 'ECO' then
+-- The game ender: ECO's job, or of whoever took it over from a defeated ECO.
+local function PlanGameEnder(brain, ctx)
+    do
         if not ctx.strategic then return end
         if not ctx.enderKey then
             local available = {}
@@ -867,8 +867,13 @@ local function PlanExperimentals(brain, ctx)
             Add(brain, ctx, { name = 'GameEnder', key = ctx.enderKey, site = behind, count = left,
                 share = Config.EcoStrategicShare, minCrewTech = 2, priority = 5 })
         end
-        return
     end
+end
+
+local function PlanExperimentals(brain, ctx)
+    local role = ctx.role
+    if Utils.HasDuty(ctx, 'ECO') then PlanGameEnder(brain, ctx) end
+    if role == 'ECO' then return end
     local key = BO.Experimental[role]
     if not key or Find(ctx, 'Experimental') or not HasT3Engineer(brain) then return end
     local fighters = Utils.Count(brain:GetListOfUnits(CatT3Fighter, false))
@@ -888,7 +893,8 @@ end
 -- ECO strategic phase: needs T2 and a steady income (the engine reports
 -- bogus income spikes at game start).
 local function UpdateStrategic(brain, ctx)
-    if ctx.role ~= 'ECO' or ctx.strategic or not ctx.t2Time then return end
+    if not Utils.HasDuty(ctx, 'ECO') or ctx.strategic or not ctx.t2Time then return end
+    -- (A player that took over ECO's role gets there the same way.)
     if brain:GetEconomyIncome('MASS') * 10 >= Config.EcoStrategicMassIncome then
         ctx.strategicSamples = (ctx.strategicSamples or 0) + 1
     else
@@ -967,11 +973,8 @@ end
 -- Best artillery target in range (shields matter).
 -- Enemy ECO start positions (their base is the heart of the economy).
 local function EnemyEcoBases(ctx)
-    local out = {}
-    for _, sl in pairs(RoleManager.GetSlots()) do
-        if sl.side ~= ctx.side and sl.role == 'ECO' then table.insert(out, sl.pos) end
-    end
-    return out
+    -- Whoever holds the enemy ECO role now (its heir once the ECO is out).
+    return import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua').DutyPositions(OtherSide(ctx.side), 'ECO')
 end
 
 local function NearAny(pos, list, radius)
@@ -985,7 +988,7 @@ local function BestTarget(brain, ctx, from, range, longRange)
     local army = brain:GetArmyIndex()
     local haveNuke = OwnsNuke(brain)
     -- ECO's long-range guns go for the enemy ECO first.
-    local ecoBases = (longRange and ctx.role == 'ECO') and EnemyEcoBases(ctx) or {}
+    local ecoBases = (longRange and Utils.HasDuty(ctx, 'ECO')) and EnemyEcoBases(ctx) or {}
     local best, bestScore
     for _, e in ipairs(brain:GetUnitsAroundPoint(CatTargets, from, range, 'Enemy') or {}) do
         if Intel.Known(e, army) then

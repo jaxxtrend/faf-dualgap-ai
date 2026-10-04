@@ -93,6 +93,10 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   20 behind it, renewed every 5 s: nobody races ahead, the escort meets enemy fighters and ground AA fire before the T4 does.
   The group flies round the map edge, not over the mid and its AA (routes drawn by a player): to an upper base along the
   north edge, to a lower base along the south edge under the basin, turning up into the base from below. Novax satellites also go for the enemy ECO commander first when it is seen and unshielded.
+- **Adaptive roles.** A defeated player's role passes to the ally that took over its mexes (the nearest one), on top of its own,
+  and on down the line: whoever took over ECO enters the strategic phase and builds the game ender, a NAVAL heir builds yards
+  and the navy's ships and keeps destroyers at the mid, an AIR heir runs the air attacks, the T4 escort and the base AA. The
+  heir says so in team chat. Enemy ECO targets (nukes, ECO's guns, the air T4 operation) follow the enemy ECO role the same way.
 - **Everyone on a game ender.** A scouted enemy game ender is the whole team's target: AIR strikes it once 30+ planes are home and free, land waves
   leave with a smaller size (fleets at full size) and take the less defended mid lane to it, fleets sail to the water next to it, nukes and artillery
   already put it first.

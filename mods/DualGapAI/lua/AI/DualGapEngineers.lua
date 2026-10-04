@@ -696,6 +696,12 @@ local function TryFactories(brain, ctx, u)
     -- spend the income, so a few more of them.
     local extra = Utils.MassBanked(brain) and Config.BankedExtraFactories or 0
     for k, v in pairs(BO.ExtraFactories[ctx.role] or {}) do wanted[k] = v + extra end
+    -- Inherited roles bring their factories too.
+    for role, _ in pairs(ctx.duties or {}) do
+        for k, v in pairs(BO.ExtraFactories[role] or {}) do
+            if not wanted[k] or wanted[k] < v then wanted[k] = v end
+        end
+    end
     -- The ground player helps the navy once its mid is pushed, or when the
     -- team hunts an ACU hiding under water.
     if ctx.role == 'GROUND' and (ctx.midPushed or import('/mods/DualGapAI/lua/AI/DualGapIntel.lua').HuntMode(ctx.side)) then

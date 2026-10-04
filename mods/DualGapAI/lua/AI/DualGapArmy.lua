@@ -422,7 +422,7 @@ function MidSupportWanted(waterPushed)
 end
 
 local function MidSupportStep(brain, ctx)
-    if ctx.role ~= 'NAVAL' then return end
+    if not Utils.HasDuty(ctx, 'NAVAL') then return end
     if not ctx.midWater then
         local own, centre, enemyW = MidWater(ctx.side)
         if not own then return end
@@ -829,10 +829,8 @@ function T4OpTarget(acus, ecoBase, near)
 end
 
 local function EnemyEcoBase(ctx)
-    for _, sl in pairs(RoleManager.GetSlots()) do
-        if sl.side ~= ctx.side and sl.role == 'ECO' then return sl.pos end
-    end
-    return nil
+    -- Whoever holds the enemy ECO role now (its heir once the ECO is out).
+    return import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua').DutyPositions(OtherSide(ctx.side), 'ECO')[1]
 end
 
 local function PickOpTarget(brain, ctx)
@@ -1028,7 +1026,7 @@ function JoinAirT4Op(brain, ctx, bombers, now)
         return false
     end
     if not op or not Alive(op.lead) then return false end
-    if ctx.role ~= 'AIR' and op.by ~= brain:GetArmyIndex() then return false end
+    if not Utils.HasDuty(ctx, 'AIR') and op.by ~= brain:GetArmyIndex() then return false end
     if mine then return true end
     ctx.fighters = Utils.FilterAlive(ctx.fighters or {})
     local free = FreeFighters(ctx)
@@ -1067,7 +1065,7 @@ end
 local CatEnemyT4Ground = categories.EXPERIMENTAL * categories.MOBILE - categories.AIR
 
 function DefendAgainstT4(brain, ctx, staging, bombers, torps, now)
-    if ctx.role ~= 'AIR' then return false end
+    if not Utils.HasDuty(ctx, 'AIR') then return false end
     if ctx.t4StrikeAt and now - ctx.t4StrikeAt < 45 then return false end
     local best, bestD
     for _, e in ipairs(KnownNear(brain, CatEnemyT4Ground, ctx.startPos, MapRadius())) do
@@ -1139,7 +1137,7 @@ local function MassAirTarget(brain, ctx)
 end
 
 function MassAirStep(brain, ctx, staging, bombers, now)
-    if ctx.role ~= 'AIR' then return false end
+    if not Utils.HasDuty(ctx, 'AIR') then return false end
     -- Only what is home and free counts: planes still out on the last
     -- strike or chasing intruders would turn the attack into a trickle.
     ctx.fighters = Utils.FilterAlive(ctx.fighters or {})

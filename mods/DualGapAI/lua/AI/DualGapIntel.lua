@@ -563,8 +563,8 @@ local function EcoScouts(brain, ctx, scouts, now)
     ctx.ecoScoutAt = now
     local enemy = OtherSide(ctx.side)
     local pts = {}
-    for _, sl in pairs(RoleManager.GetSlots()) do
-        if sl.side == enemy and sl.role == 'ECO' then table.insert(pts, sl.pos) end
+    for _, p in ipairs(import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua').DutyPositions(enemy, 'ECO')) do
+        table.insert(pts, p)
     end
     for _, m in pairs(ScenarioUtils.GetMarkers() or {}) do
         if m.type == 'Protected Experimental Construction' and m.position and Utils.SideOf(m.position) == enemy

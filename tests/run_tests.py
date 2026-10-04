@@ -1018,6 +1018,20 @@ check(an[2] == 3 and an[3] == 'B', 'AIR builds the AA rings of all three bases o
 check(an[4] == 0 and an[5] == 'air', 'only the AA keeper builds base AA; a living AIR (bot or human) keeps it')
 check(an[6] == 'eco' and an[7], 'AIR gone -> whoever took its mexes keeps the AA, on down the line')
 
+du = lua.execute(r"""
+local M = import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua')
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local alive = { eco = false, naval = false, ground = true }
+local heirs = { eco = 'naval', naval = 'ground' }
+local h = M.FollowHeirs('eco', function(n) return alive[n] end, function(n) return heirs[n] end)
+local self = M.FollowHeirs('ground', function(n) return alive[n] end, function(n) return heirs[n] end)
+local none = M.FollowHeirs('eco', function() return false end, function() return nil end)
+local ctx = { role = 'GROUND', duties = { GROUND = true, ECO = true } }
+return h, self, none == nil, U.HasDuty(ctx, 'ECO'), U.HasDuty(ctx, 'NAVAL'), U.HasDuty({ role = 'AIR' }, 'AIR')
+""")
+check(du[0] == 'ground' and du[1] == 'ground' and du[2], 'adaptive roles: a defeated player\'s role passes to its heir, on down the line')
+check(du[3] and not du[4] and du[5], 'adaptive roles: a player does its own role plus the inherited ones')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

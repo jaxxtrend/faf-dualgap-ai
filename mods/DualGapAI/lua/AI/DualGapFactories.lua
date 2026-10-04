@@ -203,8 +203,17 @@ function Produce(brain, ctx, f)
     if f == ctx.mainFactory and RefillEngineers(brain, ctx, f) then return end
     if HoldForUpgrade(TechOf(f), KindTopTech(brain, f), f == ctx.mainFactory) then return end
     if KeepUnits(brain, ctx, f) then return end
+    -- Own role's list for this factory kind, else one of an inherited role
+    -- (a GROUND player that took over NAVAL builds the navy's ships).
+    local fkind = Utils.FactoryKind(f)
     local byKind = BO.Production[ctx.role]
-    local list = byKind and byKind[Utils.FactoryKind(f)]
+    local list = byKind and byKind[fkind]
+    if not list then
+        for role, _ in pairs(ctx.duties or {}) do
+            local other = BO.Production[role]
+            if other and other[fkind] then list = other[fkind]; break end
+        end
+    end
     if not list then return end
     local tech = TechOf(f)
     local capMul = Utils.MassBanked(brain) and Config.BankedCapMul or 1

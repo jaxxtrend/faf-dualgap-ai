@@ -360,6 +360,12 @@ function SlotsAllow(usedWeight, newWeight, banked)
     return usedWeight + newWeight <= slots
 end
 
+-- Does this player do `role`'s job: its own role, or one it inherited from
+-- a defeated ally (ctx.duties, kept by DualGapInit)?
+function HasDuty(ctx, role)
+    return ctx.role == role or (ctx.duties ~= nil and ctx.duties[role] == true)
+end
+
 -- Mass storage well filled: spend it (more builds, units, engineers).
 function MassBanked(brain)
     if not brain.GetEconomyStoredRatio then return false end

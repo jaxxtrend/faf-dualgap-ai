@@ -153,6 +153,52 @@ function Heir(name)
     return heirs[name]
 end
 
+-- Exposed for tests: follow the heirs from `name` to the first player still
+-- in the game (alive(name)), or nil.
+function FollowHeirs(name, alive, heir)
+    local n = name
+    for i = 1, 12 do
+        if not n then return nil end
+        if alive(n) then return n end
+        n = heir(n)
+    end
+    return nil
+end
+
+local function InGame(name)
+    local b = BrainByName(name)
+    return b ~= nil and not Defeated(b)
+end
+
+-- The player now holding `name`'s role: itself while in the game, else its
+-- heir (who took its mexes), and so on.
+function Holder(name)
+    return FollowHeirs(name, InGame, Heir)
+end
+
+-- Roles a player holds: its own, plus those of defeated players it inherited.
+function DutiesOf(name)
+    local out = {}
+    for slotName, s in pairs(RoleManager.GetSlots()) do
+        if s.role and Holder(slotName) == name then out[s.role] = true end
+    end
+    return out
+end
+
+-- Start positions of the players holding `role` on `side` now (a defeated
+-- ECO's duty moves to its heir's base).
+function DutyPositions(side, role)
+    local out = {}
+    local slots = RoleManager.GetSlots()
+    for slotName, s in pairs(slots) do
+        if s.side == side and s.role == role then
+            local h = Holder(slotName)
+            if h and slots[h] then table.insert(out, slots[h].pos) end
+        end
+    end
+    return out
+end
+
 local function Redistribute(deadName)
     local dead = BrainByName(deadName)
     local slots = RoleManager.GetSlots()
