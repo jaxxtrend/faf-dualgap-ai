@@ -272,12 +272,21 @@ SubACUMemory = 300
 -- (nil = no limit).
 GameEnderMax = { NukeSilo = 3, StratArtyT3 = 4, ArtilleryT4 = 2 }
 
--- Nukes fire in salvos timed to land together: against a target covered by
--- N known enemy anti-nukes, N + NukeSalvoMargin missiles (at least N + 1
--- must be loaded). A target must be worth at least NukeMinValue mass
--- (known enemy units within 30 of it) unless it is a game ender or an ACU.
-NukeSalvoMargin = 1
-NukeMinValue    = 8000
+-- Nukes are rare: they go for the heart of the enemy. The bot picks one
+-- point - the most enemy mass within NukeRadius, doubled near the enemy ECO
+-- base, plus game enders and an ACU on land - and keeps hitting that point
+-- with every loaded missile (an anti-nuke usually stops the first one or
+-- two) until NukeShotsPerTarget missiles went in or the mass there fell
+-- below a third. A point that held out is skipped for NukeBlockedSeconds
+-- and the bot builds T3 artillery to knock out the enemy anti-nukes.
+-- Points worth less than NukeMinValue mass (and not an ender / ACU) are
+-- not worth a missile.
+NukeRadius         = 30
+NukeMinValue       = 8000
+NukeShotsPerTarget = 5
+NukeBlockedSeconds = 300
+-- Long-range guns of ECO prefer targets near the enemy ECO base (x this).
+EcoVsEcoBonus = 1.5
 
 -- Enemy Yolona Oss scouted: every base puts up YolonaAntiNukes anti-nukes
 -- and idle engineers assist them (faster interceptor missiles) until each

@@ -700,6 +700,12 @@ local function PlanExperimentals(brain, ctx)
             ctx.enderKey = PickGameEnder(available, Roll)
             Utils.Log(brain, 'game ender chosen: ' .. tostring(ctx.enderKey))
         end
+        -- Nukes keep getting stopped: T3 artillery to knock out the anti-nukes.
+        if ctx.wantAntiSMDArty and not Find(ctx, 'AntiSMDArty') and HasT3Engineer(brain)
+            and Utils.Count(brain:GetListOfUnits(categories.STRUCTURE * categories.ARTILLERY * categories.TECH3, false)) == 0 then
+            Add(brain, ctx, { name = 'AntiSMDArty', key = 'StratArtyT3', site = T4Site(ctx), count = 1, crewMax = 6,
+                minCrewTech = 2, priority = 2 })
+        end
         local cap = ctx.enderKey and Config.GameEnderMax[ctx.enderKey]
         if cap then
             local id = Utils.FactionId(brain, ctx.enderKey)
@@ -808,14 +814,34 @@ local function OwnsNuke(brain)
 end
 
 -- Best artillery target in range (shields matter).
+-- Enemy ECO start positions (their base is the heart of the economy).
+local function EnemyEcoBases(ctx)
+    local out = {}
+    for _, sl in pairs(RoleManager.GetSlots()) do
+        if sl.side ~= ctx.side and sl.role == 'ECO' then table.insert(out, sl.pos) end
+    end
+    return out
+end
+
+local function NearAny(pos, list, radius)
+    for _, p in ipairs(list) do
+        if Utils.Dist2D(pos, p) <= radius then return true end
+    end
+    return false
+end
+
 local function BestTarget(brain, ctx, from, range, longRange)
     local army = brain:GetArmyIndex()
     local haveNuke = OwnsNuke(brain)
+    -- ECO's long-range guns go for the enemy ECO first.
+    local ecoBases = (longRange and ctx.role == 'ECO') and EnemyEcoBases(ctx) or {}
     local best, bestScore
     for _, e in ipairs(brain:GetUnitsAroundPoint(CatTargets, from, range, 'Enemy') or {}) do
         if Intel.Known(e, army) then
-            local score = ArtilleryScore(TargetKind(e), Intel.ShieldsOver(ctx.side, e:GetPosition()), haveNuke,
+            local p = e:GetPosition()
+            local score = ArtilleryScore(TargetKind(e), Intel.ShieldsOver(ctx.side, p), haveNuke,
                 Utils.IsUnderwater(e), longRange)
+            if score > 0 and NearAny(p, ecoBases, 120) then score = score * Config.EcoVsEcoBonus end
             if score > 0 and (not bestScore or score > bestScore) then best, bestScore = e, score end
         end
     end
@@ -835,16 +861,56 @@ local function ValueAround(brain, pos)
     return v
 end
 
--- Exposed for tests: how many missiles a salvo at a target covered by
--- `smd` known anti-nukes uses, given `loaded` missiles; 0 = can't break it.
-function SalvoSize(smd, loaded)
-    if loaded < smd + 1 then return 0 end
-    return math.min(loaded, smd + 1 + Config.NukeSalvoMargin)
+-- Exposed for tests: worth of a nuke target point.
+function NukeTargetScore(value, nearEnemyEco, ender, acu)
+    local score = value
+    if nearEnemyEco then score = score * 2 end
+    if ender then score = score + 20000 end
+    if acu then score = score + 30000 end
+    return score
 end
 
--- Nukes: pick the most valuable target the loaded missiles can get through
--- to, then fire a salvo timed to land together (FAF's Sorian AI does the
--- same): N anti-nukes can stop about N missiles arriving at once.
+-- Exposed for tests: keep hitting the focus point? (shots fired so far,
+-- mass there when we started and now)
+function NukeKeepFocus(shots, value0, valueNow)
+    if shots >= Config.NukeShotsPerTarget then return false, 'held' end
+    if valueNow < value0 / 3 then return false, 'destroyed' end
+    return true
+end
+
+local function PickNukeTarget(brain, ctx, from)
+    local army = brain:GetArmyIndex()
+    local ecoBases = EnemyEcoBases(ctx)
+    local now = GetGameTimeSeconds()
+    ctx.nukeBlocked = ctx.nukeBlocked or {}
+    local best, bestScore, bestValue
+    for _, e in ipairs(brain:GetUnitsAroundPoint(CatTargets, from, 4000, 'Enemy') or {}) do
+        if Intel.Known(e, army) and not Utils.IsUnderwater(e) then
+            local p = e:GetPosition()
+            local blocked = false
+            for _, b in ipairs(ctx.nukeBlocked) do
+                if now - b.at < Config.NukeBlockedSeconds and Utils.Dist2D(b.pos, p) < Config.NukeRadius * 2 then
+                    blocked = true
+                end
+            end
+            if not blocked then
+                local kind = TargetKind(e)
+                local value = ValueAround(brain, p)
+                local ender, acu = kind == 'ENDER', kind == 'ACU'
+                if ender or acu or value >= Config.NukeMinValue then
+                    local score = NukeTargetScore(value, NearAny(p, ecoBases, 90), ender, acu)
+                    if not bestScore or score > bestScore then
+                        best, bestScore, bestValue = { p[1], p[2], p[3] }, score, value
+                    end
+                end
+            end
+        end
+    end
+    return best, bestValue
+end
+
+-- Nukes: one focus point, hit again and again (see Config.NukeShotsPerTarget).
+-- All loaded missiles fire together, timed to land at the same moment.
 local function NukeStep(brain, ctx)
     local loaded = {}
     for _, s in ipairs(brain:GetListOfUnits(CatOwnNukes, false)) do
@@ -855,47 +921,52 @@ local function NukeStep(brain, ctx)
     end
     local n = table.getn(loaded)
     if n == 0 then return end
-    local army = brain:GetArmyIndex()
-    local best, bestScore, bestSalvo
-    for _, e in ipairs(brain:GetUnitsAroundPoint(CatTargets, loaded[1]:GetPosition(), 4000, 'Enemy') or {}) do
-        if Intel.Known(e, army) and not Utils.IsUnderwater(e) then
-            local p = e:GetPosition()
-            local salvo = SalvoSize(Intel.AntiNukesCovering(ctx.side, p), n)
-            if salvo > 0 then
-                local kind = TargetKind(e)
-                local value = ValueAround(brain, p)
-                if kind == 'ENDER' or kind == 'ACU' or value >= Config.NukeMinValue then
-                    -- Worth: target priority, then mass around it, per missile used.
-                    local score = (ArtilleryScore(kind, 0, false, false, true) * 200 + value) / salvo
-                    if not bestScore or score > bestScore then best, bestScore, bestSalvo = e, score, salvo end
-                end
+
+    local f = ctx.nukeFocus
+    if f then
+        local keep, why = NukeKeepFocus(f.shots, f.value0, ValueAround(brain, f.pos))
+        if not keep then
+            if why == 'held' then
+                Utils.Log(brain, 'nuke target held after ' .. f.shots .. ' missiles: switching, artillery for their anti-nuke')
+                ctx.nukeBlocked = ctx.nukeBlocked or {}
+                table.insert(ctx.nukeBlocked, { pos = f.pos, at = GetGameTimeSeconds() })
+                ctx.wantAntiSMDArty = true
+            else
+                Utils.Log(brain, 'nuke target destroyed')
             end
+            f = nil
         end
     end
-    if not best then return end
-    local target = best:GetPosition()
-    target = { target[1], target[2], target[3] }
+    if not f then
+        local pos, value = PickNukeTarget(brain, ctx, loaded[1]:GetPosition())
+        if not pos then return end
+        f = { pos = pos, value0 = value, shots = 0 }
+        Utils.Log(brain, 'nuke focus: ' .. math.floor(value) .. ' mass at ' .. math.floor(pos[1]) .. ',' .. math.floor(pos[3]))
+        Comms.Say(brain, ctx.side, 'nuke:' .. brain.Name, 'Nuking their core here, again and again!', pos, 'attack')
+    end
+    ctx.nukeFocus = f
+
+    local target = f.pos
     -- Longest flight first, so all missiles arrive together (speed ~40/s).
     local shots = {}
-    for i = 1, bestSalvo do
-        local sp = loaded[i]:GetPosition()
-        table.insert(shots, { unit = loaded[i], flight = Utils.Dist2D(sp, target) / 40 })
+    for i = 1, n do
+        table.insert(shots, { unit = loaded[i], flight = Utils.Dist2D(loaded[i]:GetPosition(), target) / 40 })
     end
     table.sort(shots, function(a, b) return a.flight > b.flight end)
-    Utils.Log(brain, 'nuke salvo of ' .. bestSalvo .. ' at ' .. tostring(best:GetBlueprint().BlueprintId))
-    Comms.Say(brain, ctx.side, 'nuke:' .. brain.Name, 'Nuke salvo of ' .. bestSalvo .. ' incoming here!', target, 'attack')
-    for _, s in ipairs(shots) do s.unit.DGNukeBusy = true end
+    f.shots = f.shots + n
+    Utils.Log(brain, 'nuke salvo of ' .. n .. ' (' .. f.shots .. '/' .. Config.NukeShotsPerTarget .. ' at this point)')
+    for _, sh in ipairs(shots) do sh.unit.DGNukeBusy = true end
     ForkThread(function()
         local last = shots[1].flight
-        for _, s in ipairs(shots) do
-            if last - s.flight > 0 then WaitSeconds(last - s.flight) end
-            last = s.flight
-            if Alive(s.unit) then IssueNuke({ s.unit }, target) end
+        for _, sh in ipairs(shots) do
+            if last - sh.flight > 0 then WaitSeconds(last - sh.flight) end
+            last = sh.flight
+            if Alive(sh.unit) then IssueNuke({ sh.unit }, target) end
         end
         -- The missile leaves a few seconds after the order: keep the silos
         -- out of the next salvo until then.
         WaitSeconds(10)
-        for _, s in ipairs(shots) do s.unit.DGNukeBusy = nil end
+        for _, sh in ipairs(shots) do sh.unit.DGNukeBusy = nil end
     end)
 end
 

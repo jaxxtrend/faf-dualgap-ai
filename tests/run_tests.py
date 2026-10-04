@@ -756,9 +756,16 @@ check(S('MEX', 0, False, False, True) <= 2 and S('MEX', 0, False, False, False) 
       'T1/T2 mexes are not worth a T3/T4 shell, but are fine for the T2 proxy artillery')
 check(S('MEX3', 0, False, False, True) > S('MEX3', 1, False, False, True),
       'an unshielded T3 mex is preferred to a shielded one')
-check(P.SalvoSize(0, 1) == 1 and P.SalvoSize(0, 3) == 2, 'no anti-nuke: one missile (plus margin if loaded)')
-check(P.SalvoSize(2, 2) == 0, 'two anti-nukes and two missiles: hold fire')
-check(P.SalvoSize(2, 3) == 3 and P.SalvoSize(2, 9) == 4, 'two anti-nukes: salvo of 3, or 4 with spare missiles')
+check(P.NukeTargetScore(20000, True, False, False) > P.NukeTargetScore(30000, False, False, False),
+      'nukes: the enemy ECO base beats a richer secondary base')
+check(P.NukeTargetScore(9000, False, True, False) > P.NukeTargetScore(20000, False, False, False),
+      'nukes: a game ender is worth a missile on its own')
+k1 = P.NukeKeepFocus(1, 30000, 29000)
+k5 = P.NukeKeepFocus(5, 30000, 29000)
+kd = P.NukeKeepFocus(2, 30000, 9000)
+check(k1[0] is True if isinstance(k1, tuple) else k1 is True, 'nukes: keep hitting the same point after a missile is stopped')
+check(tuple(k5) == (False, 'held') and tuple(kd) == (False, 'destroyed'),
+      'nukes: switch after 5 missiles (anti-nuke holds) or once the point is destroyed')
 U = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')")
 check(U.SlotsAllow(0, 1) and U.SlotsAllow(2, 1) and not U.SlotsAllow(3, 1),
       'at most 3 new structures under construction at once')
