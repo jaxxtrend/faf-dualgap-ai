@@ -1196,6 +1196,12 @@ return called, I.NukeLaunchTime(8) ~= nil, I.NukeLaunchTime(3) == nil
 check(hk[0] == 1, 'the Unit hook still runs the original launch code')
 check(hk[1] and hk[2], 'a nuke launch is recorded for the army that fired it')
 
+rf = lua.execute(r"""
+local B = import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
+return B.RefugeScore(3, 0, true) > B.RefugeScore(3, 0, false), B.RefugeScore(2, 0, false) > B.RefugeScore(0, 3, false)
+""")
+check(rf[0] and rf[1], 'an ACU hides from an air T4 where the T3 anti-air and the shields are')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

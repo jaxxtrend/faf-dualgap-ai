@@ -1039,7 +1039,9 @@ function EngineersStep(brain, ctx)
     -- The ACU joins the base builders after its opening when its role keeps
     -- it home (AIR / ECO), or when it was sent home to build (LANDBUILD).
     local acu = Utils.Commander(brain)
-    if acu and ctx.acuBODone and Utils.IsIdle(acu)
+    -- (Not while it takes refuge from an enemy air T4: DualGapACUBehaviors.)
+    local sheltering = ctx.refugeUntil and GetGameTimeSeconds() < ctx.refugeUntil
+    if acu and ctx.acuBODone and Utils.IsIdle(acu) and not sheltering
         and (ctx.role == 'AIR' or ctx.role == 'ECO' or ctx.acuState == 'LANDBUILD') then
         GeneralTask(brain, ctx, acu, true)
     end

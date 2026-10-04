@@ -199,6 +199,56 @@ function SafetyDecision(hp, lateT2, stratArty, torp, bombers, otherAir, landT4)
     return nil
 end
 
+-- Exposed for tests: how well a spot is defended against an air T4
+-- (T3 anti-air near it counts double, being under a shield a lot).
+function RefugeScore(aaT3, aaOther, shielded)
+    return 2 * aaT3 + aaOther + (shielded and 6 or 0)
+end
+
+local CatOwnAA = categories.STRUCTURE * categories.ANTIAIR
+local CatOwnShield = categories.STRUCTURE * categories.SHIELD
+local CatAirT4 = categories.AIR * categories.MOBILE * categories.EXPERIMENTAL - categories.SATELLITE
+
+-- The best-defended spot of the base: next to an own AA site or shield
+-- within 90 of the start, scored by the AA and shields around it.
+local function RefugeSpot(brain, ctx)
+    local best, bestScore
+    for _, u in ipairs(brain:GetUnitsAroundPoint(CatOwnAA + CatOwnShield, ctx.startPos, 90, 'Ally') or {}) do
+        if Alive(u) and u:GetFractionComplete() >= 1 then
+            local p = u:GetPosition()
+            local t3 = Utils.CountAround(brain, CatOwnAA * categories.TECH3, p, 35, 'Ally')
+            local other = Utils.CountAround(brain, CatOwnAA, p, 35, 'Ally') - t3
+            local shielded = Utils.CountAround(brain, CatOwnShield, p, 15, 'Ally') > 0
+            local score = RefugeScore(t3, other, shielded)
+            if not bestScore or score > bestScore then best, bestScore = p, score end
+        end
+    end
+    return best
+end
+
+-- AIR / ECO ACU: an enemy air experimental coming -> under the guns.
+-- Returns true while the ACU is taking refuge (the engineers leave it be).
+function RefugeStep(brain, ctx, acu, pos)
+    local now = GetGameTimeSeconds()
+    if KnownCount(brain, CatAirT4, pos, Config.RefugeRadius) > 0 then
+        ctx.refugeUntil = now + Config.RefugeSeconds
+        if not ctx.refugeSpot then
+            ctx.refugeSpot = RefugeSpot(brain, ctx) or ctx.startPos
+            Utils.Log(brain, 'ACU takes refuge under the base AA: enemy air experimental coming')
+            Comms.Say(brain, ctx.side, 'refuge:' .. brain.Name, 'Enemy air T4 coming at my base, need fighters here!',
+                pos, 'alert')
+        end
+        if Utils.Dist2D(pos, ctx.refugeSpot) > 6 then
+            IssueClearCommands({ acu })
+            IssueMove({ acu }, ctx.refugeSpot)
+        end
+        return true
+    end
+    if ctx.refugeUntil and now < ctx.refugeUntil then return true end
+    ctx.refugeUntil, ctx.refugeSpot = nil, nil
+    return false
+end
+
 local function SafetyStep(brain, ctx)
     local acu = Utils.Commander(brain)
     if not acu then return end
@@ -244,6 +294,7 @@ local function SafetyStep(brain, ctx)
             SetHideSpot(brain, ctx, nil)
         end
     else
+        if RefugeStep(brain, ctx, acu, pos) then return end
         if hp < Config.ACURetreatHealth and Utils.Dist2D(pos, ctx.startPos) > 20 then
             IssueClearCommands({ acu })
             IssueMove({ acu }, ctx.startPos)

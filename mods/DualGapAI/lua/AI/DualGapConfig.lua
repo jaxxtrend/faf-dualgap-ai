@@ -207,6 +207,12 @@ AirThreatRadius        = 200
 BomberThreat           = 8
 TorpThreat             = 6
 FewAir                 = 4
+-- AIR / ECO ACUs (base builders): a known enemy air experimental within
+-- RefugeRadius sends the ACU to the best-defended spot of its base (most T3
+-- anti-air around, under a shield), where it waits RefugeSeconds after the
+-- T4 was last seen near.
+RefugeRadius           = 220
+RefugeSeconds          = 20
 LandHoldSeconds        = 60     -- an ACU that stayed on land for torpedo bombers keeps to it this long
 -- Reclaim: engineers look for props within this radius of the base.
 ReclaimRadius          = 120
