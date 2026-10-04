@@ -14,6 +14,9 @@
 --           2+ enemy nukes are scouted. Priority 1: nothing starves it.
 --   all     enemy Yolona Oss scouted -> Config.YolonaAntiNukes anti-nukes
 --           at every base (engineers also assist them, DualGapEngineers)
+--   all     a radar at every base (T1 -> T2 -> Omni with tech), a forward
+--           radar behind the GROUND mid point, a sonar at the NAVAL yard;
+--           lost ones are rebuilt
 --   all     shields over the base core: two T2 shields at T2, a ring of
 --           heavy shields at T3, a bigger ring once enemy T3/T4 artillery
 --           is scouted (Config.BaseShields); lost ones are rebuilt
@@ -425,6 +428,59 @@ local function PlanRing(brain, ctx, name, key, have, spec, near, minCrewTech, pr
     end
 end
 
+-- One structure at a point: plan it while nothing of `have` stands within
+-- `near` of the point (first build and rebuilds).
+local function PlanAt(brain, ctx, name, key, have, pos, near, priority)
+    if Find(ctx, name) or not pos then return end
+    ctx.badSites = ctx.badSites or {}
+    if ctx.badSites[SiteKey(pos)] or Utils.CountAround(brain, have, pos, near, 'Ally') > 0 then return end
+    Add(brain, ctx, { name = name, key = key, sites = { pos }, count = 1, crewMax = 1, gap = 1,
+        maxRadius = 15, priority = priority })
+end
+
+local CatRadar = (categories.RADAR + categories.OMNI) * categories.STRUCTURE
+local CatSonar = categories.SONAR * categories.STRUCTURE
+
+local function PlanIntelStructures(brain, ctx)
+    local dir = (ctx.side == 'LEFT') and 1 or -1
+    PlanRing(brain, ctx, 'BaseRadar', 'RadarT1', CatRadar, { count = 1, radius = Config.BaseRadarRadius }, 15, 1, 4)
+    if ctx.role == 'GROUND' and ctx.acuBODone and ctx.choke then
+        local c = ctx.choke
+        local x = c[1] - dir * Config.MidRadarBack
+        PlanAt(brain, ctx, 'MidRadar', 'RadarT1', CatRadar, { x, GetSurfaceHeight(x, c[3]), c[3] }, 20, 4)
+    end
+    if ctx.role == 'NAVAL' and ctx.yardPos then
+        PlanAt(brain, ctx, 'Sonar', 'SonarT1', CatSonar, ctx.yardPos, 40, 4)
+    end
+end
+
+-- Exposed for tests: should this intel structure upgrade now?
+-- kind 'RADAR' (T1 -> T2 at tech 2, T2 -> Omni at tech 3) or 'SONAR'
+-- (T1 -> T2 at tech 2, no further).
+function IntelUpgradeWanted(kind, ownTech, topTech)
+    if kind == 'SONAR' then return ownTech == 1 and topTech >= 2 end
+    return ownTech < topTech and ownTech < 3
+end
+
+-- One intel upgrade at a time, when the economy allows.
+local function UpgradeIntel(brain, ctx)
+    if brain:GetEconomyStoredRatio('MASS') < 0.2 or brain:GetEconomyStoredRatio('ENERGY') < 0.5 then return end
+    local cat = CatRadar + CatSonar
+    for _, s in ipairs(brain:GetListOfUnits(cat, false)) do
+        if Alive(s) and s:IsUnitState('Upgrading') then return end
+    end
+    local top = TopFactoryTech(brain)
+    for _, s in ipairs(brain:GetListOfUnits(cat, false)) do
+        local to = Alive(s) and s:GetFractionComplete() >= 1 and s:GetBlueprint().General.UpgradesTo
+        local kind = EntityCategoryContains(CatSonar, s) and 'SONAR' or 'RADAR'
+        if to and to ~= '' and __blueprints[to] and s:IsIdleState()
+            and IntelUpgradeWanted(kind, Utils.TechOf(s), top) then
+            IssueUpgrade({ s }, to)
+            return
+        end
+    end
+end
+
 -- Anti-air ring per tech tier.
 local function PlanBaseAA(brain, ctx)
     local tech = TopFactoryTech(brain)
@@ -778,12 +834,14 @@ local function PlannerStep(brain, ctx)
     UpdatePushState(brain, ctx)
     PlanProxy(brain, ctx)
     PlanBaseAA(brain, ctx)
+    PlanIntelStructures(brain, ctx)
     PlanAntiNuke(brain, ctx)
     PlanYolonaDefense(brain, ctx)
     PlanBaseShields(brain, ctx)
     PlanExperimentals(brain, ctx)
     WeaponsStep(brain, ctx)
     UpgradeShields(brain, ctx)
+    UpgradeIntel(brain, ctx)
 end
 
 local function ProjectsStep(brain, ctx)

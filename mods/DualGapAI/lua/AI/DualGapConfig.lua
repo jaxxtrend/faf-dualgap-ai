@@ -182,6 +182,13 @@ BaseAA = {
     { count = 8, radius = 40 },
 }
 
+-- Intel structures. Every base: a radar BaseRadarRadius toward the enemy,
+-- upgraded to T2 at T2 and to Omni at T3 (when the economy allows). GROUND:
+-- a forward radar MidRadarBack behind its mid defensive point. NAVAL: a
+-- sonar next to its yard, upgraded to T2 at T2. Lost ones are rebuilt.
+BaseRadarRadius = 22
+MidRadarBack    = 15
+
 -- Shields over the base core (factories and power), every role: at T2 two
 -- T2 shields, at T3 a ring of heavy shields (more once enemy T3/T4
 -- artillery is scouted). Lost ones are rebuilt; shields also climb their

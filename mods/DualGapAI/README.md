@@ -82,6 +82,8 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   at the army.
   A target under enemy shields that are up is worth 1 + 2×(shields) times less, so the guns hit something unshielded instead of pounding a shield.
   Targets are re-picked every 10 seconds, so an ACU walking into range becomes the target at once.
+- **Radar and sonar.** Every base gets a radar toward the enemy, upgraded to T2 at T2 and to Omni at T3 when the economy allows.
+  GROUND also puts a forward radar behind its mid defensive point, NAVAL a sonar next to its yard (upgraded to T2). Lost ones are rebuilt.
 - **Base shields.** Every base gets two T2 shields over its core at T2 and a ring of 3 heavy shields at T3 (5 once enemy artillery is scouted).
   Lost shields are rebuilt; shields climb their upgrade chain when the economy allows.
 - **Realistic building.** A bot has at most 3 new structures going up at a time (an expensive one counts double; mexes and storages

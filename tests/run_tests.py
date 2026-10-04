@@ -769,6 +769,13 @@ check(A.SafetyDecision(1.0, False, False, 8, 0, 0, True) == 'LAND',
       '...unless torpedo bombers own the water')
 check(A.SafetyDecision(1.0, False, False, 0, 0, 0, False) is None, 'no threat: the ACU keeps working')
 
+print('\nIntel structures')
+P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
+W = P.IntelUpgradeWanted
+check(not W('RADAR', 1, 1) and W('RADAR', 1, 2) and not W('RADAR', 2, 2) and W('RADAR', 2, 3) and not W('RADAR', 3, 3),
+      'radar follows the tech: T1 -> T2 at T2, T2 -> Omni at T3')
+check(W('SONAR', 1, 2) and not W('SONAR', 2, 3), 'sonar goes to T2 and stops there')
+
 # ---------------------------------------------------------------- telemetry
 print('\nTelemetry (DGSTAT lines) and the analysis tools')
 import json as _json

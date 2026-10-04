@@ -544,11 +544,12 @@ end
 ---------------------------------------------------------------------------
 -- Base upkeep: every structure we own near the start is remembered by its
 -- spot; when one is destroyed, an engineer rebuilds it there. Mexes,
--- factories, anti-air, shields, anti-nuke, artillery, nukes and
--- experimentals have their own planners and are left to them.
+-- factories, anti-air, shields, anti-nuke, artillery, nukes, radars /
+-- sonars and experimentals have their own planners and are left to them.
 ---------------------------------------------------------------------------
 local CatRebuildSkip = categories.MASSEXTRACTION + categories.FACTORY + categories.WALL + categories.ANTIAIR
     + categories.SHIELD + categories.ANTIMISSILE + categories.ARTILLERY + categories.NUKE + categories.EXPERIMENTAL
+    + categories.RADAR + categories.SONAR + categories.OMNI
 
 local function SpotKey(pos)
     return math.floor(pos[1]) .. ':' .. math.floor(pos[3])
