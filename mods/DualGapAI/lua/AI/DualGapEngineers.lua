@@ -533,7 +533,15 @@ local function TryMex(brain, ctx, u, baseOnly)
         for _, bm in ipairs(MexOwn.Owned(brain.Name, 'BASE')) do exclude[bm] = true end
     end
     local maxD = baseOnly and Config.BaseRadius or nil
-    local m = MexOwn.NearestFree(brain, baseOnly and ctx.startPos or u:GetPosition(), nil, maxD, exclude)
+    -- Never walk an engineer into a known enemy army for a mex (contested
+    -- mid mexes): skip those until the army is gone.
+    local m
+    for _ = 1, 6 do
+        m = MexOwn.NearestFree(brain, baseOnly and ctx.startPos or u:GetPosition(), nil, maxD, exclude)
+        if not m or not Unsafe(brain, m.pos) then break end
+        exclude[m] = true
+        m = nil
+    end
     if not m then return false end
     ctx.mexClaims[m] = { unit = u, expires = now + 90 }
     IssueBuildMobile({ u }, m.pos, Utils.FactionId(brain, 'MassExtractorT1'), {})
@@ -938,10 +946,12 @@ local function GeneralTask(brain, ctx, u, baseOnly)
     if not baseOnly and TryAssistGroupSMD(brain, ctx, u) then return end
     if not baseOnly and TryAssistSMD(brain, ctx, u) then return end
     if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
+    -- Banked mass and energy: more factories and faster upgrades come first
+    -- (more mexes don't help a full mass store).
+    local banked = Utils.MassBanked(brain)
+    if banked and (TryFactories(brain, ctx, u) or TryAssistUpgrade(brain, ctx, u)) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end
     if TryPower(brain, ctx, u) then return end
-    -- Banked mass and energy: more factories and faster upgrades come first.
-    if Utils.MassBanked(brain) and (TryFactories(brain, ctx, u) or TryAssistUpgrade(brain, ctx, u)) then return end
     if not baseOnly and Projects().Offer(brain, ctx, u) then return end
     if TryRebuild(brain, ctx, u) then return end
     if TryMexStorage(brain, ctx, u) then return end

@@ -207,6 +207,7 @@ AirThreatRadius        = 200
 BomberThreat           = 8
 TorpThreat             = 6
 FewAir                 = 4
+LandHoldSeconds        = 60     -- an ACU that stayed on land for torpedo bombers keeps to it this long
 -- Reclaim: engineers look for props within this radius of the base.
 ReclaimRadius          = 120
 ReclaimMinValue        = 10     -- ignore clusters worth less (mass + energy/10)

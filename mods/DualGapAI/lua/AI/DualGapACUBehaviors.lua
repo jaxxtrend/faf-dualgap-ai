@@ -18,7 +18,9 @@ local CatStratArty = categories.STRUCTURE * categories.ARTILLERY * (categories.T
 local CatPD = categories.STRUCTURE * categories.DEFENSE * categories.DIRECTFIRE
 local CatShield = categories.STRUCTURE * categories.SHIELD
 local CatWall = categories.WALL
-local CatNavalFactory = categories.FACTORY * categories.NAVAL
+-- Yards only: carriers and the Tempest are FACTORY too, and an ACU
+-- "helping" one would follow it into battle.
+local CatNavalFactory = categories.FACTORY * categories.NAVAL * categories.STRUCTURE
 local CatTorpedo = categories.STRUCTURE * categories.DEFENSE * categories.ANTINAVY
 
 local function Offset(p, dx, dz)
@@ -209,6 +211,14 @@ local function SafetyStep(brain, ctx)
         local torp, bombers, otherAir = AirThreat(brain, pos)
         local landT4 = KnownStrength(brain, CatEnemyLandT4, pos, Config.T4DangerRadius) > 0
         local want = SafetyDecision(hp, lateT2, EnemyStratArtyPresent(brain, pos), torp, bombers, otherAir, landT4)
+        -- Stayed on land for torpedo bombers: keep to it a while, the count
+        -- around flickers (no diving under them two seconds later); only a
+        -- bomber swarm overrides it.
+        local now = GetGameTimeSeconds()
+        if want == 'DEEP' and ctx.acuState == 'LANDBUILD' and ctx.landUntil and now < ctx.landUntil
+            and bombers < Config.BomberThreat then
+            want = nil
+        end
 
         if want == 'DEEP' and ctx.acuState ~= 'SUBMERGED' then
             local water = PickHideSpot(brain, ctx)
@@ -226,7 +236,9 @@ local function SafetyStep(brain, ctx)
             IssueClearCommands({ acu })
             IssueMove({ acu }, ctx.startPos)
             ctx.acuState = 'LANDBUILD'      -- DualGapEngineers uses it as a base builder
-        elseif want == nil and (ctx.acuState == 'SUBMERGED' or ctx.acuState == 'LANDBUILD') and hp > 0.8 then
+            ctx.landUntil = GetGameTimeSeconds() + Config.LandHoldSeconds
+        elseif want == nil and (ctx.acuState == 'SUBMERGED' or ctx.acuState == 'LANDBUILD') and hp > 0.8
+            and not (ctx.landUntil and now < ctx.landUntil) then
             -- Threat gone (only possible before the T2 phase ends): back to work.
             ctx.acuState = (role == 'GROUND') and 'MARCH' or 'NAVAL'
             SetHideSpot(brain, ctx, nil)
