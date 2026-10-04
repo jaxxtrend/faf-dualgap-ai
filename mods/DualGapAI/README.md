@@ -68,7 +68,8 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
 - **Experimentals.** AIR — after 50 T3 fighters. GROUND — when its own mid is pushed (5+ own units there and no known enemy structures left)
   or an enemy experimental has been scouted. NAVAL — the same for the water. They are built on the map's "Protected Experimental Construction"
   markers next to the base; naval experimentals on the water. At the start of its strategic phase ECO randomly picks a game ender
-  (T3 artillery, nuke, T4 artillery or T4 air) and keeps building it.
+  plan and builds it step by step like a player: usually one nuke silo first (its missile loads while the next device goes up),
+  then 3 T3 artillery and a T4 artillery, or T4 air; "four nukes" is one rare all-in plan.
 - **Responses to scouting.** Enemy nuke spotted → anti-nuke right away (one per group of three spawns, at the group's centre, started by the member with the most resources at that moment while the others' engineers help build it;
   a second one at 2+ nukes). Without enemy nukes the anti-nuke goes up after the first T3 power generator.
   The anti-nuke is first in the project queue, so ECO's game ender can't hold it up. Enemy T3/T4 artillery spotted → the heavy shield ring grows from 3 to 5.
@@ -77,8 +78,10 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   doubled near the enemy ECO base, plus game enders and an ACU on land. The bot hits that same point with every loaded missile (all loaded
   missiles land together) until 5 went in or the point is destroyed - an anti-nuke usually stops the first one or two. With known anti-nukes over the point it waits (up to 4 min) until one missile more than them is loaded and fires them together. A point that held
   out is skipped for 5 minutes and ECO builds T3 artillery to knock out the enemy anti-nukes. ECO's long-range guns prefer the enemy ECO base.
-  ECO keeps at most 4 nuke launchers (4 T3 artillery, 2 T4 artillery); at the cap it switches to the next game ender
-  (T3 artillery first: it knocks out anti-nukes, then the nukes finish the job). Nuke silos pause loading while energy is short.
+  Nuke silos pause loading while energy is short.
+- **Helping allies, fortifying.** A base with a big enemy army at it calls for help: neighbours send their ready land units and
+  fleets there and AIR its bombers at the attackers. A team down in players rings its bases with T2 point defences. The game
+  swings instead of being decided by the first player lost.
 - **Mass air attack.** AIR keeps its planes together (fighters on the patrol line) until it has ~140 aircraft - 250-300 for two AIR
   players - then sends everything but a home guard at one strategic target: an enemy game ender, an anti-nuke while the team owns a
   nuke, or the heart of the enemy T3 economy. Fighters clear the sky, bombers and gunships follow right behind; the other AIR player

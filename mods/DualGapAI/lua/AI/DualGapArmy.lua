@@ -338,6 +338,72 @@ local function UpdateWaves(brain, ctx)
     ctx.waves = keep
 end
 
+-- Known enemy army mass (land / sea) around a point.
+local CatEnemyArmy = categories.MOBILE * (categories.LAND + categories.NAVAL) - categories.ENGINEER
+local function EnemyArmyMass(brain, pos, radius)
+    local m = 0
+    for _, e in ipairs(KnownNear(brain, CatEnemyArmy, pos, radius)) do
+        local eco = e:GetBlueprint().Economy
+        m = m + ((eco and eco.BuildCostMass) or 0)
+    end
+    return m
+end
+
+-- Exposed for tests: should this player go help the ally at distance d
+-- (its own base not under attack itself)?
+function ShouldHelp(d, ownDistress)
+    return not ownDistress and d <= Config.HelpRange
+end
+
+-- Call for help when the base is attacked; remember the nearest ally call
+-- to answer (ctx.helpTarget).
+local function DistressStep(brain, ctx)
+    local mass = EnemyArmyMass(brain, ctx.startPos, Config.DistressRadius)
+    local own = mass >= Config.DistressMass
+    if own then
+        Intel.PostDistress(ctx.side, brain.Name, ctx.startPos, mass)
+        Comms.Say(brain, ctx.side, 'distress:' .. brain.Name, 'My base is under attack, help!', ctx.startPos, 'alert')
+    end
+    ctx.helpTarget = nil
+    local bestD
+    for _, d in ipairs(Intel.Distresses(ctx.side)) do
+        if d.name ~= brain.Name then
+            local dist = Utils.Dist2D(d.pos, ctx.startPos)
+            if ShouldHelp(dist, own) and (not bestD or dist < bestD) then ctx.helpTarget, bestD = d, dist end
+        end
+    end
+end
+
+-- Land: ready units go defend the ally (any size from HelpWaveMin).
+local function HelpLand(brain, ctx)
+    local d = ctx.helpTarget
+    if not d then return false end
+    local ready = {}
+    for _, u in ipairs(FreeUnits(brain, CatLandDF)) do table.insert(ready, u) end
+    if Utils.Count(ready) < Config.HelpWaveMin then return false end
+    Claim(ready)
+    FormationPath(ready, { d.pos }, Centroid(ready))
+    table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1 })
+    Utils.Log(brain, 'land wave of ' .. Utils.Count(ready) .. ' goes to help ' .. d.name)
+    Comms.Say(brain, ctx.side, 'help:' .. brain.Name, 'Coming to help with ' .. Utils.Count(ready) .. ' units!', d.pos, 'move')
+    return true
+end
+
+-- Sea: a fleet goes to the water next to the ally's base.
+local function HelpNaval(brain, ctx)
+    local d = ctx.helpTarget
+    if not d then return false end
+    local water = Utils.FindNearestWater(d.pos, Config.DeepWaterDepth, 120)
+    if not water then return false end
+    local ready = FreeUnits(brain, CatNaval)
+    if Utils.Count(ready) < 3 then return false end
+    Claim(ready)
+    FormationPath(ready, { water }, Centroid(ready))
+    table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1 })
+    Utils.Log(brain, 'fleet of ' .. Utils.Count(ready) .. ' goes to help ' .. d.name)
+    return true
+end
+
 ---------------------------------------------------------------------------
 -- Waves gather behind the furthest defence line the player holds
 -- (DualGapProjects moves ctx.frontPoint forward as the front advances).
@@ -346,6 +412,7 @@ local function LandRally(ctx)
 end
 
 local function LandStep(brain, ctx)
+    if HelpLand(brain, ctx) then return end
     local rally = LandRally(ctx)
     local ready = {}
     for _, u in ipairs(FreeUnits(brain, CatLandDF)) do
@@ -479,6 +546,7 @@ end
 
 local function NavalStep(brain, ctx)
     MidSupportStep(brain, ctx)
+    if HelpNaval(brain, ctx) then return end
     local rally = Routes.GetPoint('NavalRally', ctx.side)
     local ready = {}
     for _, u in ipairs(FreeUnits(brain, CatNaval)) do
@@ -730,6 +798,20 @@ local function TorpTargetOk(e)
     return true
 end
 
+-- Air: bombers at the attackers (the known enemy unit nearest the ally base).
+local function HelpAir(brain, ctx, staging, bombers, now)
+    local d = ctx.helpTarget
+    if not d or not Utils.HasDuty(ctx, 'AIR') then return false end
+    if ctx.helpAirAt and now - ctx.helpAirAt < 45 then return false end
+    if Utils.Count(bombers) < Config.T4StrikeMin then return false end
+    local target = NearestKnown(brain, CatEnemyArmy, d.pos, Config.DistressRadius)
+    if not target then return false end
+    if not LaunchStrike(brain, ctx, bombers, target, staging, now) then return false end
+    ctx.helpAirAt = now
+    Utils.Log(brain, Utils.Count(bombers) .. ' bombers help ' .. d.name)
+    return true
+end
+
 local function AirStep(brain, ctx)
     local now = GetGameTimeSeconds()
     FightersStep(brain, ctx, now)
@@ -774,8 +856,10 @@ local function AirStep(brain, ctx)
         end
     end
     if not torpsBusy then GuardHiddenACUs(brain, ctx, torps, now) end
-    -- An enemy experimental pushing into our half: bombers go now.
+    -- An enemy experimental pushing into our half: bombers go now; an ally
+    -- base under attack: bombers go there.
     local defended = DefendAgainstT4(brain, ctx, staging, bombers, torps, now)
+        or HelpAir(brain, ctx, staging, bombers, now)
     if defended then bombers = {} end
     local inOp = JoinAirT4Op(brain, ctx, bombers, now)
     if inOp then bombers = {} end
@@ -1274,6 +1358,7 @@ end
 
 ---------------------------------------------------------------------------
 local function ArmyStep(brain, ctx)
+    DistressStep(brain, ctx)
     UpdateWaves(brain, ctx)
     LandStep(brain, ctx)
     NavalStep(brain, ctx)

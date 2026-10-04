@@ -875,16 +875,33 @@ check(sp[1], 'search points wrap around')
 print('\nGame enders, mass air attack, banked mass')
 ge = lua.execute(r"""
 local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
-local Cfg = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
 local avail = { 'StratArtyT3', 'NukeSilo', 'ArtilleryT4', 'AirT4' }
-local after = P.NextGameEnder(avail, 'NukeSilo', function(k) return k == 'NukeSilo' end)
-local none = P.NextGameEnder({ 'NukeSilo' }, 'NukeSilo', function() return true end)
-local skip = P.NextGameEnder(avail, 'NukeSilo', function(k) return k == 'NukeSilo' or k == 'StratArtyT3' end)
-return Cfg.GameEnderMax.NukeSilo, after, none == nil, skip
+local plan = P.PickEnderPlan(BO.EnderPlans, avail, function() return 1 end)
+local have = { NukeSilo = 0, StratArtyT3 = 0, ArtilleryT4 = 0 }
+local cnt = function(k) return have[k] or 0 end
+local i1, s1 = P.EnderStep(plan, cnt)
+have.NukeSilo = 1
+local i2, s2 = P.EnderStep(plan, cnt)
+have.StratArtyT3 = 3; have.ArtilleryT4 = 1
+local i3 = P.EnderStep(plan, cnt)
+-- A faction without T4 air: steps it can't build are dropped.
+local noAir = P.PickEnderPlan({ { { 'AirT4', 2 } }, { { 'AirT4', 2 }, { 'NukeSilo', 1 } } }, { 'NukeSilo' }, function() return 1 end)
+local four = 0
+for _, pl in ipairs(BO.EnderPlans) do if pl[1][1] == 'NukeSilo' and pl[1][2] == 4 then four = four + 1 end end
+return s1[1], s1[2], s2[1], i3 == nil, table.getn(noAir), noAir[1][1], four
 """)
-check(ge[0] == 4, 'at most 4 nuke silos')
-check(ge[1] == 'StratArtyT3', 'after the nukes ECO switches to T3 artillery (kills anti-nukes)')
-check(ge[2] and ge[3] == 'ArtilleryT4', 'next game ender skips capped ones; nothing left -> stop')
+check(ge[0] == 'NukeSilo' and ge[1] == 1 and ge[2] == 'StratArtyT3', 'game ender plan: one nuke silo first, then artillery (not 4 nukes in a row)')
+check(ge[3], 'game ender plan: done when every step is built')
+check(ge[4] == 1 and ge[5] == 'NukeSilo', 'game ender plan: steps the faction cannot build are dropped')
+check(ge[6] == 1, '"four nukes" stays as one rare all-in plan')
+hp = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+return A.ShouldHelp(300, false), A.ShouldHelp(300, true), A.ShouldHelp(600, false), P.ShouldFortify(4, 6), P.ShouldFortify(6, 6)
+""")
+check(hp[0] and not hp[1] and not hp[2], 'neighbours go help an ally base under attack (unless attacked themselves, or too far)')
+check(hp[3] and not hp[4], 'a team down in players fortifies its bases')
 ma = lua.execute(r"""
 local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
 return A.MassAirDecision(100, false, false, 1000), A.MassAirDecision(150, false, false, 1000),

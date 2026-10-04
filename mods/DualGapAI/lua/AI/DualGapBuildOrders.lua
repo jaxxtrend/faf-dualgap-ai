@@ -150,6 +150,20 @@ Experimental = {
 -- keeps building that kind. Entries the faction can't build are skipped.
 GameEnders = { 'StratArtyT3', 'NukeSilo', 'ArtilleryT4', 'AirT4' }
 
+-- Game ender plans, one picked at random, built step by step the way a
+-- player does it: one nuke silo first (its missile loads while the next
+-- device goes up), then artillery or a T4. Each step is {key, total of that
+-- kind}; steps the faction can't build are skipped. "Four nukes" stays as
+-- a rare all-in option.
+EnderPlans = {
+    { { 'NukeSilo', 1 }, { 'StratArtyT3', 3 }, { 'ArtilleryT4', 1 } },
+    { { 'NukeSilo', 1 }, { 'ArtilleryT4', 1 }, { 'StratArtyT3', 3 } },
+    { { 'StratArtyT3', 3 }, { 'NukeSilo', 1 }, { 'ArtilleryT4', 1 } },
+    { { 'NukeSilo', 1 }, { 'AirT4', 2 }, { 'StratArtyT3', 2 } },
+    { { 'AirT4', 2 }, { 'NukeSilo', 1 }, { 'StratArtyT3', 2 } },
+    { { 'NukeSilo', 4 } },
+}
+
 -- Engineers kept alive after the opening (main factory refills them).
 EngineerTargets = {
     GROUND = { 10, 5, 10 },

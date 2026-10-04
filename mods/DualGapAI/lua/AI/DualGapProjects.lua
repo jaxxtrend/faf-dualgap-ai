@@ -609,6 +609,30 @@ local function InGame(name)
     return b ~= nil and not Utils.BrainDefeated(b)
 end
 
+-- Exposed for tests: fortify? (own team has fewer players in the game)
+function ShouldFortify(ownAlive, enemyAlive)
+    return ownAlive < enemyAlive
+end
+
+-- A team down in players: a ring of T2 point defences around the base.
+local function PlanFortify(brain, ctx)
+    if TopFactoryTech(brain) < 2 then return end
+    local me = brain:GetArmyIndex()
+    local own, enemy = 0, 0
+    for i, b in ipairs(ArmyBrains) do
+        if not Utils.BrainDefeated(b) and not (ArmyIsCivilian and ArmyIsCivilian(i)) then
+            if IsAlly(me, i) then own = own + 1 elseif IsEnemy(me, i) then enemy = enemy + 1 end
+        end
+    end
+    if not ShouldFortify(own, enemy) then return end
+    if not ctx.fortifySaid then
+        ctx.fortifySaid = true
+        Utils.Log(brain, 'team down in players (' .. own .. ' vs ' .. enemy .. '): fortifying the base')
+    end
+    PlanRing(brain, ctx, 'Fortify', 'PointDefenseT2', categories.STRUCTURE * categories.DIRECTFIRE * categories.TECH2,
+        { count = Config.FortifyPD, radius = Config.FortifyRadius }, 8, 2, 3)
+end
+
 -- Anti-air rings per tech tier.
 local function PlanBaseAA(brain, ctx)
     local tech = TopFactoryTech(brain)
@@ -821,52 +845,74 @@ local function PlanForwardBase(brain, ctx)
     end
 end
 
+-- Exposed for tests: a game ender plan for the keys this faction has
+-- (steps it can't build dropped; plans left empty skipped).
+function PickEnderPlan(plans, available, roll)
+    local have = {}
+    for _, k in ipairs(available) do have[k] = true end
+    local usable = {}
+    for _, plan in ipairs(plans) do
+        local steps = {}
+        for _, st in ipairs(plan) do
+            if have[st[1]] then table.insert(steps, { st[1], st[2] }) end
+        end
+        if table.getn(steps) > 0 then table.insert(usable, steps) end
+    end
+    local n = table.getn(usable)
+    if n == 0 then return nil end
+    return usable[roll(1, n)]
+end
+
+-- Exposed for tests: the step of the plan to build now (the first one not
+-- yet complete), or nil when the plan is done. count(key) = how many exist.
+function EnderStep(plan, count)
+    for i, st in ipairs(plan or {}) do
+        if count(st[1]) < st[2] then return i, st end
+    end
+    return nil
+end
+
 -- The game ender: ECO's job, or of whoever took it over from a defeated ECO.
 local function PlanGameEnder(brain, ctx)
-    do
-        if not ctx.strategic then return end
-        if not ctx.enderKey then
-            local available = {}
-            for _, key in ipairs(BO.GameEnders) do
-                if Utils.FactionId(brain, key) then table.insert(available, key) end
-            end
-            ctx.enderKey = PickGameEnder(available, Roll)
-            Utils.Log(brain, 'game ender chosen: ' .. tostring(ctx.enderKey))
+    if not ctx.strategic then return end
+    if not ctx.enderPlan then
+        local available = {}
+        for _, key in ipairs(BO.GameEnders) do
+            if Utils.FactionId(brain, key) then table.insert(available, key) end
         end
-        -- Nukes keep getting stopped: T3 artillery to knock out the anti-nukes.
-        if ctx.wantAntiSMDArty and not Find(ctx, 'AntiSMDArty') and HasT3Engineer(brain)
-            and Utils.Count(brain:GetListOfUnits(categories.STRUCTURE * categories.ARTILLERY * categories.TECH3, false)) == 0 then
-            Add(brain, ctx, { name = 'AntiSMDArty', key = 'StratArtyT3', site = T4Site(ctx), count = 1, crewMax = 6,
-                minCrewTech = 2, priority = 2 })
+        ctx.enderPlan = PickEnderPlan(BO.EnderPlans, available, Roll) or {}
+        local names = {}
+        for _, st in ipairs(ctx.enderPlan) do table.insert(names, st[2] .. 'x ' .. st[1]) end
+        Utils.Log(brain, 'game ender plan: ' .. table.concat(names, ', '))
+    end
+    -- Nukes keep getting stopped: T3 artillery to knock out the anti-nukes.
+    if ctx.wantAntiSMDArty and not Find(ctx, 'AntiSMDArty') and HasT3Engineer(brain)
+        and Utils.Count(brain:GetListOfUnits(categories.STRUCTURE * categories.ARTILLERY * categories.TECH3, false)) == 0 then
+        Add(brain, ctx, { name = 'AntiSMDArty', key = 'StratArtyT3', site = T4Site(ctx), count = 1, crewMax = 6,
+            minCrewTech = 2, priority = 2 })
+    end
+    local function count(key)
+        local id = Utils.FactionId(brain, key)
+        return id and Utils.Count(brain:GetListOfUnits(categories[id], false)) or 0
+    end
+    local p = Find(ctx, 'GameEnder')
+    if p and Alive(p.unit) then return end          -- one in progress: let it finish
+    local i, st = EnderStep(ctx.enderPlan, count)
+    if p and (not st or p.key ~= st[1]) then Remove(ctx, p); p = nil end
+    if not st then
+        if not ctx.enderDoneSaid then
+            ctx.enderDoneSaid = true
+            Utils.Log(brain, 'game ender plan complete')
         end
-        local function capped(key)
-            local cap = Config.GameEnderMax[key]
-            local id = Utils.FactionId(brain, key)
-            return cap and id and Utils.Count(brain:GetListOfUnits(categories[id], false)) >= cap
-        end
-        if ctx.enderKey and capped(ctx.enderKey) then
-            -- Enough of this one (more nukes don't get through anti-nukes
-            -- any better): stop it and go for the next game ender.
-            local p = Find(ctx, 'GameEnder')
-            if p and not Alive(p.unit) then Remove(ctx, p) end
-            if p and Alive(p.unit) then return end   -- let the one in progress finish
-            local available = {}
-            for _, key in ipairs(BO.GameEnders) do
-                if Utils.FactionId(brain, key) then table.insert(available, key) end
-            end
-            local nextKey = NextGameEnder(available, ctx.enderKey, capped)
-            Utils.Log(brain, 'game ender ' .. ctx.enderKey .. ' at its cap, next: ' .. tostring(nextKey))
-            ctx.enderKey = nextKey
-            if not nextKey then return end
-        end
-        if ctx.enderKey and HasT3Engineer(brain) and not Find(ctx, 'GameEnder') then
-            local behind = T4Site(ctx)
-            local cap = Config.GameEnderMax[ctx.enderKey]
-            local id = Utils.FactionId(brain, ctx.enderKey)
-            local left = cap and id and (cap - Utils.Count(brain:GetListOfUnits(categories[id], false)))
-            Add(brain, ctx, { name = 'GameEnder', key = ctx.enderKey, site = behind, count = left,
-                share = Config.EcoStrategicShare, minCrewTech = 2, priority = 5 })
-        end
+        return
+    end
+    if ctx.enderKey ~= st[1] then
+        ctx.enderKey = st[1]
+        Utils.Log(brain, 'game ender step ' .. i .. ': ' .. st[2] .. 'x ' .. st[1])
+    end
+    if HasT3Engineer(brain) and not p then
+        Add(brain, ctx, { name = 'GameEnder', key = st[1], site = T4Site(ctx), count = st[2] - count(st[1]),
+            share = Config.EcoStrategicShare, minCrewTech = 2, priority = 5 })
     end
 end
 
@@ -1306,6 +1352,7 @@ local function PlannerStep(brain, ctx)
     PlanFrontline(brain, ctx)
     PlanBaseTorpedoes(brain, ctx)
     PlanBaseAA(brain, ctx)
+    PlanFortify(brain, ctx)
     PlanIntelStructures(brain, ctx)
     PlanAntiNuke(brain, ctx)
     PlanYolonaDefense(brain, ctx)

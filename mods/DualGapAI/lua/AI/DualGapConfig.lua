@@ -412,6 +412,19 @@ HydroFactoryRadius = 40
 MexFabEnergyRatio  = 0.6
 MexFabEnergyTrend  = 300
 
+-- Helping allies: a player whose base has at least DistressMass of known
+-- enemy army (land / sea) within DistressRadius calls for help. Neighbours
+-- within HelpRange send their ready land units (HelpWaveMin or more) and
+-- fleets there, AIR sends its bombers at the attackers.
+DistressRadius = 110
+DistressMass   = 2500
+HelpRange      = 450
+HelpWaveMin    = 4
+-- A team down in players fortifies: FortifyPD T2 point defences on a ring
+-- of FortifyRadius around every base (toward the enemy first).
+FortifyPD      = 6
+FortifyRadius  = 24
+
 SiloPauseEnergy  = 0.1
 SiloResumeEnergy = 0.4
 

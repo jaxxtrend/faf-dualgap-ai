@@ -285,6 +285,23 @@ function SubmergedACUs(side)
     return out
 end
 
+-- Team distress calls: { [brain name] = { pos, mass, at } }. A call is
+-- current for 20 seconds (posted every planner tick while it lasts).
+function PostDistress(side, name, pos, mass)
+    local t = Team(side)
+    t.distress = t.distress or {}
+    t.distress[name] = { pos = pos, mass = mass, at = GetGameTimeSeconds(), name = name }
+end
+
+function Distresses(side)
+    local out = {}
+    local now = GetGameTimeSeconds()
+    for _, d in pairs(Team(side).distress or {}) do
+        if now - d.at < 20 then table.insert(out, d) end
+    end
+    return out
+end
+
 -- The team's air T4 operation: { lead, units, phase = 'gather'|'go',
 -- target (unit or nil), targetPos, id, by } or nil.
 function AirT4Op(side)
