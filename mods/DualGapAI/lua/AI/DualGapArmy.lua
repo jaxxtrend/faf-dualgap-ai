@@ -64,8 +64,11 @@ local CatNaval    = categories.NAVAL * categories.MOBILE - categories.ENGINEER
 local CatFighter  = categories.AIR * categories.MOBILE * categories.ANTIAIR
                     - categories.BOMBER - categories.GROUNDATTACK - categories.TRANSPORTATION
                     - categories.EXPERIMENTAL - categories.SCOUT
-local CatBomber   = categories.AIR * categories.MOBILE * (categories.BOMBER + categories.ANTINAVY + categories.GROUNDATTACK)
+local CatBomber   = categories.AIR * categories.MOBILE * (categories.BOMBER + categories.ANTINAVY)
                     - categories.EXPERIMENTAL
+-- Gunships fight armies, not ACUs or game enders: they have their own job.
+local CatGunship  = categories.AIR * categories.MOBILE * categories.GROUNDATTACK
+                    - categories.BOMBER - categories.ANTINAVY - categories.EXPERIMENTAL
 local CatTorpBomber = categories.AIR * categories.MOBILE * categories.ANTINAVY
 -- Novax satellites are aimed by DualGapProjects with the artillery priorities.
 local CatAirT4    = categories.AIR * categories.MOBILE * categories.EXPERIMENTAL - categories.SATELLITE
@@ -816,12 +819,53 @@ local function HelpAir(brain, ctx, staging, bombers, now)
     return true
 end
 
+-- Where the bombers, torpedo bombers and gunships wait: over the base,
+-- AirParkBack behind the start position.
+function AirPark(ctx)
+    return Shift(ctx.startPos, -Toward(ctx) * Config.AirParkBack)
+end
+
+-- Gunships: to an ally base calling for help, else at known enemy army on
+-- our side of the mid; with nothing to do they wait over the base.
+function GunshipStep(brain, ctx, park)
+    local free = FreeUnits(brain, CatGunship)
+    ctx.gunships = Utils.FilterAlive(ctx.gunships or {})
+    for _, u in ipairs(free) do
+        u.DualGapAssigned = true
+        table.insert(ctx.gunships, u)
+    end
+    local g = ctx.gunships
+    if table.getn(g) == 0 then return end
+    local target
+    if ctx.helpTarget then target = ctx.helpTarget.pos end
+    if not target then
+        local front = ctx.frontPoint or ctx.choke or Routes.GetPoint('Choke', ctx.side)
+        local e = NearestKnown(brain, CatEnemyLand, front, Config.GunshipFrontRadius)
+        if e then target = e:GetPosition() end
+    end
+    local key = target and (math.floor(target[1] / 40) .. ':' .. math.floor(target[3] / 40)) or 'park'
+    if table.getn(g) < Config.GunshipGroupMin and target then key, target = 'park', nil end
+    local idle = AllIdle(g)
+    if key ~= ctx.gunshipKey or idle then
+        ctx.gunshipKey = key
+        IssueClearCommands(g)
+        if target then
+            IssueAggressiveMove(g, target)
+            Utils.Log(brain, table.getn(g) .. ' gunships attack the enemy army at ' .. math.floor(target[1]) .. ',' .. math.floor(target[3]))
+        elseif Utils.Dist2D(Centroid(g), park) > 30 or idle then
+            IssueMove(g, park)
+        end
+    end
+end
+
 local function AirStep(brain, ctx)
     local now = GetGameTimeSeconds()
     FightersStep(brain, ctx, now)
 
-    -- Bombers stage, then strike the target with the least AA around it.
-    local staging = Routes.GetPoint('AirStaging', ctx.side)
+    -- Bombers wait over the own base (under its AA and shields), then
+    -- strike. Not over the river: that's where enemy ships and AA are.
+    local staging = AirPark(ctx)
+    GunshipStep(brain, ctx, staging)
     local ready = {}
     for _, u in ipairs(FreeUnits(brain, CatBomber)) do
         if Utils.Dist2D(u:GetPosition(), staging) > 25 then IssueMove({ u }, staging)

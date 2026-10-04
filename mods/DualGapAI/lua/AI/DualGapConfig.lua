@@ -425,6 +425,14 @@ HelpWaveMin    = 4
 FortifyPD      = 6
 FortifyRadius  = 24
 
+-- Bombers, torpedo bombers and gunships wait over the own base, this far
+-- behind the start position (under the base AA), not over the river.
+AirParkBack = 25
+-- Gunships (GunshipGroupMin or more) go for known enemy army within
+-- GunshipFrontRadius of the own mid front, or to an ally calling for help.
+GunshipGroupMin    = 4
+GunshipFrontRadius = 150
+
 SiloPauseEnergy  = 0.1
 SiloResumeEnergy = 0.4
 

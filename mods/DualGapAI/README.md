@@ -75,6 +75,8 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   The anti-nuke is first in the project queue, so ECO's game ender can't hold it up. Enemy T3/T4 artillery spotted → the heavy shield ring grows from 3 to 5.
   Bombers and air experimentals go for an enemy ACU on land first (assassination), then a game ender, then the enemy anti-nuke
   while the team owns a nuke - the one with the least AA around; with none of these they wait (bombing mexes is a waste).
+  Bombers and torpedo bombers wait over the own base, behind the start (under its AA), not over the river. Gunships have their
+  own job: an ally base calling for help, else known enemy army near the own mid front; idle, they wait over the base too.
   Own nuke and anti-nuke missiles load automatically. Nukes are rare, so they go for the heart: the point with the most enemy mass in the blast,
   doubled near the enemy ECO base, plus game enders and an ACU on land. The bot hits that same point with every loaded missile (all loaded
   missiles land together) until 5 went in or the point is destroyed - an anti-nuke usually stops the first one or two. With known anti-nukes over the point it waits (up to 4 min) until one missile more than them is loaded and fires them together. A point that held

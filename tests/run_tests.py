@@ -1089,6 +1089,14 @@ return t1[1], has(t1, 'shield'), t3[1], has(t3, 'fabT2'), t3[table.getn(t3)]
 check(pa[0] == 'airFactory' and not pa[1], 'T1 power only against factories (the ring around the first one)')
 check(pa[2] == 'strategic' and not pa[3] and pa[4] == 'power', 'T2/T3 power: game enders first, never the mex blocks, last the power block')
 
+pk = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local l = A.AirPark({ side = 'LEFT', startPos = { 112, 0, 390 } })
+local r = A.AirPark({ side = 'RIGHT', startPos = { 911, 0, 390 } })
+return l[1], r[1]
+""")
+check(pk[0] < 112 and pk[1] > 911, 'bombers wait over the own base, behind it (not over the river)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
