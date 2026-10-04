@@ -81,10 +81,16 @@ end
 
 local ScoutKey = { Air = 'AirScout', Land = 'LandScout' }
 
+-- Exposed for tests: scouts only from Config.ScoutStartSeconds on.
+function ScoutsAllowed(now)
+    return now >= Config.ScoutStartSeconds
+end
+
 FactorySteps.Scout = function(brain, ctx, f, step)
     local kind = Utils.FactoryKind(f)
     if step.factory and kind ~= step.factory then return true end
     if not ScoutKey[kind] then return true end
+    if not ScoutsAllowed(GetGameTimeSeconds()) then return true end
     local id = Utils.FactionId(brain, ScoutKey[kind])
     if CountId(brain, id) >= step.count then return true end
     if f:IsIdleState() then Build(f, id) end
@@ -158,7 +164,7 @@ end
 -- plus the search units (BuildOrders.HuntKeep) while the enemy is lost.
 local function KeepUnits(brain, ctx, f)
     local kind = Utils.FactoryKind(f)
-    if KeepList(brain, ctx, BO.Keep[ctx.role], f, kind) then return true end
+    if ScoutsAllowed(GetGameTimeSeconds()) and KeepList(brain, ctx, BO.Keep[ctx.role], f, kind) then return true end
     if Intel.HuntMode(ctx.side) and KeepList(brain, ctx, BO.HuntKeep[ctx.role], f, kind) then return true end
     return false
 end

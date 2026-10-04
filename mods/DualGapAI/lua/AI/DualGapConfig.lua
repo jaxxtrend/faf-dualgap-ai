@@ -369,6 +369,10 @@ MidSupportCruisers         = 1
 -- A hidden ACU that runs from a fleet sticks to its new spot this long.
 EvadeCooldown = 25
 
+-- No scouts before this game time: early on everyone knows where the
+-- enemy is (the start positions); scouts are built from then on.
+ScoutStartSeconds = 600
+
 SiloPauseEnergy  = 0.1
 SiloResumeEnergy = 0.4
 

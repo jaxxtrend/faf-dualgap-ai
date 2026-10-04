@@ -36,7 +36,7 @@ The ACU, engineers and factories are driven by the mod's modules:
 1. **Opening build order** ([DualGapBuildOrders.lua](lua/AI/DualGapBuildOrders.lua), strictly in order):
    - ACU: the role's start factory → 2 mexes → 2 power generators → 6 mexes → 2 power generators → mexes upgraded to T2 one at a time
      (GROUND and NAVAL start the upgrades and leave right away, the others assist);
-   - first factory: scout → 10 T1 engineers → T2 → 5 T2 engineers → scouts up to 3 (air factory only) → T3 → 10 T3 engineers;
+   - first factory: 10 T1 engineers → T2 → 5 T2 engineers → T3 → 10 T3 engineers;
    - T1 engineers 1–3 and 6–8 reclaim (trees, rocks, wrecks), 4–5 build the hydro, 9–10 help;
      then those four build 3 energy storages next to the hydro and go assist the ACU.
 2. **After the opening**, every idle engineer takes the first task that fits: projects (anti-nuke, shields, proxy, base anti-air,
@@ -55,7 +55,7 @@ The ACU, engineers and factories are driven by the mod's modules:
 Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factories build engineers in FAF).
 
 ## Scouting, endgame, army
-- **Scouting.** Every factory's first unit is a scout, and each role keeps a stock of scouts all game (`Keep`);
+- **Scouting.** No scouts before minute 10 (everyone knows the start positions); from then on each role keeps a stock of scouts (`Keep`);
   a T3 air factory builds spy planes instead of T1 scouts.
   Planes fly over the enemy bases, their experimental build spots, the water, the enemy's deepest water and the front;
   land scouts stand ahead of the own wall.

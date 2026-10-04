@@ -229,9 +229,10 @@ check(acu_part[:13] == want, 'ACU: air factory, 2 mex, 2 power, 6 mex, 2 power (
 check(ctx.mexUpgradesAllowed is True, 'ACU reached the sequential mex upgrade step')
 
 fac = [x for x in s if x.startswith('make:') or x.startswith('upgrade:ueb0')]
-expect_f = (['make:uea0101'] + ['make:uel0105'] * 10 + ['upgrade:ueb0102>ueb0202'] + ['make:uel0208'] * 5
-            + ['make:uea0101'] * 2 + ['upgrade:ueb0202>ueb0302'] + ['make:uel0309'] * 10)
-check(fac[:len(expect_f)] == expect_f, 'factory: scout, 10 T1 eng, T2, 5 T2 eng, scouts up to 3, T3, 10 T3 eng')
+# No scouts in the opening (none before 10 minutes, Config.ScoutStartSeconds).
+expect_f = (['make:uel0105'] * 10 + ['upgrade:ueb0102>ueb0202'] + ['make:uel0208'] * 5
+            + ['upgrade:ueb0202>ueb0302'] + ['make:uel0309'] * 10)
+check(fac[:len(expect_f)] == expect_f, 'factory: 10 T1 eng, T2, 5 T2 eng, T3, 10 T3 eng (no scouts before 10 min)')
 if fac[:len(expect_f)] != expect_f:
     print('    got', fac[:len(expect_f)])
 check(ctx.factoryBODone is True, 'factory opening finished')
@@ -250,7 +251,7 @@ check(ctx.role == 'GROUND', 'ARMY_9 is GROUND')
 check(s[0] == 'build:ueb0101', 'first build is a land factory (%s)' % s[0])
 check('make:uea0101' not in s, 'land factory skips the air-only scout step')
 fac = [x for x in s if x.startswith('make:')]
-check(fac[0] == 'make:uel0101', 'land factory opens with a land scout (%s)' % fac[0])
+check(fac[0] != 'make:uel0101', 'land factory builds no scout in the opening (%s)' % fac[0])
 check(ctx.acuBODone is True, 'GROUND ACU leaves the opening once mex upgrades are started')
 
 print('\n%d failure(s)' % len(failures))

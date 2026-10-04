@@ -954,6 +954,12 @@ return s[1], b[1], s2[1]
 check(st[0] == 130 and st[1] == 80, 'air T4 operation: fighters screen 30 ahead of the T4, bombers 20 behind it')
 check(st[2] == 110, 'air T4 operation: the screen never goes past the target')
 
+sc = lua.execute(r"""
+local F = import('/mods/DualGapAI/lua/AI/DualGapFactories.lua')
+return F.ScoutsAllowed(30), F.ScoutsAllowed(599), F.ScoutsAllowed(600)
+""")
+check(not sc[0] and not sc[1] and sc[2], 'no scouts before 10 minutes')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
