@@ -162,9 +162,11 @@ InterceptSeconds   = 30
 -- Bomber strikes: fighters escort them and engage the enemy fighters on the
 -- direct line, the bombers fly a flank route (BomberFlankShare of the strike
 -- distance to the side) and leave BomberDelay seconds after the escort.
--- A strike waits while the escort can't match EscortRatio x the known enemy
--- fighters around the target.
+-- The escort is EscortRatio x the known enemy fighters around the target
+-- and on the way; a strike waits only while fewer than EscortLaunchRatio x
+-- that many fighters are free (people go in at rough parity too).
 EscortRatio        = 1.2
+EscortLaunchRatio  = 0.8
 EscortMin          = 4
 BomberFlankShare   = 0.35
 BomberDelay        = 6

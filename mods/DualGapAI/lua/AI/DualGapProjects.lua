@@ -194,7 +194,8 @@ local function ProjectTick(brain, ctx, p)
                 ctx.badSites = ctx.badSites or {}
                 ctx.badSites[SiteKey(p.site)] = true
                 table.remove(p.sites, p.built + 1)
-                p.count = math.min(p.count or 0, p.built + table.getn(p.sites))
+                -- p.sites still lists the points already built, so it is the new upper bound.
+                p.count = math.min(p.count or 0, table.getn(p.sites))
                 if p.built >= p.count then Remove(ctx, p); return end
                 p.site = p.sites[p.built + 1]
             end

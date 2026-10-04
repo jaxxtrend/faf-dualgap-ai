@@ -494,9 +494,8 @@ end
 
 -- Exposed for tests: escort size for a strike, or nil to hold it.
 function EscortSize(enemyFighters, available)
-    local need = math.ceil(enemyFighters * Config.EscortRatio)
-    if enemyFighters > 0 and available < need then return nil end
-    return math.min(available, math.max(Config.EscortMin, need))
+    if enemyFighters > 0 and available < math.ceil(enemyFighters * Config.EscortLaunchRatio) then return nil end
+    return math.min(available, math.max(Config.EscortMin, math.ceil(enemyFighters * Config.EscortRatio)))
 end
 
 local function LaunchStrike(brain, ctx, units, target, staging, now)

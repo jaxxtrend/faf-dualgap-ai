@@ -45,7 +45,11 @@ for path in all_lua_files():
     check(ok, 'compiles: %s %s' % (rel, err or ''))
     code = re.sub(r"--[^\n]*", '', src)                    # strip comments
     code = re.sub(r"'[^'\n]*'|\"[^\"\n]*\"", "''", code)   # strip strings
-    bad = [tok for tok, pat in (('#', r'#'), ('%', r'%'), ('...', r'\.\.\.'), ('goto', r'\bgoto\b'))
+    bad = [tok for tok, pat in (('#', r'#'), ('%', r'%'), ('...', r'\.\.\.'), ('goto', r'\bgoto\b'),
+                                # Lua 5.1+ library names that don't exist in FAF's Lua 5.0
+                                ('math.huge', r'math\.huge'), ('math.fmod', r'math\.fmod'),
+                                ('string.match', r'string\.g?match'), ('table.unpack', r'table\.unpack'),
+                                ('select(', r'\bselect\s*\('), ('unpack(', r'(?<![.\w])unpack\s*\('))
            if re.search(pat, code)]
     check(not bad, 'Lua 5.0 safe: %s %s' % (rel, bad or ''))
 
@@ -666,7 +670,8 @@ A = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')")
 off = A.SpreadOffsets(4, 40)
 check([off[i] for i in range(1, 5)] == [40, -40, 80, -80],
       'experimentals walk %s apart from the wave and each other' % [off[i] for i in range(1, 5)])
-check(A.EscortSize(10, 8) is None, 'a strike waits while the escort is weaker than the known enemy fighters')
+check(A.EscortSize(10, 7) is None and A.EscortSize(10, 8) == 8,
+      'a strike waits only while the escort is below 0.8x the known enemy fighters')
 check(A.EscortSize(10, 30) == 12, 'escort = 1.2x the known enemy fighters')
 check(A.EscortSize(0, 2) == 2 and A.EscortSize(0, 20) == 4, 'with no enemy fighters known, up to 4 escorts go')
 

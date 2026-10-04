@@ -32,7 +32,8 @@ local Alive = Utils.Alive
 -- Minimal JSON encoder (Lua 5.0: no '#', no '%' operator).
 ---------------------------------------------------------------------------
 local function Num(x)
-    if x ~= x or x == math.huge or x == -math.huge then return '0' end
+    -- NaN / infinity (FAF's Lua 5.0 has no math.huge).
+    if x ~= x or x > 1e300 or x < -1e300 then return '0' end
     local r = math.floor(x * 10 + 0.5) / 10
     if r == math.floor(r) then return tostring(math.floor(r)) end
     return tostring(r)
