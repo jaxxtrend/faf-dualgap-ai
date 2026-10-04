@@ -157,6 +157,30 @@ function SiteKey(pos)
     return math.floor(pos[1]) .. ':' .. math.floor(pos[3])
 end
 
+-- Anchors for a game ender: own game enders and T3 generators near the base.
+local CatEnderAnchor = categories.STRUCTURE * (categories.NUKE + categories.ARTILLERY * (categories.TECH3 + categories.EXPERIMENTAL)
+    + categories.EXPERIMENTAL)
+-- p.adjacent = true: anywhere in the base; a number: within that of the
+-- project's site (a shield of the ring still covers its part of the base,
+-- but stands against a generator or factory there).
+local CatShieldAnchor = categories.STRUCTURE * (categories.ENERGYPRODUCTION * (categories.TECH2 + categories.TECH3)
+    + categories.FACTORY + categories.NUKE + categories.ARTILLERY * categories.TECH3 + categories.GATE)
+local function AdjacentAnchors(brain, ctx, p)
+    local out = {}
+    local near = type(p.adjacent) == 'number' and p.adjacent
+    local cats = near and { CatShieldAnchor }
+        or { CatEnderAnchor, categories.ENERGYPRODUCTION * categories.TECH3 * categories.STRUCTURE }
+    for _, cat in ipairs(cats) do
+        for _, u in ipairs(brain:GetListOfUnits(cat, false)) do
+            if Alive(u) and u:GetFractionComplete() >= 1 then
+                local d = near and Utils.Dist2D(u:GetPosition(), p.site) or Utils.Dist2D(u:GetPosition(), ctx.startPos)
+                if d < (near or 100) then table.insert(out, u) end
+            end
+        end
+    end
+    return out
+end
+
 local function ProjectTick(brain, ctx, p)
     p.crew = Utils.FilterAlive(p.crew)
     local now = GetGameTimeSeconds()
@@ -197,9 +221,17 @@ local function ProjectTick(brain, ctx, p)
 
     if not p.startedAt then
         local tried = false
+        -- Game enders go against the power block or another game ender, as
+        -- in a player's base (their power then wraps around them).
+        local adj = p.adjacent and Utils.AdjacentSpot(brain, p.id, AdjacentAnchors(brain, ctx, p))
         for _, u in ipairs(p.crew) do
             if u:CanBuild(p.id) then
                 tried = true
+                if adj then
+                    IssueBuildMobile({ u }, adj, p.id, {})
+                    p.lead, p.startedAt = u, now
+                    break
+                end
                 if Utils.BuildNear(brain, u, p.id, p.site, p.maxRadius or 60, p.gap) then
                     p.lead, p.startedAt = u, now
                     break
@@ -501,7 +533,7 @@ end
 -- A ring of structures around the base: plan the points that have nothing
 -- of `have` (category) within `near` yet. Used for the first build and for
 -- rebuilds alike.
-local function PlanRing(brain, ctx, name, key, have, spec, near, minCrewTech, priority, center)
+local function PlanRing(brain, ctx, name, key, have, spec, near, minCrewTech, priority, center, adjacent)
     if Find(ctx, name) then return end
     local dir = (ctx.side == 'LEFT') and 1 or -1
     ctx.badSites = ctx.badSites or {}
@@ -515,7 +547,7 @@ local function PlanRing(brain, ctx, name, key, have, spec, near, minCrewTech, pr
     local n = table.getn(sites)
     if n > 0 then
         Add(brain, ctx, { name = name, key = key, sites = sites, count = n, crewMax = 2,
-            minCrewTech = minCrewTech, gap = 1, maxRadius = 10, priority = priority })
+            minCrewTech = minCrewTech, gap = 1, maxRadius = 10, priority = priority, adjacent = adjacent })
     end
 end
 
@@ -788,7 +820,7 @@ local function PlanBaseShields(brain, ctx)
         local have = categories.SHIELD * categories.STRUCTURE
         if s.tier == 3 and brain:GetFactionIndex() ~= 3 then have = have * categories.TECH3 end
         if s.tier == 2 or HasT3Engineer(brain) then
-            PlanRing(brain, ctx, 'BaseShield' .. s.tier, 'ShieldT' .. s.tier, have, s.spec, 8, 2, 2)
+            PlanRing(brain, ctx, 'BaseShield' .. s.tier, 'ShieldT' .. s.tier, have, s.spec, 8, 2, 2, nil, 14)
         end
     end
 end
@@ -911,8 +943,12 @@ local function PlanGameEnder(brain, ctx)
         Utils.Log(brain, 'game ender step ' .. i .. ': ' .. st[2] .. 'x ' .. st[1])
     end
     if HasT3Engineer(brain) and not p then
+        -- Air T4s are units built from the gantry's site; structures go
+        -- against the power block.
+        local structure = __blueprints[Utils.FactionId(brain, st[1]) or ''] and
+            __blueprints[Utils.FactionId(brain, st[1])].CategoriesHash.STRUCTURE
         Add(brain, ctx, { name = 'GameEnder', key = st[1], site = T4Site(ctx), count = st[2] - count(st[1]),
-            share = Config.EcoStrategicShare, minCrewTech = 2, priority = 5 })
+            share = Config.EcoStrategicShare, minCrewTech = 2, priority = 5, adjacent = structure })
     end
 end
 

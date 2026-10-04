@@ -1080,6 +1080,15 @@ return A.BomberTargetKind({ acu = true, ender = true, antiNuke = true, ownNuke =
 check(bt[0] == 'ACU' and bt[1] == 'ENDER' and bt[2] == 'ANTINUKE', 'bombers: ACU (assassination) > game ender > anti-nuke (own nuke)')
 check(bt[3] is None and bt[4] is None, 'bombers: no strike on mexes - nothing worth it, they wait')
 
+pa = lua.execute(r"""
+local E = import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua')
+local t1, t3 = E.PowerAnchorOrder(1), E.PowerAnchorOrder(3)
+local function has(l, x) for _, v in ipairs(l) do if v == x then return true end end return false end
+return t1[1], has(t1, 'shield'), t3[1], has(t3, 'fabT2'), t3[table.getn(t3)]
+""")
+check(pa[0] == 'airFactory' and not pa[1], 'T1 power only against factories (the ring around the first one)')
+check(pa[2] == 'strategic' and not pa[3] and pa[4] == 'power', 'T2/T3 power: game enders first, never the mex blocks, last the power block')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

@@ -70,25 +70,6 @@ local function AdjacentSpots(center, centerSize, size)
     return spots
 end
 
--- Resource deposits (hydrocarbon and mass spots) stay free for their own
--- buildings: nothing else is placed over them.
-local deposits
-local function OnDeposit(p, size)
-    if not deposits then
-        deposits = {}
-        for _, m in pairs(ScenarioUtils.GetMarkers() or {}) do
-            if m.position and (m.type == 'Hydrocarbon' or m.type == 'Mass') then
-                table.insert(deposits, { pos = m.position, half = (m.type == 'Hydrocarbon') and 3 or 1 })
-            end
-        end
-    end
-    for _, d in ipairs(deposits) do
-        local reach = d.half + size / 2 - 0.01
-        if math.abs(d.pos[1] - p[1]) < reach and math.abs(d.pos[3] - p[3]) < reach then return true end
-    end
-    return false
-end
-
 local function FarFromAll(p, chosen, minD)
     for _, c in ipairs(chosen) do
         if Utils.Dist2D(p, c) < minD then return false end
@@ -115,7 +96,7 @@ local function PickSpots(brain, id, n, anchor, fallback, chosen)
             local blocksExit = isFactory and not EntityCategoryContains(categories.AIR, anchor) and p[3] > ap[3] + 0.5
             -- Gap 0: touching the anchor is the point, but other factories'
             -- exit lanes still stay free.
-            if not blocksExit and FarFromAll(p, chosen, size) and not OnDeposit(p, size) and brain:CanBuildStructureAt(id, p)
+            if not blocksExit and FarFromAll(p, chosen, size) and not Utils.Reserved(id, p) and brain:CanBuildStructureAt(id, p)
                 and Utils.HasClearance(brain, id, p, 0) then
                 table.insert(out, p); table.insert(chosen, p)
             end
@@ -129,7 +110,7 @@ local function PickSpots(brain, id, n, anchor, fallback, chosen)
             local a = (i / 12) * 2 * math.pi
             local p = { fallback[1] + math.cos(a) * r, 0, fallback[3] + math.sin(a) * r }
             p[2] = GetSurfaceHeight(p[1], p[3])
-            if FarFromAll(p, chosen, size + 2) and not OnDeposit(p, size) and brain:CanBuildStructureAt(id, p)
+            if FarFromAll(p, chosen, size + 2) and not Utils.Reserved(id, p) and brain:CanBuildStructureAt(id, p)
                 and Utils.HasClearance(brain, id, p, 2) then
                 table.insert(out, p); table.insert(chosen, p)
             end
@@ -553,13 +534,34 @@ end
 local CatPowerUsers = categories.STRUCTURE * (categories.SHIELD + categories.GATE + categories.NUKE
     + categories.ANTIMISSILE * categories.TECH3 + categories.ARTILLERY * (categories.TECH3 + categories.EXPERIMENTAL))
 
-local function PowerAnchors(brain)
+local CatStrategic = categories.STRUCTURE * (categories.NUKE + categories.GATE
+    + categories.ANTIMISSILE * categories.TECH3 + categories.ARTILLERY * (categories.TECH3 + categories.EXPERIMENTAL)
+    + categories.EXPERIMENTAL)
+
+-- Exposed for tests: anchor groups for a generator of tech `tech`, best
+-- first, as names. T1 power only goes against factories (the ring around
+-- the first factory); T2/T3 power goes against what draws the most energy
+-- - game enders, anti-nukes, gates - then factories, shields, T3 mass
+-- fabricators, then the power block itself. Never against the mex blocks.
+function PowerAnchorOrder(tech)
+    if tech <= 1 then return { 'airFactory', 'factory' } end
+    return { 'strategic', 'airFactory', 'factory', 'shield', 'fabT3', 'power' }
+end
+
+local AnchorCats = {
+    airFactory = categories.FACTORY * categories.AIR * categories.STRUCTURE,
+    factory = categories.FACTORY * categories.STRUCTURE - categories.AIR,
+    strategic = CatStrategic,
+    shield = categories.SHIELD * categories.STRUCTURE,
+    fabT3 = CatMassFab * categories.TECH3,
+    power = categories.ENERGYPRODUCTION * categories.STRUCTURE * (categories.TECH2 + categories.TECH3) + categories.HYDROCARBON * categories.STRUCTURE,
+}
+
+local function PowerAnchors(brain, tech)
     local out = {}
-    -- Last: other generators - power stays one compact block instead of
-    -- spreading over the base.
-    for _, cat in ipairs({ categories.FACTORY * categories.AIR * categories.STRUCTURE, CatMassFab,
-        categories.FACTORY * categories.STRUCTURE - categories.AIR, CatPowerUsers,
-        categories.ENERGYPRODUCTION * categories.STRUCTURE }) do
+    local cats = {}
+    for _, name in ipairs(PowerAnchorOrder(tech or 3)) do table.insert(cats, AnchorCats[name]) end
+    for _, cat in ipairs(cats) do
         for _, f in ipairs(brain:GetListOfUnits(cat, false)) do
             if Alive(f) and f:GetFractionComplete() >= 1 then table.insert(out, f) end
         end
@@ -583,7 +585,9 @@ local function TryPower(brain, ctx, u)
     if not id then return false end
     -- Power may skip the queue only when energy is nearly gone.
     if brain:GetEconomyStoredRatio('ENERGY') > 0.1 and not Utils.CanStartBuild(brain, id) then return false end
-    local spot = GridSpot(brain, id, PowerAnchors(brain))
+    local c = (__blueprints[id] and __blueprints[id].CategoriesHash) or {}
+    local tech = (c.TECH3 and 3) or (c.TECH2 and 2) or 1
+    local spot = GridSpot(brain, id, PowerAnchors(brain, tech))
         or PickSpots(brain, id, 1, nil, BaseSite(ctx, -12))[1]
     if not spot then return false end
     IssueBuildMobile({ u }, spot, id, {})

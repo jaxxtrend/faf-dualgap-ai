@@ -304,7 +304,7 @@ function HasClearance(brain, id, pos, gap)
             -- 0.01 slack: exactly touching (adjacency) is allowed.
             local half = (us + size) / 2 + gap - 0.01
             if math.abs(up[1] - pos[1]) < half and math.abs(up[3] - pos[3]) < half then return false end
-            if EntityCategoryContains(categories.FACTORY, u) then
+            if EntityCategoryContains(categories.FACTORY, u) and not EntityCategoryContains(categories.AIR, u) then
                 local laneHalfX = us / 2 + 2 + size / 2
                 local laneStart = up[3] + us / 2
                 if math.abs(up[1] - pos[1]) < laneHalfX
@@ -318,16 +318,78 @@ function HasClearance(brain, id, pos, gap)
 end
 
 -- Find a buildable spot for bpId near pos (spiral). Returns position or nil.
+-- Reserved ground, as in a player's base: the mex blocks (3 around every
+-- mass spot: the mex, its storage cross and the fabricators in its
+-- corners) and the hydrocarbon spots. Only the block's own pieces go there.
+local reservedSpots
+function Reserved(id, p)
+    if not reservedSpots then
+        reservedSpots = {}
+        local ok, markers = pcall(function() return import('/lua/sim/ScenarioUtilities.lua').GetMarkers() end)
+        for _, m in pairs((ok and markers) or {}) do
+            if m.position and (m.type == 'Hydrocarbon' or m.type == 'Mass') then
+                table.insert(reservedSpots, { pos = m.position, hydro = m.type == 'Hydrocarbon' })
+            end
+        end
+    end
+    local bp = __blueprints[id]
+    local c = (bp and bp.CategoriesHash) or {}
+    local blockPiece = c.MASSEXTRACTION or c.MASSSTORAGE or (c.MASSFABRICATION and c.TECH2)
+    local size = FootprintOf(id)
+    for _, r in ipairs(reservedSpots) do
+        local half
+        if r.hydro then
+            if not c.HYDROCARBON then half = 3 end
+        elseif c.MASSEXTRACTION then
+            half = nil
+        elseif blockPiece then
+            half = 1                      -- only the mass spot itself
+        else
+            half = 3                      -- the whole mex block
+        end
+        if half then
+            local reach = half + size / 2 - 0.01
+            if math.abs(r.pos[1] - p[1]) < reach and math.abs(r.pos[3] - p[3]) < reach then return true end
+        end
+    end
+    return false
+end
+
+-- Spots touching one of `anchors` (units) where `id` fits, first found.
+function AdjacentSpot(brain, id, anchors)
+    local size = FootprintOf(id)
+    for _, a in ipairs(anchors) do
+        if Alive(a) then
+            local ap = a:GetPosition()
+            local as = SizeOfBp(a:GetBlueprint())
+            local off = (as + size) / 2
+            local span = math.max(0, (as - size) / 2)
+            local t = -span
+            while t <= span + 0.01 do
+                for _, d in ipairs({ { off, t }, { -off, t }, { t, off }, { t, -off } }) do
+                    local p = { ap[1] + d[1], 0, ap[3] + d[2] }
+                    p[2] = GetSurfaceHeight(p[1], p[3])
+                    if not Reserved(id, p) and brain:CanBuildStructureAt(id, p) and HasClearance(brain, id, p, 0) then
+                        return p
+                    end
+                end
+                t = t + size
+            end
+        end
+    end
+    return nil
+end
+
 function FindBuildSpot(brain, bpId, pos, maxRadius, gap)
     maxRadius = maxRadius or 30
-    if brain:CanBuildStructureAt(bpId, pos) and HasClearance(brain, bpId, pos, gap) then return pos end
+    if not Reserved(bpId, pos) and brain:CanBuildStructureAt(bpId, pos) and HasClearance(brain, bpId, pos, gap) then return pos end
     local r = 4
     while r <= maxRadius do
         for i = 0, 11 do
             local a = (i / 12) * 2 * math.pi
             local p = { pos[1] + math.cos(a) * r, 0, pos[3] + math.sin(a) * r }
             p[2] = GetSurfaceHeight(p[1], p[3])
-            if brain:CanBuildStructureAt(bpId, p) and HasClearance(brain, bpId, p, gap) then return p end
+            if not Reserved(bpId, p) and brain:CanBuildStructureAt(bpId, p) and HasClearance(brain, bpId, p, gap) then return p end
         end
         r = r + 4
     end

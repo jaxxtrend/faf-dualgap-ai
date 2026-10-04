@@ -101,6 +101,10 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   every side (aircraft need no exit lane); generators are placed against factories, shields, nukes / artillery / anti-nukes,
   mass fabricators, else against other generators - one compact block; no new T1 generators once T2/T3 engineers exist; the
   mex storage crosses get T2 mass fabricators in their corners once T3 power is up; resource spots stay free.
+  The base is laid out in zones: the mex blocks (3 around every mass spot) take only the mex, storages and T2 fabs; T1 power
+  goes only against factories; T2/T3 power against game enders, anti-nukes and gates first, then factories, shields, T3 fabs,
+  then the power block; game enders (artillery, nukes, Mavor) go against the T3 power block or another game ender, so their
+  power wraps around them; shields stand against a generator or factory at their ring point.
 - **Adaptive roles.** A defeated player's role passes to the ally that took over its mexes (the nearest one), on top of its own,
   and on down the line: whoever took over ECO enters the strategic phase and builds the game ender, a NAVAL heir builds yards
   and the navy's ships and keeps destroyers at the mid, an AIR heir runs the air attacks, the T4 escort and the base AA. The
