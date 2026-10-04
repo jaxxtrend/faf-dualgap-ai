@@ -516,7 +516,11 @@ local function PackScouts(brain, ctx, scouts, now)
         if not inPack[u] then table.insert(waiting, u) end
     end
     local size = ScoutPackSize(now)
-    if table.getn(waiting) >= size then
+    -- One pack per Config.ScoutPackInterval: a pack flying into a base full
+    -- of AA dies; sending the next one straight away only feeds the AA.
+    local due = not ctx.scoutPackAt or now - ctx.scoutPackAt >= Config.ScoutPackInterval
+    if due and table.getn(waiting) >= size then
+        ctx.scoutPackAt = now
         local units = {}
         for k = 1, size do table.insert(units, waiting[k]) end
         ctx.scoutPackN = (ctx.scoutPackN or 0) + 1

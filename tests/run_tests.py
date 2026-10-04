@@ -928,9 +928,11 @@ check(ms[2] == 3 and ms[3] == 5, 'mid support: 3 destroyers, 5 once the water is
 
 hu = lua.execute(r"""
 local F = import('/mods/DualGapAI/lua/AI/DualGapFactories.lua')
-return F.HoldForUpgrade(1, 3, false), F.HoldForUpgrade(3, 3, false), F.HoldForUpgrade(1, 2, true)
+return F.HoldForUpgrade(1, 3, false, true), F.HoldForUpgrade(3, 3, false, true), F.HoldForUpgrade(1, 2, true, true),
+       F.HoldForUpgrade(1, 3, false, false)
 """)
-check(hu[0] and not hu[1] and not hu[2], 'a T1 factory next to a T3 one stops making T1 units and waits for its upgrade')
+check(hu[0] and not hu[1] and not hu[2], 'a lagging factory picked for its upgrade stops making units')
+check(not hu[3], 'a lagging factory not picked for an upgrade keeps producing')
 
 ns = lua.execute(r"""
 local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
@@ -1091,6 +1093,16 @@ local r = A.AirPark({ side = 'RIGHT', startPos = { 911, 0, 390 } })
 return l[1], r[1]
 """)
 check(pk[0] < 112 and pk[1] > 911, 'bombers wait over the own base, behind it (not over the river)')
+
+fa = lua.execute(r"""
+local E = import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua')
+local C = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+return E.FactoryAllowed(2, 10, 0, 1), E.FactoryAllowed(5, 10, 0, 1), E.FactoryAllowed(5, 10, 0.3, 1), E.FactoryAllowed(0, 4, 0.5, 0.2),
+       C.ScoutPackInterval, C.BaseAAAlly[3].count < C.BaseAA[3].count
+""")
+check(fa[0] and not fa[1] and fa[2] and not fa[3], 'production factories: first half even without stored mass, the rest with it, never without energy')
+check(fa[4] >= 180, 'AIR sends at most one scout pack every few minutes')
+check(fa[5], 'allied bases get a smaller SAM ring than AIR\'s own base')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

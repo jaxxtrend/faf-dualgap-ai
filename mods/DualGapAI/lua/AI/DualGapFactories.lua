@@ -193,15 +193,19 @@ local function KindTopTech(brain, f)
 end
 
 -- Exposed for tests: a factory behind the best one of its kind stops
--- making units (low-tech units only die) and waits for its upgrade.
-function HoldForUpgrade(factoryTech, topTech, isMain)
-    return not isMain and factoryTech < topTech
+-- making units only once the upgrader picked it (marked: picked within
+-- Config.FactoryHoldSeconds), so it goes idle and the upgrade starts.
+-- Until then it keeps producing - an idle factory waiting for an upgrade
+-- nobody can afford is worse than low-tech units.
+function HoldForUpgrade(factoryTech, topTech, isMain, marked)
+    return not isMain and factoryTech < topTech and marked == true
 end
 
 -- Global so tests can drive it.
 function Produce(brain, ctx, f)
     if f == ctx.mainFactory and RefillEngineers(brain, ctx, f) then return end
-    if HoldForUpgrade(TechOf(f), KindTopTech(brain, f), f == ctx.mainFactory) then return end
+    local marked = f.DGHoldAt ~= nil and GetGameTimeSeconds() - f.DGHoldAt < Config.FactoryHoldSeconds
+    if HoldForUpgrade(TechOf(f), KindTopTech(brain, f), f == ctx.mainFactory, marked) then return end
     if KeepUnits(brain, ctx, f) then return end
     -- Own role's list for this factory kind, else one of an inherited role
     -- (a GROUND player that took over NAVAL builds the navy's ships).
@@ -248,8 +252,21 @@ end
 -- their kind; a kind without an HQ above T1 (e.g. naval yards when the start
 -- factory is an air factory) gets one HQ upgrade.
 ---------------------------------------------------------------------------
+-- Start the upgrade on an idle factory, else mark it: it stops taking new
+-- orders (HoldForUpgrade) and is upgraded once its current unit is out.
+local function StartUpgrade(f, to)
+    if f:IsIdleState() then
+        IssueUpgrade({ f }, to)
+        f.DGHoldAt = nil
+    elseif not f.DGHoldAt or GetGameTimeSeconds() - f.DGHoldAt >= Config.FactoryHoldSeconds then
+        f.DGHoldAt = GetGameTimeSeconds()
+    end
+end
+
 local function UpgradeFactories(brain, ctx)
-    if brain:GetEconomyStoredRatio('MASS') < 0.2 or brain:GetEconomyStoredRatio('ENERGY') < 0.5 then return end
+    -- Spare mass: some stored, or income above what is being spent.
+    local spare = brain:GetEconomyStoredRatio('MASS') >= 0.1 or brain:GetEconomyTrend('MASS') > 0
+    if not spare or brain:GetEconomyStoredRatio('ENERGY') < 0.5 then return end
     local running = 0
     for _, f in ipairs(brain:GetListOfUnits(CatAllFactories, false)) do
         if Alive(f) and f:IsUnitState('Upgrading') then running = running + 1 end
@@ -268,19 +285,18 @@ local function UpgradeFactories(brain, ctx)
             end
         end
         for _, f in ipairs(list) do
-            if f ~= hq and f ~= ctx.mainFactory and TechOf(f) < hqTech and f:IsIdleState() then
+            if f ~= hq and f ~= ctx.mainFactory and TechOf(f) < hqTech then
                 local id = Utils.SupportFactoryId(brain, kind, TechOf(f) + 1)
                 if id and f:CanBuild(id) then
-                    IssueUpgrade({ f }, id)
+                    StartUpgrade(f, id)
                     return
                 end
             end
         end
-        if hq and hq ~= ctx.mainFactory and hqTech < 3 and hq:IsIdleState()
-            and GetGameTimeSeconds() > 300 then
+        if hq and hq ~= ctx.mainFactory and hqTech < 3 and GetGameTimeSeconds() > 300 then
             local to = hq:GetBlueprint().General.UpgradesTo
             if to and to ~= '' then
-                IssueUpgrade({ hq }, to)
+                StartUpgrade(hq, to)
                 return
             end
         end
@@ -318,7 +334,7 @@ function FactoryStep(brain, ctx)
     end
 
     ctx.factoryUpgradeTick = (ctx.factoryUpgradeTick or 0) + 1
-    if ctx.factoryBODone and ctx.factoryUpgradeTick >= 5 then
+    if ctx.factoryUpgradeTick >= 5 then
         ctx.factoryUpgradeTick = 0
         UpgradeFactories(brain, ctx)
     end

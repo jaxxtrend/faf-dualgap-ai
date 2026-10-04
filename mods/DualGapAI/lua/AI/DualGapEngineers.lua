@@ -796,10 +796,16 @@ local function TryMassFab(brain, ctx, u)
     return true
 end
 
+-- Exposed for tests: may another production factory start? With stored
+-- mass always; the first half of the role's factories even with none in
+-- store (projects otherwise eat every mass point and the army never grows).
+function FactoryAllowed(have, wanted, massRatio, energyRatio)
+    if energyRatio < 0.5 then return false end
+    return massRatio >= 0.1 or have < math.ceil(wanted / 2)
+end
+
 local function TryFactories(brain, ctx, u)
-    if brain:GetEconomyStoredRatio('MASS') < 0.1 or brain:GetEconomyStoredRatio('ENERGY') < 0.5 then
-        return false
-    end
+    if brain:GetEconomyStoredRatio('ENERGY') < 0.5 then return false end
     local wanted = {}
     -- Banked mass and energy: the production factories are not enough to
     -- spend the income, so a few more of them.
@@ -820,7 +826,8 @@ local function TryFactories(brain, ctx, u)
     local startKind = BO.StartFactory[ctx.role]
     for kind, max in pairs(wanted) do
         local cat = Utils.FactoryCategory(kind)
-        if Utils.Count(brain:GetListOfUnits(cat, false)) < max then
+        local have = Utils.Count(brain:GetListOfUnits(cat, false))
+        if have < max and FactoryAllowed(have, max, brain:GetEconomyStoredRatio('MASS'), brain:GetEconomyStoredRatio('ENERGY')) then
             local unfinished = FirstUnfinished(brain, cat)
             if unfinished then
                 IssueRepair({ u }, unfinished)

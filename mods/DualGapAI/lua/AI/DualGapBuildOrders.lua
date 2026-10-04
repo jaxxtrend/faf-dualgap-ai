@@ -119,7 +119,7 @@ Production = {
 -- game ender goes in.
 Keep = {
     GROUND = {},
-    AIR    = { { 'AirScout', kind = 'Air', count = 12, late = 'SpyPlane' } },
+    AIR    = { { 'AirScout', kind = 'Air', count = 10, late = 'SpyPlane' } },
     ECO    = { { 'AirScout', kind = 'Air', count = 5, late = 'SpyPlane', when = 'ender' } },
     NAVAL  = { { 'AirScout', kind = 'Air', count = 2, late = 'SpyPlane' } },
 }

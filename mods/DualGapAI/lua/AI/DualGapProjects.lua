@@ -656,7 +656,7 @@ local function PlanBaseAA(brain, ctx)
     end
     for i, b in ipairs(AABases(true, brain.Name, bases)) do
         for t = 1, 3 do
-            local spec = Config.BaseAA[t]
+            local spec = ((i > 1) and Config.BaseAAAlly or Config.BaseAA)[t]
             if spec and tech >= t then
                 local name = 'BaseAA' .. t .. ((i > 1) and (':' .. b.name) or '')
                 PlanRing(brain, ctx, name, 'AntiAirT' .. t,

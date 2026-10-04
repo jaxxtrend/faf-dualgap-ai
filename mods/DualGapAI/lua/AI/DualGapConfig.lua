@@ -159,6 +159,7 @@ ScoutRepathSeconds = 60
 -- (NavalScoutRadius). ECO builds its scouts once its game ender is
 -- EcoScoutEnderFraction built and sends them over the enemy ECO base.
 ScoutPackSize        = 5
+ScoutPackInterval    = 300   -- at most one pack out per this many seconds
 ScoutPackSizeLate    = 10
 ScoutPackLateSeconds = 1500
 NavalScoutRadius     = 40
@@ -228,6 +229,13 @@ BaseAA = {
     { count = 1, radius = 18 },
     { count = 3, radius = 28 },
     { count = 8, radius = 40 },
+}
+-- The allies' bases of the group get smaller rings: AIR's own base first,
+-- its mass mostly goes into planes.
+BaseAAAlly = {
+    { count = 1, radius = 18 },
+    { count = 2, radius = 28 },
+    { count = 4, radius = 40 },
 }
 
 -- Engineers and the economy. The opening roles of the first T1 engineers
@@ -369,6 +377,9 @@ BankedExtraFactories = 3       -- more of the role's production factories
 -- above SiloResumeEnergy).
 -- Factory upgrades running at the same time (more with banked mass); idle
 -- engineers assist them, like players do with their HQ upgrade.
+-- A lagging factory keeps making units until the upgrader picks it; then it
+-- stops for at most FactoryHoldSeconds to go idle and start the upgrade.
+FactoryHoldSeconds          = 60
 FactoryUpgradesAtOnce       = 2
 FactoryUpgradesAtOnceBanked = 4
 
