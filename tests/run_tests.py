@@ -937,6 +937,22 @@ return t and t.pos[1], none == nil
 """)
 check(op[0] == 905, 'air T4 operation: goes for the enemy ECO commander (not one under water, not another player)')
 check(op[1], 'air T4 operation: no ECO commander in sight -> the enemy ECO base')
+rs = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local p = { 500, 0, 500 }
+return A.OpReissue(nil, 100, nil, p, false), A.OpReissue(100, 105, p, p, false), A.OpReissue(100, 105, p, p, true),
+       A.OpReissue(100, 105, p, { 600, 0, 500 }, false), A.OpReissue(100, 120, p, p, false)
+""")
+check(rs[0] and not rs[1], 'air T4 operation: the T4 order is not re-issued every tick')
+check(rs[2] and rs[3] and rs[4], 'air T4 operation: re-issued when the target moves, or every 15 s')
+st = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local s, b = A.OpStations({ 100, 0, 500 }, { 900, 0, 500 })
+local s2 = A.OpStations({ 100, 0, 500 }, { 110, 0, 500 })
+return s[1], b[1], s2[1]
+""")
+check(st[0] == 130 and st[1] == 80, 'air T4 operation: fighters screen 30 ahead of the T4, bombers 20 behind it')
+check(st[2] == 110, 'air T4 operation: the screen never goes past the target')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

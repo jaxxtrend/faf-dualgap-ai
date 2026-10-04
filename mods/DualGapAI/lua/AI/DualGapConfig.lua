@@ -114,6 +114,15 @@ MidCoverPerBomber  = 3
 T4OpGatherSeconds = 40
 T4OpEscortShare   = 0.8
 T4OpBomberRange   = 140
+-- On the march the escort is kept on a screen T4OpScreenAhead in front of
+-- the T4 and the bombers T4OpBombersBehind behind it, renewed every
+-- planner tick: they fly at the T4's pace and meet enemy fighters and
+-- ground AA first. The T4's own order is renewed every T4OpReissue seconds
+-- or when the target moved; within T4OpAttackRange it attacks the target.
+T4OpScreenAhead   = 30
+T4OpBombersBehind = 20
+T4OpReissue       = 15
+T4OpAttackRange   = 70
 -- An enemy experimental (land or sea) in the own half: AIR sends its
 -- bombers / gunships (at least T4StrikeMin) with an escort right away.
 T4StrikeMin        = 3

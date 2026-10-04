@@ -852,6 +852,71 @@ local function PickOpTarget(brain, ctx)
     return nil, base
 end
 
+-- Exposed for tests: re-issue the group's formation order now?
+function OpReissue(lastAt, now, lastAim, aim, strays)
+    if not lastAt or not lastAim then return true end
+    if strays then return true end
+    if Utils.Dist2D(lastAim, aim) > 40 then return true end
+    return now - lastAt >= Config.T4OpReissue
+end
+
+-- Exposed for tests: where the escort and the bombers fly, relative to the
+-- T4 at lp heading for aim: the fighters a screen ahead (between the T4
+-- and what it flies into), the bombers tucked in behind it.
+function OpStations(lp, aim)
+    local d = Utils.Dist2D(lp, aim)
+    if d < 1 then return { lp[1], lp[2], lp[3] }, { lp[1], lp[2], lp[3] } end
+    local ux, uz = (aim[1] - lp[1]) / d, (aim[3] - lp[3]) / d
+    local a = math.min(Config.T4OpScreenAhead, d)
+    local screen = { lp[1] + ux * a, lp[2], lp[3] + uz * a }
+    local tuck = { lp[1] - ux * Config.T4OpBombersBehind, lp[2], lp[3] - uz * Config.T4OpBombersBehind }
+    return screen, tuck
+end
+
+-- The march. The T4 flies to its target; every planner tick (5 s) each
+-- player's escort is sent to a screen just ahead of it and the bombers to a
+-- spot just behind it, so nobody races ahead: they move at the T4's pace,
+-- take on enemy fighters around it and soak up ground AA fire first.
+-- (Orders are per player: one formation can't mix units of several armies.)
+local function MarchOp(brain, ctx, op, now)
+    local aim = (Alive(op.target) and op.target:GetPosition()) or op.targetPos
+    if not aim then return end
+    op.escort = Utils.FilterAlive(op.escort or {})
+    op.bombers = Utils.FilterAlive(op.bombers or {})
+    local lp = op.lead:GetPosition()
+    local close = Utils.Dist2D(lp, aim) < Config.T4OpAttackRange
+    if OpReissue(op.marchAt, now, op.marchAim, aim, false) or close ~= op.wasClose then
+        op.marchAt, op.marchAim, op.wasClose = now, { aim[1], aim[2], aim[3] }, close
+        IssueClearCommands(op.units)
+        if close and Alive(op.target) then IssueAttack(op.units, op.target) else IssueMove(op.units, aim) end
+    end
+    local screen, tuck = OpStations(lp, aim)
+    local facing = Utils.FacingDegrees(lp, aim)
+    local byArmy = {}
+    for _, u in ipairs(op.escort) do
+        local a = u:GetArmy()
+        byArmy[a] = byArmy[a] or { f = {}, b = {} }
+        table.insert(byArmy[a].f, u)
+    end
+    if not op.dived then
+        for _, u in ipairs(op.bombers) do
+            local a = u:GetArmy()
+            byArmy[a] = byArmy[a] or { f = {}, b = {} }
+            table.insert(byArmy[a].b, u)
+        end
+    end
+    for _, g in pairs(byArmy) do
+        if table.getn(g.f) > 0 then
+            IssueClearCommands(g.f)
+            IssueFormAggressiveMove(g.f, screen, 'GrowthFormation', facing)
+        end
+        if table.getn(g.b) > 0 then
+            IssueClearCommands(g.b)
+            IssueFormMove(g.b, tuck, 'GrowthFormation', facing)
+        end
+    end
+end
+
 -- Owner of air experimentals: starts and leads the operation.
 function AirT4OpStep(brain, ctx, staging, now)
     local op = ctx.t4Op
@@ -870,17 +935,31 @@ function AirT4OpStep(brain, ctx, staging, now)
             Comms.Say(brain, ctx.side, 't4op:' .. brain.Name, 'Our ' .. Comms.UnitName(op.lead)
                 .. ' is going in for their ECO commander. Air, stay with it!', op.lead:GetPosition(), 'attack')
         end
-        -- (Re)target when the target is gone; a move to the base without a
-        -- target is re-checked every half minute.
-        if op.phase == 'go' and not Alive(op.target)
-            and not (op.target == nil and op.movedAt and now - op.movedAt < 30) then
-            local t, pos = PickOpTarget(brain, ctx)
-            op.movedAt = (not t) and now or nil
-            op.target, op.targetPos = t, pos
-            if pos then
-                IssueClearCommands(op.units)
-                if t then IssueAttack(op.units, t) else IssueAggressiveMove(op.units, pos) end
-                Utils.Log(brain, 'air T4 operation: ' .. (t and Comms.UnitName(t) or 'the enemy ECO base'))
+        if op.phase == 'go' then
+            -- (Re)target when the target is gone; a move to the base without
+            -- a target is re-checked every half minute.
+            if not Alive(op.target) and not (op.target == nil and op.movedAt and now - op.movedAt < 30) then
+                local t, pos = PickOpTarget(brain, ctx)
+                if t ~= op.target or not op.targetPos then
+                    op.dived, op.marchAt = false, nil
+                    Utils.Log(brain, 'air T4 operation: ' .. (t and Comms.UnitName(t) or 'the enemy ECO base'))
+                end
+                op.target, op.targetPos = t, pos
+                op.movedAt = (not t) and now or nil
+            end
+            MarchOp(brain, ctx, op, now)
+            -- Close to the target: the bombers dive in on it.
+            if not op.dived and op.targetPos
+                and Utils.Dist2D(op.lead:GetPosition(), op.targetPos) < Config.T4OpBomberRange then
+                local b = Utils.FilterAlive(op.bombers or {})
+                if table.getn(b) > 0 then
+                    IssueClearCommands(b)
+                    if Alive(op.target) then IssueAttack(b, op.target) end
+                    for _, x in ipairs(KnownNear(brain, CatHeart + categories.COMMAND, op.targetPos, 60)) do IssueAttack(b, x) end
+                    IssueGuard(b, op.lead)
+                    Utils.Log(brain, table.getn(b) .. ' bombers dive in with the air T4')
+                end
+                op.dived = true
             end
         end
         Intel.SetAirT4Op(ctx.side, op)
@@ -892,7 +971,7 @@ function AirT4OpStep(brain, ctx, staging, now)
     IssueClearCommands(t4s)
     IssueMove(t4s, staging)
     ctx.t4OpId = (ctx.t4OpId or 0) + 1
-    ctx.t4Op = { units = t4s, lead = t4s[1], phase = 'gather', started = now,
+    ctx.t4Op = { units = t4s, lead = t4s[1], phase = 'gather', started = now, escort = {}, bombers = {},
         id = brain:GetArmyIndex() * 1000 + ctx.t4OpId, by = brain:GetArmyIndex() }
     Intel.SetAirT4Op(ctx.side, ctx.t4Op)
     Utils.Log(brain, 'air T4 operation: gathering escort')
@@ -900,8 +979,9 @@ function AirT4OpStep(brain, ctx, staging, now)
         .. ' is ready. Air, escort it!', staging, 'move')
 end
 
--- AIR (and any player with fighters / bombers): guard the team's air T4.
--- Returns true while this player's planes are in the operation.
+-- AIR (and the T4's owner): hand fighters and bombers to the team's air T4
+-- operation; its leader moves them with the T4. Returns true while this
+-- player's planes are in it.
 function JoinAirT4Op(brain, ctx, bombers, now)
     local op = Intel.AirT4Op(ctx.side)
     local mine = ctx.opJoin
@@ -914,46 +994,34 @@ function JoinAirT4Op(brain, ctx, bombers, now)
     end
     if not op or not Alive(op.lead) then return false end
     if ctx.role ~= 'AIR' and op.by ~= brain:GetArmyIndex() then return false end
-    if not mine then
-        ctx.fighters = Utils.FilterAlive(ctx.fighters or {})
-        local free = FreeFighters(ctx)
-        local n = math.floor(table.getn(free) * Config.T4OpEscortShare)
-        local escort = Nearest(free, op.lead:GetPosition(), n)
-        local strikers = {}
-        for _, u in ipairs(bombers) do table.insert(strikers, u) end
-        for _, u in ipairs(FreeUnits(brain, CatBomber - CatTorpBomber)) do
-            local dup = false
-            for _, v in ipairs(strikers) do if v == u then dup = true; break end end
-            if not dup then table.insert(strikers, u) end
-        end
-        for _, u in ipairs(escort) do u.DGEscort, u.DGLine = true, nil end
-        Claim(strikers)
-        local all = {}
-        for _, u in ipairs(escort) do table.insert(all, u) end
-        for _, u in ipairs(strikers) do table.insert(all, u) end
-        if table.getn(all) > 0 then
-            IssueClearCommands(all)
-            IssueGuard(all, op.lead)
-        end
-        ctx.opJoin = { id = op.id, fighters = escort, bombers = strikers, dived = false }
-        Utils.Log(brain, 'joins the air T4 operation: ' .. table.getn(escort) .. ' fighters, ' .. table.getn(strikers) .. ' bombers')
-        return true
+    if mine then return true end
+    ctx.fighters = Utils.FilterAlive(ctx.fighters or {})
+    local free = FreeFighters(ctx)
+    local n = math.floor(table.getn(free) * Config.T4OpEscortShare)
+    local escort = Nearest(free, op.lead:GetPosition(), n)
+    local strikers = {}
+    for _, u in ipairs(bombers) do table.insert(strikers, u) end
+    for _, u in ipairs(FreeUnits(brain, CatBomber - CatTorpBomber)) do
+        local dup = false
+        for _, v in ipairs(strikers) do if v == u then dup = true; break end end
+        if not dup then table.insert(strikers, u) end
     end
-    -- Close to the target: the bombers dive in on it.
-    if op.phase == 'go' and op.targetPos and not mine.dived
-        and Utils.Dist2D(op.lead:GetPosition(), op.targetPos) < Config.T4OpBomberRange then
-        local b = Utils.FilterAlive(mine.bombers)
-        if table.getn(b) > 0 then
-            IssueClearCommands(b)
-            if Alive(op.target) then IssueAttack(b, op.target) end
-            for _, x in ipairs(KnownNear(brain, CatHeart + categories.COMMAND, op.targetPos, 60)) do IssueAttack(b, x) end
-            IssueGuard(b, op.lead)
-            Utils.Log(brain, table.getn(b) .. ' bombers dive in with the air T4')
-        end
-        mine.dived = true
+    for _, u in ipairs(escort) do u.DGEscort, u.DGLine = true, nil end
+    Claim(strikers)
+    op.escort = op.escort or {}
+    op.bombers = op.bombers or {}
+    local all = {}
+    for _, u in ipairs(escort) do table.insert(op.escort, u); table.insert(all, u) end
+    for _, u in ipairs(strikers) do table.insert(op.bombers, u); table.insert(all, u) end
+    -- Gathering: come to the T4 and stay with it. On the march the leader
+    -- folds them into the formation at its next order.
+    if table.getn(all) > 0 then
+        IssueClearCommands(all)
+        IssueGuard(all, op.lead)
     end
-    -- A new target: dive again when close.
-    if op.target ~= mine.target then mine.target, mine.dived = op.target, false end
+    op.marchAt = nil
+    ctx.opJoin = { id = op.id, fighters = escort, bombers = strikers }
+    Utils.Log(brain, 'joins the air T4 operation: ' .. table.getn(escort) .. ' fighters, ' .. table.getn(strikers) .. ' bombers')
     return true
 end
 
