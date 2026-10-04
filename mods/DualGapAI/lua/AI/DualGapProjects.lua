@@ -939,7 +939,10 @@ local function NukeStep(brain, ctx)
     end
     if not f then
         local pos, value = PickNukeTarget(brain, ctx, loaded[1]:GetPosition())
-        if not pos then return end
+        if not pos then
+            ctx.nukeFocus = nil
+            return
+        end
         f = { pos = pos, value0 = value, shots = 0 }
         Utils.Log(brain, 'nuke focus: ' .. math.floor(value) .. ' mass at ' .. math.floor(pos[1]) .. ',' .. math.floor(pos[3]))
         Comms.Say(brain, ctx.side, 'nuke:' .. brain.Name, 'Nuking their core here, again and again!', pos, 'attack')

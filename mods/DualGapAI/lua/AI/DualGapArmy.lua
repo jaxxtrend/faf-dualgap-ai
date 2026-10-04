@@ -239,15 +239,18 @@ local function HuntTarget(brain, ctx, wave, c)
     for _, rec in ipairs(Intel.Enders(ctx.side)) do
         if Utils.Dist2D(rec.pos, c) < 300 then return rec.pos end
     end
-    local cat = (wave.kind == 'NAVAL') and (categories.NAVAL + categories.STRUCTURE + categories.COMMAND)
+    local cat = (wave.kind == 'NAVAL') and (categories.NAVAL + categories.STRUCTURE + categories.COMMAND - categories.WALL)
         or (categories.ALLUNITS - categories.AIR - categories.WALL)
     local t = NearestKnown(brain, cat, c, MapRadius())
     if t then return t:GetPosition() end
     -- Nothing known: search. Fleets sweep the enemy's deep water (sonar finds
     -- a hidden ACU), land waves walk to a random enemy base.
-    if wave.kind == 'NAVAL' then
-        local sub = Intel.SubmergedACUs(ctx.side)[1]
-        if sub then return sub.pos end
+    -- Fleets go where the hidden ACU most likely is; each fleet takes the
+    -- next clue, so several fleets spread over the search points.
+    if wave.kind == 'NAVAL' and Intel.HuntMode(ctx.side) then
+        ctx.searchIdx = (ctx.searchIdx or 0) + 1
+        local p = Intel.SearchPoint(ctx.side, ctx.searchIdx)
+        if p then return p end
     end
     if Intel.Stale(ctx.side) then
         if wave.kind == 'NAVAL' then return Intel.DeepWater(OtherSide(ctx.side)) end
@@ -591,11 +594,11 @@ local function AirStep(brain, ctx)
     local torpsBusy = false
     if Utils.Count(torps) >= Config.AirStrikeSize or (hunt and Utils.Count(torps) >= 2) then
         local target = PickStrikeTarget(brain, ctx, CatNavalTargets + categories.COMMAND, staging, false, TorpTargetOk)
-        local sub = Intel.SubmergedACUs(ctx.side)[1]
         if target then
             torpsBusy = LaunchStrike(brain, ctx, torps, target, staging, now)
-        elseif sub or stale then
-            local deep = (sub and sub.pos) or Intel.DeepWater(OtherSide(ctx.side))
+        elseif hunt or stale then
+            ctx.searchIdx = (ctx.searchIdx or 0) + 1
+            local deep = Intel.SearchPoint(ctx.side, ctx.searchIdx) or Intel.DeepWater(OtherSide(ctx.side))
             if deep then
                 Claim(torps)
                 IssueClearCommands(torps)

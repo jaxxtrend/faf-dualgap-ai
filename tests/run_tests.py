@@ -834,6 +834,27 @@ return best ~= nil, okEmpty and e1 ~= nil, okPoint and okList and apart and same
 check(deep[0] and deep[1], 'hiding spot search works with an empty list of allied spots')
 check(deep[2], 'a second ACU hides 150+ away from the first (point or list of points)')
 
+lost = lua.execute(r"""
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+return I.ACULost(3300, 2400, 2), I.ACULost(3300, 3250, 2), I.ACULost(3300, 2400, 20), I.ACULost(500, nil, 0),
+       I.ACULost(1500, nil, 0)
+""")
+check(lost[0], 'lost ACU: a beaten enemy whose ACU is unseen for 2+ minutes is hunted')
+check(not lost[1] and not lost[2] and not lost[3], 'lost ACU: not while recently seen, while the enemy still has a base, or early')
+check(lost[4], 'lost ACU: an ACU never seen at all late in the game counts as lost')
+sp = lua.execute(r"""
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+local d = I.DeepSpots('LEFT')
+local n = table.getn(d)
+local ok = n >= 2
+for i = 1, n do for j = i + 1, n do
+    if math.sqrt((d[i][1] - d[j][1]) ^ 2 + (d[i][3] - d[j][3]) ^ 2) < 120 then ok = false end
+end end
+return ok, I.SearchPoint('RIGHT', 7) ~= nil
+""")
+check(sp[0], 'deep water search spots are several and 120+ apart')
+check(sp[1], 'search points wrap around')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

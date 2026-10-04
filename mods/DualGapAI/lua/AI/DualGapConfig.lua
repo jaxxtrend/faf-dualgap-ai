@@ -267,6 +267,15 @@ MassFabEnergySurplus = 1500     -- energy/s trend needed before a fabricator
 StaleSeconds = 90
 -- An enemy ACU seen under water is hunted at its last known spot this long.
 SubACUMemory = 300
+-- Lost ACU: an enemy player is still in the game (the scoreboard shows it)
+-- but almost nothing of theirs is left (at most ACULostMaxStructures known
+-- structures, walls aside) and their ACU has not been seen for
+-- ACULostSeconds (and the game is past ACULostMinTime). The team hunts it:
+-- last seen spot, their structures by the water (guards of a hiding spot),
+-- then the enemy's deep water spots one after another.
+ACULostSeconds       = 120
+ACULostMinTime       = 900
+ACULostMaxStructures = 6
 
 -- Game enders ECO keeps building, at most this many of a kind alive
 -- (nil = no limit).

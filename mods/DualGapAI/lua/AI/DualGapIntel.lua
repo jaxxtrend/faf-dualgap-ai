@@ -45,7 +45,7 @@ end
 local function Team(side)
     if not teams[side] then
         teams[side] = { enders = {}, t4Seen = false, aa = {}, naval = {}, antiNukes = {}, shields = {},
-            t4Units = {}, lastKnownAt = 0, stale = false, subACUs = {} }
+            t4Units = {}, lastKnownAt = 0, stale = false, subACUs = {}, acuSeen = {}, lostACUs = {} }
     end
     return teams[side]
 end
@@ -80,6 +80,58 @@ local function KnownEnemies(brain, cat)
         if Known(e, army) then table.insert(out, e) end
     end
     return out
+end
+
+-- Tracks when each enemy ACU was last seen, and which enemy players still in
+-- the game have lost their ACU from sight with almost nothing else left.
+-- Who is still in the game is on everyone's scoreboard: not a cheat.
+local CatClues = categories.STRUCTURE - categories.WALL
+function LostACUScan(brain, side, t, now)
+    if not (ArmyBrains and IsEnemy and ArmyIsOutOfGame) then return end
+    for _, e in ipairs(KnownEnemies(brain, categories.COMMAND)) do
+        local p = e:GetPosition()
+        t.acuSeen[e:GetArmy()] = { at = now, pos = { p[1], p[2], p[3] } }
+    end
+    local me = brain:GetArmyIndex()
+    local x0, z0, x1, z1 = Utils.MapBounds()
+    local center = { (x0 + x1) / 2, 0, (z0 + z1) / 2 }
+    local known = {}
+    for _, e in ipairs(brain:GetUnitsAroundPoint(CatClues, center, math.max(x1 - x0, z1 - z0), 'Enemy') or {}) do
+        if Known(e, me) then
+            local a = e:GetArmy()
+            known[a] = known[a] or {}
+            table.insert(known[a], e)
+        end
+    end
+    local lost = {}
+    for i, b in ipairs(ArmyBrains) do
+        if IsEnemy(me, i) and not ArmyIsOutOfGame(i) and not (ArmyIsCivilian and ArmyIsCivilian(i)) then
+            local seen = t.acuSeen[i]
+            local structs = known[i] or {}
+            if ACULost(now, seen and seen.at, table.getn(structs)) then
+                local clues = {}
+                if seen and now - seen.at < Config.SubACUMemory * 2 then table.insert(clues, seen.pos) end
+                -- Structures on water first: torpedo launchers and AA by the
+                -- shore give a hiding spot away.
+                local wet, dry = {}, {}
+                for _, s in ipairs(structs) do
+                    local p = s:GetPosition()
+                    if Utils.WaterDepth(p[1], p[3]) > 0 then table.insert(wet, p) else table.insert(dry, p) end
+                end
+                for _, p in ipairs(wet) do table.insert(clues, p) end
+                for _, p in ipairs(dry) do table.insert(clues, p) end
+                table.insert(lost, { army = i, clues = clues })
+                if not t.lostAnnounced then t.lostAnnounced = {} end
+                if not t.lostAnnounced[i] then
+                    t.lostAnnounced[i] = true
+                    Utils.Log(brain, 'enemy ACU of army ' .. i .. ' is lost: hunting it (' .. table.getn(clues) .. ' clues)')
+                    Comms.Say(brain, side, 'lostacu:' .. i, (b.Nickname or 'Enemy') .. "'s ACU is hiding somewhere. Hunt it: sonar, torpedo bombers, ships!",
+                        clues[1] or DeepWater(OtherSide(side)), 'attack')
+                end
+            end
+        end
+    end
+    t.lostACUs = lost
 end
 
 local function Scan(side, brain)
@@ -137,6 +189,7 @@ local function Scan(side, brain)
     for key, rec in pairs(t.subACUs) do
         if not Alive(rec.unit) or now0 - rec.at > Config.SubACUMemory then t.subACUs[key] = nil end
     end
+    LostACUScan(brain, side, t, now0)
 
     -- Stalemate watch.
     local now = GetGameTimeSeconds()
@@ -219,10 +272,48 @@ function SubmergedACUs(side)
     return out
 end
 
--- Hunt mode: the enemy is lost, or an enemy ACU is hiding under water.
+-- Enemy players still in the game whose ACU is lost (see Config.ACULostSeconds):
+-- { army, clues = { points to search, best first } }.
+function LostACUs(side)
+    if not side then return {} end
+    return Team(side).lostACUs or {}
+end
+
+-- Exposed for tests: is an enemy player's ACU lost?
+function ACULost(now, lastSeenAt, knownStructures)
+    if now < Config.ACULostMinTime then return false end
+    if knownStructures > Config.ACULostMaxStructures then return false end
+    return now - (lastSeenAt or 0) >= Config.ACULostSeconds
+end
+
+-- Hunt mode: the enemy is lost, an enemy ACU is hiding under water, or a
+-- nearly beaten enemy's ACU is nowhere to be seen.
 -- Torpedo bombers, subs and fleets are built and sent in small groups.
 function HuntMode(side)
-    return Stale(side) or table.getn(SubmergedACUs(side)) > 0
+    return Stale(side) or table.getn(SubmergedACUs(side)) > 0 or table.getn(LostACUs(side)) > 0
+end
+
+-- Where to look for a hidden enemy ACU, best clue first: submerged ACUs'
+-- last spots, lost ACUs' clues, then the enemy's deep water spots.
+function SearchPoints(side)
+    local pts = {}
+    for _, rec in ipairs(SubmergedACUs(side)) do table.insert(pts, rec.pos) end
+    for _, l in ipairs(LostACUs(side)) do
+        for _, p in ipairs(l.clues) do table.insert(pts, p) end
+    end
+    for _, p in ipairs(DeepSpots(OtherSide(side))) do table.insert(pts, p) end
+    return pts
+end
+
+-- The k-th search point (wraps around): spreads searchers over the clues.
+function SearchPoint(side, k)
+    local pts = SearchPoints(side)
+    local n = table.getn(pts)
+    if n == 0 then return nil end
+    k = math.floor(k or 1)
+    while k > n do k = k - n end
+    if k < 1 then k = 1 end
+    return pts[k]
 end
 
 -- Deepest water in `side`'s rear: where an ACU hides. Map knowledge every
@@ -236,6 +327,25 @@ function DeepWater(side)
         deepCache[side] = c
     end
     return c.pos
+end
+
+-- Several deep water spots in `side`'s rear, at least 120 apart (an ACU
+-- may hide in any of them; the deepest is not always the one).
+local deepSpotsCache = {}
+function DeepSpots(side)
+    local c = deepSpotsCache[side]
+    local now = GetGameTimeSeconds()
+    if not c or now - c.at > 120 then
+        local spots = {}
+        for i = 1, 4 do
+            local p = Utils.DeepestRearWater(side, spots, 120)
+            if not p then break end
+            table.insert(spots, p)
+        end
+        c = { at = now, spots = spots }
+        deepSpotsCache[side] = c
+    end
+    return c.spots
 end
 
 -- Is pos covered by a known enemy anti-nuke (SMD range 90)?
@@ -310,9 +420,14 @@ local function AirScoutRoute(ctx, offset)
     end
     table.sort(pts, function(a, b) return a[3] < b[3] end)
     table.insert(pts, Routes.GetPoint('NavalRally', enemy))
-    -- The enemy's deepest water, where an ACU hides late in the game.
-    local deep = DeepWater(enemy)
-    if deep then table.insert(pts, deep) end
+    -- The enemy's deepest water, where an ACU hides late in the game; while
+    -- hunting, every clue of a hidden ACU.
+    if HuntMode(ctx.side) then
+        for _, p in ipairs(SearchPoints(ctx.side)) do table.insert(pts, p) end
+    else
+        local deep = DeepWater(enemy)
+        if deep then table.insert(pts, deep) end
+    end
     table.insert(pts, Routes.GetPoint('BasinCenter', ctx.side))
     table.insert(pts, Routes.GetPoint('LandCenter', ctx.side))
     -- Rotate so several scouts don't fly in a bunch.
