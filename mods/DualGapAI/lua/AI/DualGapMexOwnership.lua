@@ -165,7 +165,8 @@ function FollowHeirs(name, alive, heir)
     return nil
 end
 
-local function InGame(name)
+-- Is this player (army name) still in the game?
+function InGame(name)
     local b = BrainByName(name)
     return b ~= nil and not Defeated(b)
 end

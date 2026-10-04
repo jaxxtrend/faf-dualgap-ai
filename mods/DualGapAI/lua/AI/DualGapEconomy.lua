@@ -21,7 +21,6 @@ end
 -- only for mexes with all their mass storages built (StorageSpots empty):
 -- adjacent storages raise a mex's output, so they come first.
 ---------------------------------------------------------------------------
-local CatMassStorage = categories.MASSSTORAGE * categories.STRUCTURE
 
 -- Free buildable storage spots touching the mex (up to four, one per side).
 -- Spots taken by anything else count as done.

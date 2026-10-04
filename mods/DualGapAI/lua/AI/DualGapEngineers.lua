@@ -134,14 +134,6 @@ local function MainFactory(brain, ctx)
     return nil
 end
 
-local function CountComplete(brain, cat)
-    local n = 0
-    for _, u in ipairs(brain:GetListOfUnits(cat, false)) do
-        if Alive(u) and u:GetFractionComplete() >= 1 then n = n + 1 end
-    end
-    return n
-end
-
 local function FirstUnfinished(brain, cat, near, radius)
     for _, u in ipairs(brain:GetListOfUnits(cat, false)) do
         if Alive(u) and u:GetFractionComplete() < 1
@@ -539,9 +531,6 @@ end
 -- Grid anchors for a power generator, best first: air factories (their
 -- production costs a lot of energy), mass fabricators, then the rest of
 -- the factories.
-local CatPowerUsers = categories.STRUCTURE * (categories.SHIELD + categories.GATE + categories.NUKE
-    + categories.ANTIMISSILE * categories.TECH3 + categories.ARTILLERY * (categories.TECH3 + categories.EXPERIMENTAL))
-
 local CatStrategic = categories.STRUCTURE * (categories.NUKE + categories.GATE
     + categories.ANTIMISSILE * categories.TECH3 + categories.ARTILLERY * (categories.TECH3 + categories.EXPERIMENTAL)
     + categories.EXPERIMENTAL)

@@ -80,7 +80,6 @@ Points = {
     Choke         = { 0.380, 0.370 }, -- fallback for non-ranked spawns
     ArtyStaging   = { 0.320, 0.385 }, -- fallback; normally 40 behind own choke
     NavalYardHint = { 0.200, 0.600 }, -- search for coastal water from here
-    AirStaging    = { 0.100, 0.500 }, -- over the own-side river
     BasinCenter   = { 0.500, 0.720 },
     LandCenter    = { 0.500, 0.360 },
 }
@@ -184,9 +183,7 @@ ACURetreatHealth       = 0.35
 StratArtyScanRadius    = 1000
 DeepWaterDepth         = 3
 
-GroundWaveSize   = 8
 ArtyWaveSize     = 6
-NavalWaveSize    = 5
 AirStrikeSize    = 8
 EcoStrategicMassIncome = 100    -- mass/sec before ECO goes all-in on T3/T4
 EcoStrategicShare      = 0.8    -- share of engineers sent to strategic builds
@@ -336,14 +333,6 @@ ACULostMaxStructures = 6
 -- (an unscouted AIR base is not a beaten one).
 ACULostMinSeenBase   = 12
 
--- Game enders ECO keeps building, at most this many of a kind alive
--- (nil = no limit).
-GameEnderMax = { NukeSilo = 4, StratArtyT3 = 4, ArtilleryT4 = 2 }
--- When ECO has built the cap of its game ender it switches to the next one
--- it can build, in this order: artillery knocks out the enemy anti-nukes,
--- then the nukes finish the job.
-GameEnderNext = { 'StratArtyT3', 'ArtilleryT4', 'NukeSilo', 'AirT4' }
-
 -- Mass air attack. AIR keeps its planes together until it has AirMassSize
 -- aircraft (two AIR players: 250-300 for the team), then sends everything
 -- but AirMassHomeShare of the fighters at one strategic target: the
@@ -479,13 +468,12 @@ ExpensiveMass       = 2500
 -- the GROUND / NAVAL ACU sends it underwater (land T4s can't hurt it
 -- there). Underwater, known enemy warships within NavalDangerRadius worth
 -- NavalDangerStrength (T1 = 1, T2 = 3, T3 = 8, T4 = 20) make it move to
--- another deep spot at least NavalEvadeDistance away (or home, on land).
+-- another deep spot away from the fleet (or home, on land).
 -- While hiding it guards its spot with HideTorpedoes torpedo launchers and
 -- HideSAMs T3 SAMs on the nearest shore.
 T4DangerRadius      = 120
 NavalDangerRadius   = 90
 NavalDangerStrength = 3
-NavalEvadeDistance  = 150
 HideTorpedoes       = 2
 HideSAMs            = 2
 

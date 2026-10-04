@@ -490,6 +490,12 @@ function IsUnderwater(unit)
 end
 
 -- Which side of the map a position is on ('LEFT' / 'RIGHT').
+-- The other map side (team).
+function OtherSide(side)
+    if side == 'LEFT' then return 'RIGHT' end
+    return 'LEFT'
+end
+
 function SideOf(pos)
     local nx = Normalise(pos[1], pos[3])
     if nx < 0.5 then return 'LEFT' end

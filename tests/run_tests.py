@@ -432,22 +432,17 @@ check(P.T4Trigger('NAVAL', 0, False, True, False) and P.T4Trigger('NAVAL', 0, Fa
 check(not P.T4Trigger('ECO', 999, True, True, True), 'ECO has its own game ender instead')
 
 picks = lua.execute(r"""
-
 local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
-
-local seen = {}
-
+local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
 local avail = { 'StratArtyT3', 'NukeSilo', 'ArtilleryT4', 'AirT4' }
-
-for i = 1, 4 do seen[P.PickGameEnder(avail, function(a, b) return i end)] = true end
-
-local n = 0 for _ in pairs(seen) do n = n + 1 end
-
-return n, P.PickGameEnder({}, function() return 1 end) == nil
-
+local seen, n = {}, 0
+for i = 1, table.getn(BO.EnderPlans) do
+    local plan = P.PickEnderPlan(BO.EnderPlans, avail, function(a, b) return i end)
+    if not seen[plan] then seen[plan] = true; n = n + 1 end
+end
+return n == table.getn(BO.EnderPlans), P.PickEnderPlan(BO.EnderPlans, {}, function() return 1 end) == nil
 """)
-
-check(picks[0] == 4 and picks[1], 'game ender roll can land on every option')
+check(picks[0] and picks[1], 'game ender plan roll can land on every plan; nothing buildable -> no plan')
 
 # Anti-nuke: every base of a group within SMD range (90) of the group centre.
 

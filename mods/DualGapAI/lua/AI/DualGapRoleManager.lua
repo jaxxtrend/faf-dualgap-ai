@@ -97,11 +97,3 @@ function DetermineRoleBySpawn(brain)
     return NearestSlotRole(nx, nz) or Roles.AIR, side
 end
 
--- World positions of all start slots with the given role on a side.
-function SlotPositions(role, side)
-    local out = {}
-    for _, s in pairs(GetSlots()) do
-        if s.role == role and s.side == side then table.insert(out, s.pos) end
-    end
-    return out
-end

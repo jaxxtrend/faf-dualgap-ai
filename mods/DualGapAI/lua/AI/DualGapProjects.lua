@@ -8,9 +8,9 @@
 -- engineer that can build it starts the structure; the rest repair it.
 --
 -- The planner (every 10 s) decides which projects exist:
---   team    one anti-nuke per group of three spawns (ECO > NAVAL > AIR >
---           GROUND builds it) as soon as an enemy nuke is scouted or the
---           builder has its first T3 power generator; a second one once
+--   team    one anti-nuke per group of three spawns (started by the member
+--           with the most resources, the others assist) as soon as an enemy
+--           nuke is scouted or the group has T3 power; a second one once
 --           2+ enemy nukes are scouted. Priority 1: nothing starves it.
 --   all     enemy Yolona Oss scouted -> Config.YolonaAntiNukes anti-nukes
 --           at every base (engineers also assist them, DualGapEngineers)
@@ -28,11 +28,12 @@
 --   GROUND  after the first T2 factory: proxy base (T2 shields + T2 arty)
 --   GROUND / NAVAL after the first T2 factory: forward factories near the
 --           front (Config.ForwardFactories)
---   all     anti-air around the base: one T1 AA from the start, three T2
---           flak at T2, a full ring of T3 SAMs at T3 (Config.BaseAA);
---           lost ones are rebuilt
---   ECO     strategic phase -> one random game ender, built over and over
---           (at most Config.GameEnderMax of a kind)
+--   AIR     anti-air around every base of its group: one T1 AA from the
+--           start, three T2 flak at T2, a full ring of T3 SAMs at T3
+--           (Config.BaseAA); lost ones are rebuilt. Its heir takes over.
+--   all     team down in players -> a ring of T2 point defences
+--   ECO     strategic phase -> a random game ender plan built step by step
+--           (BuildOrders.EnderPlans: usually one nuke first, then artillery)
 --   AIR     >= Config.AirT4MinFighters T3 fighters -> air experimental
 --   GROUND  own mid zone pushed, or enemy experimental scouted -> land T4
 --   NAVAL   water pushed, or enemy experimental scouted -> naval T4
@@ -53,10 +54,7 @@ local Alive = Utils.Alive
 
 local CatEngineer = categories.ENGINEER - categories.COMMAND - categories.SUBCOMMANDER
 
-local function OtherSide(side)
-    if side == 'LEFT' then return 'RIGHT' end
-    return 'LEFT'
-end
+local OtherSide = Utils.OtherSide
 
 ---------------------------------------------------------------------------
 -- Project bookkeeping
@@ -335,24 +333,6 @@ function T4Trigger(role, fighters, midPushed, waterPushed, enemyT4)
     return false
 end
 
--- Exposed for tests: the next game ender after `current` reached its cap.
--- capped(key) tells whether a key is at its cap.
-function NextGameEnder(available, current, capped)
-    local have = {}
-    for _, k in ipairs(available) do have[k] = true end
-    for _, k in ipairs(Config.GameEnderNext) do
-        if k ~= current and have[k] and not capped(k) then return k end
-    end
-    return nil
-end
-
--- Exposed for tests: pick ECO's game ender from the keys the faction has.
-function PickGameEnder(available, roll)
-    local n = table.getn(available)
-    if n == 0 then return nil end
-    return available[roll(1, n)]
-end
-
 local function Roll(a, b)
     if Random then return Random(a, b) end
     return math.random(a, b)
@@ -487,14 +467,12 @@ local function PlanAntiNuke(brain, ctx)
         if Alive(s) and s:GetFractionComplete() < 1 then return end
     end
     if not HasT3Engineer(brain) or not IsGroupBuilder(brain, members, ctx.side .. GroupOf(slot.rank)) then return end
-    do
-        local p = Add(brain, ctx, { name = 'AntiNuke', key = 'AntiNuke', site = center, crewMax = 4,
-            count = want - have, minCrewTech = 2, priority = 1 })
-        if p then
-            local why = (nukes > 0) and 'enemy nuke scouted' or 'T3 power is up'
-            Comms.Say(brain, ctx.side, 'antinuke:' .. GroupOf(slot.rank), 'Building anti-nuke here (' .. why .. ').',
-                center, 'move')
-        end
+    local p = Add(brain, ctx, { name = 'AntiNuke', key = 'AntiNuke', site = center, crewMax = 4,
+        count = want - have, minCrewTech = 2, priority = 1 })
+    if p then
+        local why = (nukes > 0) and 'enemy nuke scouted' or 'T3 power is up'
+        Comms.Say(brain, ctx.side, 'antinuke:' .. GroupOf(slot.rank), 'Building anti-nuke here (' .. why .. ').',
+            center, 'move')
     end
 end
 
@@ -629,18 +607,6 @@ function AABases(isKeeper, own, bases)
     return out
 end
 
-local function BrainNamed(name)
-    for _, b in ipairs(ArmyBrains) do
-        if b.Name == name then return b end
-    end
-    return nil
-end
-
-local function InGame(name)
-    local b = BrainNamed(name)
-    return b ~= nil and not Utils.BrainDefeated(b)
-end
-
 -- Exposed for tests: fortify? (own team has fewer players in the game)
 function ShouldFortify(ownAlive, enemyAlive)
     return ownAlive < enemyAlive
@@ -675,7 +641,7 @@ local function PlanBaseAA(brain, ctx)
     local airName
     for _, m in ipairs(members) do if m.role == 'AIR' then airName = m.name end end
     local Mex = import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua')
-    local keeper = AAKeeperName(airName, InGame, Mex.Heir)
+    local keeper = AAKeeperName(airName, Mex.InGame, Mex.Heir)
     if keeper ~= brain.Name then return end
     if ctx.role ~= 'AIR' and not ctx.aaKeeperSaid then
         ctx.aaKeeperSaid = true
@@ -684,7 +650,7 @@ local function PlanBaseAA(brain, ctx)
     local bases = { { name = brain.Name, pos = ctx.startPos } }
     local slots = RoleManager.GetSlots()
     for _, m in ipairs(members) do
-        if m.name ~= brain.Name and slots[m.name] and InGame(m.name) then
+        if m.name ~= brain.Name and slots[m.name] and Mex.InGame(m.name) then
             table.insert(bases, { name = m.name, pos = slots[m.name].pos })
         end
     end

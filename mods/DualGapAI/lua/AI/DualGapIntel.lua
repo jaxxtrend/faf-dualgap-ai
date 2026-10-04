@@ -29,7 +29,6 @@ local CatEnders = categories.STRUCTURE * (categories.NUKE
     + categories.EXPERIMENTAL)
 local CatEnemyT4 = categories.EXPERIMENTAL * categories.MOBILE
 local CatAA = categories.ANTIAIR * (categories.LAND + categories.NAVAL + categories.STRUCTURE) - categories.AIR
-local CatNaval = categories.NAVAL * (categories.MOBILE + categories.STRUCTURE)
 local CatEnemyAntiNuke = categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE
 local CatShields = categories.SHIELD * categories.STRUCTURE
 -- Anything worth hunting: when none of it is known, the team is stuck.
@@ -37,14 +36,11 @@ local CatHuntable = categories.STRUCTURE + categories.LAND + categories.NAVAL + 
 
 local teams = {}
 
-local function OtherSide(side)
-    if side == 'LEFT' then return 'RIGHT' end
-    return 'LEFT'
-end
+local OtherSide = Utils.OtherSide
 
 local function Team(side)
     if not teams[side] then
-        teams[side] = { enders = {}, t4Seen = false, aa = {}, naval = {}, antiNukes = {}, shields = {},
+        teams[side] = { enders = {}, t4Seen = false, aa = {}, antiNukes = {}, shields = {},
             t4Units = {}, lastKnownAt = 0, stale = false, subACUs = {}, acuSeen = {}, lostACUs = {} }
     end
     return teams[side]
@@ -167,7 +163,6 @@ local function Scan(side, brain)
     end
     t.aa = {}
     for _, e in ipairs(KnownEnemies(brain, CatAA)) do table.insert(t.aa, e:GetPosition()) end
-    t.naval = KnownEnemies(brain, CatNaval)
     t.antiNukes = {}
     for _, e in ipairs(KnownEnemies(brain, CatEnemyAntiNuke)) do table.insert(t.antiNukes, e:GetPosition()) end
     t.shields = KnownEnemies(brain, CatShields)
@@ -238,10 +233,6 @@ function AAThreat(side, pos, radius)
         if Utils.Dist2D(p, pos) <= radius then n = n + 1 end
     end
     return n
-end
-
-function KnownNaval(side)
-    return Utils.FilterAlive(Team(side).naval)
 end
 
 -- Known enemy structure shields whose bubble covers pos and is up right now.
@@ -401,11 +392,6 @@ function DeepSpots(side)
     return c.spots
 end
 
--- Is pos covered by a known enemy anti-nuke (SMD range 90)?
-function UnderEnemyAntiNuke(side, pos)
-    return AntiNukesCovering(side, pos) > 0
-end
-
 -- How many known enemy anti-nukes cover pos.
 function AntiNukesCovering(side, pos)
     local n = 0
@@ -413,11 +399,6 @@ function AntiNukesCovering(side, pos)
         if Utils.Dist2D(p, pos) <= 92 then n = n + 1 end
     end
     return n
-end
-
--- Exposed for tests: replace a side's memory.
-function SetTeamForTest(side, data)
-    teams[side] = data
 end
 
 ---------------------------------------------------------------------------

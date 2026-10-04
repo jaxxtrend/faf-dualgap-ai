@@ -76,20 +76,12 @@ local CatAirT4    = categories.AIR * categories.MOBILE * categories.EXPERIMENTAL
 local CatNavalTargets = categories.NAVAL - categories.WALL
 local CatEnemyAir     = categories.AIR * categories.MOBILE
 local CatEnemyFighter = categories.AIR * categories.MOBILE * categories.ANTIAIR - categories.BOMBER - categories.GROUNDATTACK
-local CatEcoTargets   = categories.STRUCTURE * (categories.MASSEXTRACTION + categories.ENERGYPRODUCTION
-                        + categories.MASSFABRICATION + categories.FACTORY)
 local CatEnemyLand    = categories.LAND * categories.MOBILE
 -- What bombers fly at, after their main target: ACUs, game enders, anti-nukes.
 local CatBomberExtras = categories.COMMAND + categories.EXPERIMENTAL * categories.STRUCTURE + categories.NUKE * categories.STRUCTURE
     + categories.ARTILLERY * categories.STRUCTURE * categories.TECH3
     + categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE
-local CatHeart = categories.STRUCTURE * categories.TECH3 * (categories.ENERGYPRODUCTION + categories.MASSFABRICATION
-    + categories.MASSEXTRACTION)
-
-local function OtherSide(side)
-    if side == 'LEFT' then return 'RIGHT' end
-    return 'LEFT'
-end
+local OtherSide = Utils.OtherSide
 
 local function Toward(ctx)
     return (ctx.side == 'LEFT') and 1 or -1
@@ -1230,8 +1222,6 @@ end
 -- Mass air attack (see the header and Config.AirMassSize).
 ---------------------------------------------------------------------------
 local CatAllAir = categories.AIR * categories.MOBILE - categories.ENGINEER - categories.SCOUT - categories.TRANSPORTATION
-local CatEnemyAntiNuke = categories.STRUCTURE * categories.ANTIMISSILE * categories.TECH3
-
 function AirCount(brain)
     return Utils.Count(brain:GetListOfUnits(CatAllAir, false))
 end
@@ -1244,11 +1234,6 @@ function MassAirDecision(air, enderKnown, teamStrikeOn, sinceLast)
     if enderKnown and air >= Config.AirEnderStrikeMin then return 'ender' end
     if air >= Config.AirMassSize then return 'mass' end
     return nil
-end
-
-local function OwnTeamNuke(brain)
-    return Utils.Count(brain:GetListOfUnits(categories.NUKE * categories.STRUCTURE, false)) > 0
-        or Utils.CountAround(brain, categories.NUKE * categories.STRUCTURE, { 512, 0, 512 }, 2000, 'Ally') > 0
 end
 
 -- The strategic target: game ender > enemy experimental structure (they
@@ -1381,7 +1366,7 @@ function BomberTargetKind(c)
     return nil
 end
 
-local function OwnTeamNukeAny(brain)
+local function OwnTeamNuke(brain)
     return Utils.CountAround(brain, categories.NUKE * categories.STRUCTURE, { 512, 0, 512 }, 3000, 'Ally') > 0
 end
 
@@ -1406,7 +1391,7 @@ function BomberTarget(brain, ctx, maxAA, ok)
     for _, rec in ipairs(Intel.Enders(ctx.side)) do table.insert(enders, rec.unit) end
     t = pick(enders)
     if t then return t end
-    if OwnTeamNukeAny(brain) then
+    if OwnTeamNuke(brain) then
         return pick(KnownNear(brain, categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE, ctx.startPos, MapRadius()))
     end
     return nil
