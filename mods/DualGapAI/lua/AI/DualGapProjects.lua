@@ -1001,8 +1001,10 @@ local function PlanExperimentals(brain, ctx)
             or (role == 'GROUND' and LandT4Site(ctx)) or T4Site(ctx)
         local cat = (role == 'NAVAL') and CatT3Ships or (role == 'GROUND' and CatT3Land or nil)
         Add(brain, ctx, { name = 'Experimental', key = key, site = site, crewMax = 8, minCrewTech = 2, priority = 5,
-            -- Not enough T3 army to go with the T4s yet: one engineer only.
+            -- Not enough T3 army to go with the T4s yet: one engineer only
+            -- (unless mass is piling up - then it is better spent on the T4).
             throttle = cat and function(b)
+                if Utils.MassBanked(b) then return false end
                 local exps = Utils.Count(b:GetListOfUnits(categories.EXPERIMENTAL * categories.MOBILE, false))
                 return not T4EscortReady(Utils.Count(b:GetListOfUnits(cat, false)), exps)
             end })

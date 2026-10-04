@@ -1179,6 +1179,23 @@ return I.NukeLaunchedRecently(1, 100, 50, { [8] = 70 }, enemy), I.NukeLaunchedRe
 """)
 check(nl[0] and not nl[1] and not nl[2], 'an enemy nuke launch is remembered for a while; own team launches do not count')
 
+bx = lua.execute(r"""
+local E = import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua')
+return E.BankedExtra(50), E.BankedExtra(300), E.BankedExtra(2000)
+""")
+check(bx[0] == 3 and bx[1] == 6 and bx[2] == 8, 'banked mass: more production factories the higher the income, capped')
+
+hk = lua.execute(r"""
+local called = 0
+Unit = { NukeCreatedAtUnit = function(self) called = called + 1 end }
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+""" + open(os.path.join(ROOT, 'hook', 'lua', 'sim', 'Unit.lua'), encoding='utf-8').read() + r"""
+Unit.NukeCreatedAtUnit({ Army = 8 })
+return called, I.NukeLaunchTime(8) ~= nil, I.NukeLaunchTime(3) == nil
+""")
+check(hk[0] == 1, 'the Unit hook still runs the original launch code')
+check(hk[1] and hk[2], 'a nuke launch is recorded for the army that fired it')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

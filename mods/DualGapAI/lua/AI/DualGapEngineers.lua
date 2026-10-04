@@ -819,6 +819,32 @@ local function TryMassFab(brain, ctx, u)
     return true
 end
 
+-- Exposed for tests: extra production factories with banked mass at this
+-- mass income (mass/s).
+function BankedExtra(massIncome)
+    return math.min(Config.BankedExtraFactoriesMax,
+        Config.BankedExtraFactories + math.floor(massIncome / Config.BankedMassPerFactory))
+end
+
+-- Banked mass: help the busy production factories in the base (the one
+-- with the fewest helpers first), so production spends the income.
+local function TryAssistFactories(brain, ctx, u)
+    if brain:GetEconomyStoredRatio('ENERGY') < 0.5 then return false end
+    local best, bestN
+    for _, f in ipairs(brain:GetListOfUnits(categories.FACTORY * categories.STRUCTURE, false)) do
+        if Alive(f) and f:GetFractionComplete() >= 1 and not f:IsIdleState() and not f:IsUnitState('Upgrading')
+            and Utils.Dist2D(f:GetPosition(), ctx.startPos) < 120 then
+            f.DGHelpers = Utils.FilterAlive(f.DGHelpers or {})
+            local n = table.getn(f.DGHelpers)
+            if n < Config.FactoryAssistMax and (not bestN or n < bestN) then best, bestN = f, n end
+        end
+    end
+    if not best then return false end
+    table.insert(best.DGHelpers, u)
+    Guard(u, best)
+    return true
+end
+
 -- Exposed for tests: may another production factory start? With stored
 -- mass always; the first half of the role's factories even with none in
 -- store (projects otherwise eat every mass point and the army never grows).
@@ -832,7 +858,7 @@ local function TryFactories(brain, ctx, u)
     local wanted = {}
     -- Banked mass and energy: the production factories are not enough to
     -- spend the income, so a few more of them.
-    local extra = Utils.MassBanked(brain) and Config.BankedExtraFactories or 0
+    local extra = Utils.MassBanked(brain) and BankedExtra(brain:GetEconomyIncome('MASS') * 10) or 0
     for k, v in pairs(BO.ExtraFactories[ctx.role] or {}) do wanted[k] = v + extra end
     -- Inherited roles bring their factories too.
     for role, _ in pairs(ctx.duties or {}) do
@@ -949,7 +975,8 @@ local function GeneralTask(brain, ctx, u, baseOnly)
     -- Banked mass and energy: more factories and faster upgrades come first
     -- (more mexes don't help a full mass store).
     local banked = Utils.MassBanked(brain)
-    if banked and (TryFactories(brain, ctx, u) or TryAssistUpgrade(brain, ctx, u)) then return end
+    if banked and (TryFactories(brain, ctx, u) or TryAssistUpgrade(brain, ctx, u)
+        or TryAssistFactories(brain, ctx, u)) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end
     if TryPower(brain, ctx, u) then return end
     if not baseOnly and Projects().Offer(brain, ctx, u) then return end

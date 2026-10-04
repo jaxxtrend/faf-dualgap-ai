@@ -414,8 +414,17 @@ end
 
 -- Nuke launches: FAF announces every launch to all armies ("strategic
 -- launch detected", without the target), so knowing that army X just fired
--- is fair. Hooked on every brain once; keeps the last launch time per army.
+-- is fair. Recorded by the Unit.NukeCreatedAtUnit hook (hook/lua/sim/Unit.lua)
+-- and, where the engine calls it, the brains' OnUnitNukeLaunched; keeps the
+-- last launch time per army.
 local nukeLaunchAt = {}
+function RecordNukeLaunch(army)
+    if army then nukeLaunchAt[army] = GetGameTimeSeconds() end
+end
+
+function NukeLaunchTime(army)
+    return nukeLaunchAt[army]
+end
 local nukeWatch = false
 function WatchNukeLaunches()
     if nukeWatch or not ArmyBrains then return end

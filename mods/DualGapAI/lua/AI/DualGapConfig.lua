@@ -417,6 +417,13 @@ BankedExtraBuilds    = 3
 BankedCapMul         = 2
 BankedExtraEngineers = 6
 BankedExtraFactories = 3       -- more of the role's production factories
+-- ...plus one more per BankedMassPerFactory mass/s of income, up to
+-- BankedExtraFactoriesMax: spending has to grow with the income.
+BankedMassPerFactory    = 100
+BankedExtraFactoriesMax = 8
+-- With banked mass idle engineers assist busy production factories, up to
+-- FactoryAssistMax per factory (a T3 factory alone spends ~20-40 mass/s).
+FactoryAssistMax     = 4
 
 -- Nuke silos stop loading missiles while energy is short (a silo that
 -- already holds a missile pauses below SiloPauseEnergy stored, resumes
