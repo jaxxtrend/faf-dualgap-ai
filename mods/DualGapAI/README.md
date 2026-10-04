@@ -81,6 +81,9 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   players - then sends everything but a home guard at one strategic target: an enemy game ender, an anti-nuke while the team owns a
   nuke, or the heart of the enemy T3 economy. Fighters clear the sky, bombers and gunships follow right behind; the other AIR player
   joins the same target. Small bomber raids happen only early, before ~70 aircraft.
+- **Navy helps the mid.** NAVAL sends its first 3 T2 destroyers and a cruiser to the water right below the lower mid choke;
+  they patrol from there to the centre, shelling enemy land units at the shore for GROUND (5 destroyers, on to the water by
+  the enemy mid, once the water is pushed).
 - **Everyone on a game ender.** A scouted enemy game ender is the whole team's target: AIR strikes it with 40+ planes, land waves
   leave with a smaller size and take the less defended mid lane to it, fleets sail to the water next to it, nukes and artillery
   already put it first.

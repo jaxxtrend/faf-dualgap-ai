@@ -327,6 +327,14 @@ BankedExtraEngineers = 6
 FactoryUpgradesAtOnce       = 2
 FactoryUpgradesAtOnceBanked = 4
 
+-- Mid support: NAVAL keeps a few T2 destroyers (plus a cruiser against
+-- bombers) in the water right below the mid, shelling enemy land units at
+-- the shore for GROUND. They patrol from the water by the own mid to the
+-- centre; once the water is pushed, on to the water by the enemy mid.
+MidSupportDestroyers       = 3
+MidSupportDestroyersPushed = 5
+MidSupportCruisers         = 1
+
 SiloPauseEnergy  = 0.1
 SiloResumeEnergy = 0.4
 

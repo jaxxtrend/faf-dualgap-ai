@@ -27,6 +27,8 @@
 --   Ender  a scouted enemy game ender is everyone's target: AIR strikes it
 --          as soon as it can, land waves leave earlier and take the less
 --          defended mid lane to it, fleets sail to the water next to it.
+--   Mid    NAVAL sends its first T2 destroyers (and a cruiser) to the water
+--          below the mid to help GROUND from the sea (MidSupportStep).
 --   T4     experimentals never walk inside the wave: each keeps
 --          Config.T4Spacing from the wave and from the others, so a dying
 --          one doesn't take its neighbours with it.
@@ -397,7 +399,80 @@ local function LandStep(brain, ctx)
     end
 end
 
+-- Water spots for the mid support: by the own lower mid choke, the centre,
+-- and by the enemy's choke (map knowledge, cached).
+function MidWater(side)
+    local enemy = OtherSide(side)
+    local depth = 3
+    return Utils.FindNearestWater(Routes.GetPoint('ChokeLower', side), depth, 200),
+        Utils.FindNearestWater(Routes.GetPoint('LandCenter', side), depth, 200),
+        Utils.FindNearestWater(Routes.GetPoint('ChokeLower', enemy), depth, 200)
+end
+
+-- Exposed for tests: how many destroyers / cruisers the mid support wants.
+function MidSupportWanted(waterPushed)
+    local d = waterPushed and Config.MidSupportDestroyersPushed or Config.MidSupportDestroyers
+    return d, Config.MidSupportCruisers
+end
+
+local function MidSupportStep(brain, ctx)
+    if ctx.role ~= 'NAVAL' then return end
+    if not ctx.midWater then
+        local own, centre, enemyW = MidWater(ctx.side)
+        if not own then return end
+        ctx.midWater = { own = own, centre = centre or own, enemy = enemyW }
+    end
+    local w = ctx.midWater
+    ctx.midShips = Utils.FilterAlive(ctx.midShips or {})
+    local wantD, wantC = MidSupportWanted(ctx.waterPushed)
+    local destroyer = Utils.FactionId(brain, 'T2Destroyer')
+    local cruiser = Utils.FactionId(brain, 'T2Cruiser')
+    local haveD, haveC = 0, 0
+    for _, u in ipairs(ctx.midShips) do
+        local id = u:GetBlueprint().BlueprintId
+        if id == destroyer then haveD = haveD + 1 elseif id == cruiser then haveC = haveC + 1 end
+    end
+    local fresh = {}
+    for _, u in ipairs(FreeUnits(brain, CatNaval)) do
+        local id = u:GetBlueprint().BlueprintId
+        if id == destroyer and haveD < wantD then
+            haveD = haveD + 1
+            table.insert(fresh, u)
+        elseif id == cruiser and haveC < wantC then
+            haveC = haveC + 1
+            table.insert(fresh, u)
+        end
+    end
+    if table.getn(fresh) > 0 then
+        Claim(fresh)
+        for _, u in ipairs(fresh) do table.insert(ctx.midShips, u) end
+        if not ctx.midSupportSaid then
+            ctx.midSupportSaid = true
+            Comms.Say(brain, ctx.side, 'midnavy:' .. brain.Name, 'Destroyers coming to the mid to help ground from the water.',
+                w.own, 'move')
+        end
+        Utils.Log(brain, table.getn(fresh) .. ' ships join the mid support (' .. table.getn(ctx.midShips) .. ' there)')
+    end
+    -- (Re)issue the patrol: new ships, idle ones, or the water got pushed.
+    local far = (ctx.waterPushed and w.enemy) or w.centre
+    local key = math.floor(far[1]) .. ':' .. math.floor(far[3])
+    local orders = {}
+    for _, u in ipairs(ctx.midShips) do
+        if u.DGMidKey ~= key or u:IsIdleState() then
+            u.DGMidKey = key
+            table.insert(orders, u)
+        end
+    end
+    if table.getn(orders) > 0 then
+        IssueClearCommands(orders)
+        IssueMove(orders, w.own)
+        IssuePatrol(orders, far)
+        IssuePatrol(orders, w.own)
+    end
+end
+
 local function NavalStep(brain, ctx)
+    MidSupportStep(brain, ctx)
     local rally = Routes.GetPoint('NavalRally', ctx.side)
     local ready = {}
     for _, u in ipairs(FreeUnits(brain, CatNaval)) do

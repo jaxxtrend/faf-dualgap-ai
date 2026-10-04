@@ -885,6 +885,19 @@ return U.SlotsAllow(3, 1, false), U.SlotsAllow(3, 1, true)
 """)
 check(not bk[0] and bk[1], 'banked mass: more structures may be built at once')
 
+ms = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local own, centre, enemy = A.MidWater('LEFT')
+local R = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
+local c = R.GetPoint('ChokeLower', 'LEFT')
+local d = own and math.sqrt((own[1] - c[1]) ^ 2 + (own[3] - c[3]) ^ 2)
+local d0 = A.MidSupportWanted(false)
+local d1 = A.MidSupportWanted(true)
+return own ~= nil and centre ~= nil and enemy ~= nil, d, d0, d1
+""")
+check(ms[0] and ms[1] < 60, 'mid support: water right below the lower mid choke (and the centre, the enemy side)')
+check(ms[2] == 3 and ms[3] == 5, 'mid support: 3 destroyers, 5 once the water is pushed')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
