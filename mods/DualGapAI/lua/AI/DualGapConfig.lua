@@ -279,7 +279,46 @@ ACULostMaxStructures = 6
 
 -- Game enders ECO keeps building, at most this many of a kind alive
 -- (nil = no limit).
-GameEnderMax = { NukeSilo = 3, StratArtyT3 = 4, ArtilleryT4 = 2 }
+GameEnderMax = { NukeSilo = 4, StratArtyT3 = 4, ArtilleryT4 = 2 }
+-- When ECO has built the cap of its game ender it switches to the next one
+-- it can build, in this order: artillery knocks out the enemy anti-nukes,
+-- then the nukes finish the job.
+GameEnderNext = { 'StratArtyT3', 'ArtilleryT4', 'NukeSilo', 'AirT4' }
+
+-- Mass air attack. AIR keeps its planes together until it has AirMassSize
+-- aircraft (two AIR players: 250-300 for the team), then sends everything
+-- but AirMassHomeShare of the fighters at one strategic target: the
+-- fighters clear the sky, the bombers follow right behind them. The other
+-- AIR player joins the same target if it has AirMassJoinShare of that.
+-- An enemy game ender is everyone's target: AIR goes for it as soon as it
+-- has AirEnderStrikeMin aircraft, land waves and fleets head there too.
+AirMassSize        = 140
+AirMassHomeShare   = 0.15
+AirMassJoinShare   = 0.5
+AirMassCooldown    = 180
+AirEnderStrikeMin  = 40
+AirMassTimeout     = 240
+-- Small bomber raids only while AIR has fewer than this many aircraft;
+-- after that the bombers are kept for the mass attack.
+AirRaidMaxAir      = 70
+-- Land waves leave with this share of the usual size when an enemy game
+-- ender is known (everybody piles on it).
+EnderWaveShare     = 0.6
+
+-- Banked mass: with the mass storage at least MassBankedRatio full, a
+-- player builds BankedExtraBuilds more structures at once, factories may
+-- go BankedCapMul x over their unit caps and BankedExtraEngineers more T3
+-- engineers are kept: nobody sits on full storage.
+MassBankedRatio      = 0.6
+BankedExtraBuilds    = 3
+BankedCapMul         = 2
+BankedExtraEngineers = 6
+
+-- Nuke silos stop loading missiles while energy is short (a silo that
+-- already holds a missile pauses below SiloPauseEnergy stored, resumes
+-- above SiloResumeEnergy).
+SiloPauseEnergy  = 0.1
+SiloResumeEnergy = 0.4
 
 -- Nukes are rare: they go for the heart of the enemy. The bot picks one
 -- point - the most enemy mass within NukeRadius, doubled near the enemy ECO

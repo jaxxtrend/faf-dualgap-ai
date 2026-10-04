@@ -146,7 +146,7 @@ local function Scan(side, brain)
             if EnderKind(e) == 'NUKE' then what = 'Enemy NUKE' end
             if EnderKind(e) == 'YOLONA' then what = 'Enemy YOLONA OSS (rapid nukes), build anti-nukes!' end
             local state = (e:GetFractionComplete() < 1) and ' under construction' or ''
-            Comms.Say(brain, side, 'ender:' .. key, what .. state .. ' spotted here!', e:GetPosition(), 'alert')
+            Comms.Say(brain, side, 'ender:' .. key, what .. state .. ' spotted here! Everyone on it!', e:GetPosition(), 'alert')
         end
     end
     for key, rec in pairs(t.enders) do
@@ -270,6 +270,17 @@ function SubmergedACUs(side)
         if Alive(rec.unit) then table.insert(out, rec) end
     end
     return out
+end
+
+-- The team's current mass air attack: { pos, unit, at } or nil. Set by the
+-- AIR player who launches it; the other AIR player joins the same target.
+function AirMass(side)
+    if not side then return nil end
+    return Team(side).airMass
+end
+
+function SetAirMass(side, rec)
+    Team(side).airMass = rec
 end
 
 -- Enemy players still in the game whose ACU is lost (see Config.ACULostSeconds):

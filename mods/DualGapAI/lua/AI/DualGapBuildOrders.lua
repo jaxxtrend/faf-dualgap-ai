@@ -92,7 +92,8 @@ Production = {
         Air = {
             { 'T1Interceptor', cap = 12 }, { 'T1Bomber', cap = 6 },
             { 'T2TorpBomber', cap = 12 },
-            { 'T3ASF', cap = 50 }, { 'T3StratBomber', cap = 8 },
+            -- Mass air: up to ~170 planes per AIR player (see AirMassSize).
+            { 'T3ASF', cap = 110 }, { 'T3StratBomber', cap = 40 }, { 'T3Gunship', cap = 20 },
         },
     },
     ECO = {

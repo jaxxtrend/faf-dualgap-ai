@@ -7,7 +7,7 @@ Each bot reads its spawn and plays a role: **GROUND** (land mid), **NAVAL** (wat
 
 What it does: a strict opening build order, own-mex ownership (a fallen ally's mexes are split between the two nearest allies),
 scouting with a shared team memory, waves that move in formation and air patrols along the front, a proxy base in the mid,
-experimentals on role-specific triggers, one shared anti-nuke per three players, and responses to scouted game enders.
+experimentals on role-specific triggers, one shared anti-nuke per three players, and responses to scouted game enders (the whole team piles on one), mass air attacks of 250-300 planes.
 
 ## Video
 Test match with DualGap AI bots: https://youtu.be/36RrrPkwhb8

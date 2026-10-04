@@ -19,6 +19,14 @@
 --          first on the direct line and tie up the enemy fighters; the
 --          bombers follow a few seconds later on a flank route. A strike
 --          waits while the escort can't match the known enemy fighters.
+--   Mass   AIR keeps its planes together until Config.AirMassSize, then
+--          sends nearly everything at one strategic target (enemy game
+--          ender, experimental, anti-nuke while we own a nuke, the heart of
+--          the enemy economy): fighters clear the sky, bombers and
+--          gunships right behind. The other AIR player joins.
+--   Ender  a scouted enemy game ender is everyone's target: AIR strikes it
+--          as soon as it can, land waves leave earlier and take the less
+--          defended mid lane to it, fleets sail to the water next to it.
 --   T4     experimentals never walk inside the wave: each keeps
 --          Config.T4Spacing from the wave and from the others, so a dying
 --          one doesn't take its neighbours with it.
@@ -234,10 +242,30 @@ local function EnemySlots(ctx)
     return out
 end
 
+-- The enemy game ender the team piles on: the nearest scouted one to the
+-- enemy... any scouted one (they are rare), the first in the list.
+function EnderTarget(ctx)
+    return Intel.Enders(ctx.side)[1]
+end
+
+-- Water a fleet can shell an enemy game ender from (battleships reach ~130).
+function EnderWater(ctx)
+    local e = EnderTarget(ctx)
+    if not e then return nil end
+    if ctx.enderWaterFor == e.unit then return ctx.enderWater end
+    ctx.enderWaterFor = e.unit
+    ctx.enderWater = Utils.FindNearestWater(e.pos, Config.DeepWaterDepth, 110)
+    return ctx.enderWater
+end
+
 local function HuntTarget(brain, ctx, wave, c)
-    -- Scouted game enders first if any are within reach, then anything known.
-    for _, rec in ipairs(Intel.Enders(ctx.side)) do
-        if Utils.Dist2D(rec.pos, c) < 300 then return rec.pos end
+    -- Scouted game enders first, then anything known.
+    if wave.kind == 'NAVAL' then
+        local w = EnderWater(ctx)
+        if w then return w end
+    else
+        local ender = EnderTarget(ctx)
+        if ender then return ender.pos end
     end
     local cat = (wave.kind == 'NAVAL') and (categories.NAVAL + categories.STRUCTURE + categories.COMMAND - categories.WALL)
         or (categories.ALLUNITS - categories.AIR - categories.WALL)
@@ -324,12 +352,23 @@ local function LandStep(brain, ctx)
         Comms.Say(brain, ctx.side, 'wall:' .. brain.Name, 'Enemy army at my wall, need help here!', ctx.choke, 'alert')
     end
     local size = Config.WaveSize[TopTech(brain)] or 10
+    local ender = EnderTarget(ctx)
+    if ender then size = math.max(4, math.floor(size * Config.EnderWaveShare)) end
     if WaveReady(ready, size) or (enemyAtWall and Utils.Count(ready) >= 4) then
         local enemy = OtherSide(ctx.side)
         local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
         local path = { ctx.frontPoint or ctx.choke, Routes.GetPoint(zone, enemy) }
         if ctx.frontPoint then path = { ctx.frontPoint } end
-        if ctx.enemyGroundBase then table.insert(path, ctx.enemyGroundBase) end
+        if ender and not enemyAtWall then
+            -- Everyone on the game ender, through the mid lane with less
+            -- known enemy army: the sneaky way in.
+            local up, low = Routes.GetPoint('ChokeUpper', enemy), Routes.GetPoint('ChokeLower', enemy)
+            local lane = (table.getn(KnownNear(brain, CatEnemyLand, up, 120))
+                <= table.getn(KnownNear(brain, CatEnemyLand, low, 120))) and up or low
+            path = { ctx.frontPoint or ctx.choke, lane, ender.pos }
+            Comms.Say(brain, ctx.side, 'enderwave:' .. brain.Name, 'Going for their game ender with '
+                .. Utils.Count(ready) .. ' units!', ender.pos, 'attack')
+        elseif ctx.enemyGroundBase then table.insert(path, ctx.enemyGroundBase) end
         Claim(ready)
         FormationPath(ready, path, rally)
         table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1 })
@@ -368,8 +407,18 @@ local function NavalStep(brain, ctx)
     local size = Config.NavalFleetSize[TopTech(brain)] or 6
     -- Searching for a hidden ACU: any two ships go.
     if Intel.HuntMode(ctx.side) then size = math.min(size, 2) end
+    local enderWater = EnderWater(ctx)
+    if enderWater then size = math.max(3, math.floor(size * Config.EnderWaveShare)) end
     if WaveReady(ready, size) then
         local enemy = OtherSide(ctx.side)
+        if enderWater then
+            Claim(ready)
+            FormationPath(ready, { Routes.GetPoint('BasinCenter', ctx.side), enderWater }, rally)
+            table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1 })
+            Utils.Log(brain, 'fleet of ' .. Utils.Count(ready) .. ' sails for the enemy game ender')
+            Comms.Say(brain, ctx.side, 'fleet:' .. brain.Name, 'Fleet going for their game ender.', enderWater, 'attack')
+            return
+        end
         local ahead = KnownNear(brain, categories.NAVAL * categories.MOBILE, Routes.GetPoint('BasinCenter', ctx.side), 200)
         if NavalStrength(ahead) > 1.5 * NavalStrength(ready) then return end   -- wait, keep massing
         Claim(ready)
@@ -611,7 +660,8 @@ local function AirStep(brain, ctx)
         end
     end
     if not torpsBusy then GuardHiddenACUs(brain, ctx, torps, now) end
-    if Utils.Count(bombers) >= Config.AirStrikeSize then
+    local massed = MassAirStep(brain, ctx, staging, bombers, now)
+    if not massed and Utils.Count(bombers) >= Config.AirStrikeSize and AirCount(brain) < Config.AirRaidMaxAir then
         -- The bigger the group, the more AA it may fly into.
         local maxAA = Config.AAThreat + Utils.Count(bombers) / Config.BomberAAPerUnit
         local target = PickStrikeTarget(brain, ctx, CatEcoTargets, staging, true, nil, maxAA)
@@ -623,7 +673,7 @@ local function AirStep(brain, ctx)
     local keep = {}
     for _, st in ipairs(ctx.strikes) do
         st.units = Utils.FilterAlive(st.units)
-        local timeout = st.search and 120 or Config.StrikeTimeout
+        local timeout = (st.search and 120) or (st.mass and Config.AirMassTimeout) or Config.StrikeTimeout
         local idle = now - st.started > Config.BomberDelay + 5 and AllIdle(st.units)
         if Utils.Count(st.units) == 0 or idle or now - st.started > timeout then
             Release(st.units)
@@ -644,6 +694,120 @@ local function AirStep(brain, ctx)
             IssueAttack({ u }, t)
         end
     end
+end
+
+---------------------------------------------------------------------------
+-- Mass air attack (see the header and Config.AirMassSize).
+---------------------------------------------------------------------------
+local CatAllAir = categories.AIR * categories.MOBILE - categories.ENGINEER - categories.SCOUT - categories.TRANSPORTATION
+local CatHeart = categories.STRUCTURE * categories.TECH3 * (categories.ENERGYPRODUCTION + categories.MASSFABRICATION
+    + categories.MASSEXTRACTION)
+local CatEnemyAntiNuke = categories.STRUCTURE * categories.ANTIMISSILE * categories.TECH3
+
+function AirCount(brain)
+    return Utils.Count(brain:GetListOfUnits(CatAllAir, false))
+end
+
+-- Exposed for tests: launch a mass attack now? Returns 'ender', 'mass',
+-- 'join' or nil.
+function MassAirDecision(air, enderKnown, teamStrikeOn, sinceLast)
+    if sinceLast < Config.AirMassCooldown then return nil end
+    if teamStrikeOn and air >= Config.AirMassSize * Config.AirMassJoinShare then return 'join' end
+    if enderKnown and air >= Config.AirEnderStrikeMin then return 'ender' end
+    if air >= Config.AirMassSize then return 'mass' end
+    return nil
+end
+
+local function OwnTeamNuke(brain)
+    return Utils.Count(brain:GetListOfUnits(categories.NUKE * categories.STRUCTURE, false)) > 0
+        or Utils.CountAround(brain, categories.NUKE * categories.STRUCTURE, { 512, 0, 512 }, 2000, 'Ally') > 0
+end
+
+-- The strategic target: game ender > enemy experimental structure (they
+-- are enders too) > anti-nuke while the team owns a nuke > the T3
+-- economy structure with the most T3 economy around it (the heart).
+local function MassAirTarget(brain, ctx)
+    local e = EnderTarget(ctx)
+    if e then return e.unit end
+    for _, rec in ipairs(Intel.Enders(ctx.side)) do return rec.unit end
+    local all = MapRadius()
+    if OwnTeamNuke(brain) then
+        local a = NearestKnown(brain, CatEnemyAntiNuke, ctx.startPos, all)
+        if a then return a end
+    end
+    local best, bestN
+    for _, s in ipairs(KnownNear(brain, CatHeart, ctx.startPos, all)) do
+        local n = table.getn(KnownNear(brain, CatHeart, s:GetPosition(), 40))
+        if not bestN or n > bestN then best, bestN = s, n end
+    end
+    if best then return best end
+    return NearestKnown(brain, CatEcoTargets, ctx.startPos, all)
+end
+
+function MassAirStep(brain, ctx, staging, bombers, now)
+    if ctx.role ~= 'AIR' then return false end
+    local air = AirCount(brain)
+    local team = Intel.AirMass(ctx.side)
+    local teamOn = team and now - team.at < 90 and Alive(team.unit)
+    local why = MassAirDecision(air, EnderTarget(ctx) ~= nil, teamOn and team.by ~= brain:GetArmyIndex(),
+        now - (ctx.airMassAt or -1000))
+    if not why then return false end
+    local target = (why == 'join') and team.unit or MassAirTarget(brain, ctx)
+    if not Alive(target) then return false end
+    local tpos = target:GetPosition()
+    ctx.airMassAt = now
+    if why ~= 'join' then Intel.SetAirMass(ctx.side, { unit = target, pos = tpos, at = now, by = brain:GetArmyIndex() }) end
+
+    -- Fighters: all but a home guard (the ones nearest our base stay).
+    ctx.fighters = Utils.FilterAlive(ctx.fighters or {})
+    local free = FreeFighters(ctx)
+    local keepHome = math.floor(table.getn(free) * Config.AirMassHomeShare)
+    local byDist = {}
+    for _, u in ipairs(free) do table.insert(byDist, { u = u, d = Utils.Dist2D(u:GetPosition(), ctx.startPos) }) end
+    table.sort(byDist, function(a, b) return a.d > b.d end)
+    local escort = {}
+    for i = 1, table.getn(byDist) - keepHome do table.insert(escort, byDist[i].u) end
+    local mid = Clamp({ (staging[1] + tpos[1]) / 2, 0, (staging[3] + tpos[3]) / 2 })
+    if table.getn(escort) > 0 then
+        for _, u in ipairs(escort) do u.DGEscort, u.DGLine = true, nil end
+        IssueClearCommands(escort)
+        IssueAggressiveMove(escort, mid)
+        IssueAggressiveMove(escort, tpos)
+    end
+    -- Bombers: every free one (raids are off by now), plus air experimentals.
+    local strikers = {}
+    for _, u in ipairs(bombers) do table.insert(strikers, u) end
+    for _, u in ipairs(FreeUnits(brain, CatBomber - CatTorpBomber)) do
+        local dup = false
+        for _, v in ipairs(strikers) do if v == u then dup = true; break end end
+        if not dup then table.insert(strikers, u) end
+    end
+    for _, u in ipairs(FreeUnits(brain, CatAirT4)) do table.insert(strikers, u) end
+    Claim(strikers)
+    -- Close behind the fighters, then the target and whatever is worth it
+    -- around it, then home.
+    local extra = KnownNear(brain, CatHeart + CatEnemyAntiNuke + categories.EXPERIMENTAL, tpos, 60)
+    ForkThread(function()
+        WaitSeconds(Config.BomberDelay)
+        local alive = Utils.FilterAlive(strikers)
+        if table.getn(alive) == 0 then return end
+        IssueClearCommands(alive)
+        IssueMove(alive, mid)
+        if Alive(target) then IssueAttack(alive, target) end
+        local n = 0
+        for _, x in ipairs(extra) do
+            if Alive(x) and x ~= target and n < 6 then IssueAttack(alive, x); n = n + 1 end
+        end
+        IssueMove(alive, staging)
+    end)
+    table.insert(ctx.strikes, { units = strikers, escort = escort, started = now, mass = true })
+    local what = Comms.UnitName(target)
+    Utils.Log(brain, 'mass air attack (' .. why .. '): ' .. table.getn(escort) .. ' fighters, '
+        .. table.getn(strikers) .. ' bombers on ' .. what)
+    local text = (why == 'join') and ('Joining the air attack on their ' .. what .. ' with ' .. air .. ' planes!')
+        or ('All air in: ' .. air .. ' planes on their ' .. what .. '!')
+    Comms.Say(brain, ctx.side, 'massair:' .. brain.Name, text, tpos, 'attack')
+    return true
 end
 
 -- Torpedo bombers with nothing to strike patrol over the team's hidden

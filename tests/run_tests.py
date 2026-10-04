@@ -855,6 +855,35 @@ return ok, I.SearchPoint('RIGHT', 7) ~= nil
 check(sp[0], 'deep water search spots are several and 120+ apart')
 check(sp[1], 'search points wrap around')
 
+print('\nGame enders, mass air attack, banked mass')
+ge = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+local Cfg = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local avail = { 'StratArtyT3', 'NukeSilo', 'ArtilleryT4', 'AirT4' }
+local after = P.NextGameEnder(avail, 'NukeSilo', function(k) return k == 'NukeSilo' end)
+local none = P.NextGameEnder({ 'NukeSilo' }, 'NukeSilo', function() return true end)
+local skip = P.NextGameEnder(avail, 'NukeSilo', function(k) return k == 'NukeSilo' or k == 'StratArtyT3' end)
+return Cfg.GameEnderMax.NukeSilo, after, none == nil, skip
+""")
+check(ge[0] == 4, 'at most 4 nuke silos')
+check(ge[1] == 'StratArtyT3', 'after the nukes ECO switches to T3 artillery (kills anti-nukes)')
+check(ge[2] and ge[3] == 'ArtilleryT4', 'next game ender skips capped ones; nothing left -> stop')
+ma = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+return A.MassAirDecision(100, false, false, 1000), A.MassAirDecision(150, false, false, 1000),
+       A.MassAirDecision(45, true, false, 1000), A.MassAirDecision(80, false, true, 1000),
+       A.MassAirDecision(300, true, false, 30)
+""")
+check(ma[0] is None and ma[1] == 'mass', 'AIR keeps massing until ~140 planes, then attacks with everything')
+check(ma[2] == 'ender', 'an enemy game ender is attacked as soon as AIR has 40+ planes')
+check(ma[3] == 'join', 'the other AIR player joins the team air attack')
+check(ma[4] is None, 'no new mass attack right after the last one')
+bk = lua.execute(r"""
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+return U.SlotsAllow(3, 1, false), U.SlotsAllow(3, 1, true)
+""")
+check(not bk[0] and bk[1], 'banked mass: more structures may be built at once')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

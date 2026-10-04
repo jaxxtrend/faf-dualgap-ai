@@ -75,7 +75,17 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   doubled near the enemy ECO base, plus game enders and an ACU on land. The bot hits that same point with every loaded missile (all loaded
   missiles land together) until 5 went in or the point is destroyed - an anti-nuke usually stops the first one or two. A point that held
   out is skipped for 5 minutes and ECO builds T3 artillery to knock out the enemy anti-nukes. ECO's long-range guns prefer the enemy ECO base.
-  ECO keeps at most 3 nuke launchers (4 T3 artillery, 2 T4 artillery).
+  ECO keeps at most 4 nuke launchers (4 T3 artillery, 2 T4 artillery); at the cap it switches to the next game ender
+  (T3 artillery first: it knocks out anti-nukes, then the nukes finish the job). Nuke silos pause loading while energy is short.
+- **Mass air attack.** AIR keeps its planes together (fighters on the patrol line) until it has ~140 aircraft - 250-300 for two AIR
+  players - then sends everything but a home guard at one strategic target: an enemy game ender, an anti-nuke while the team owns a
+  nuke, or the heart of the enemy T3 economy. Fighters clear the sky, bombers and gunships follow right behind; the other AIR player
+  joins the same target. Small bomber raids happen only early, before ~70 aircraft.
+- **Everyone on a game ender.** A scouted enemy game ender is the whole team's target: AIR strikes it with 40+ planes, land waves
+  leave with a smaller size and take the less defended mid lane to it, fleets sail to the water next to it, nukes and artillery
+  already put it first.
+- **Banked mass gets spent.** With mass storage 60%+ full, a bot builds more structures at once, factories go over their unit caps
+  and more T3 engineers are kept.
   Enemy Yolona Oss spotted → every base stacks 6 anti-nukes, and idle engineers assist them so interceptors load faster.
   Artillery (T2 at the proxy, T3, T4) and Novax satellites (anywhere on the map) pick targets by priority: game enders (T3/T4 artillery, nukes, Yolona Oss, Paragon, the Novax satellite centre and any other experimental structure) → the enemy anti-nuke while we own a nuke →
   the ACU if it is in sight, not underwater and not under a shield → T3 mexes → T3 power → factories. Long-range guns (T3/T4 artillery,

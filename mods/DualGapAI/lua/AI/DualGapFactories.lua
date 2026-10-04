@@ -114,8 +114,10 @@ end
 local function RefillEngineers(brain, ctx, f)
     local targets = BO.EngineerTargets[ctx.role]
     if not targets then return false end
+    local extra = Utils.MassBanked(brain) and Config.BankedExtraEngineers or 0
     for tech = TechOf(f), 1, -1 do
-        if targets[tech] and EngineersOfTech(brain, tech) < targets[tech] then
+        local want = targets[tech] and (targets[tech] + ((tech == 3) and extra or 0))
+        if want and EngineersOfTech(brain, tech) < want then
             Build(f, Utils.FactionId(brain, 'EngineerT' .. tech))
             return true
         end
@@ -169,6 +171,7 @@ function Produce(brain, ctx, f)
     local list = byKind and byKind[Utils.FactoryKind(f)]
     if not list then return end
     local tech = TechOf(f)
+    local capMul = Utils.MassBanked(brain) and Config.BankedCapMul or 1
 
     -- Highest tech level that still has an entry under its cap. T1 entries
     -- are only allowed on a T1 factory: no T1 spam after the upgrade.
@@ -179,7 +182,7 @@ function Produce(brain, ctx, f)
         local et = EntryTech(key)
         local id = Utils.FactionId(brain, key)
         if id and et <= tech and (et > 1 or tech == 1)
-            and (not entry.cap or CountId(brain, id) < entry.cap) then
+            and (not entry.cap or CountId(brain, id) < entry.cap * capMul) then
             table.insert(open, { id = id, tech = et })
             if et > topTech then topTech = et end
         end

@@ -12,10 +12,15 @@ local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
 
 local lastSent = {}
 
+-- Some calls get old fast when repeated every minute.
+local LongCooldown = { wall = 240, fleet = 120, wave = 120 }
+
 local function Fresh(side, key)
     local now = GetGameTimeSeconds()
     local k = tostring(side) .. ':' .. key
-    if lastSent[k] and now - lastSent[k] < Config.PingCooldown then return false end
+    local prefix = string.gsub(key, ':.*$', '')
+    local cooldown = LongCooldown[prefix] or Config.PingCooldown
+    if lastSent[k] and now - lastSent[k] < cooldown then return false end
     lastSent[k] = now
     return true
 end

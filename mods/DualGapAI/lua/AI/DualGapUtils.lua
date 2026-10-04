@@ -45,6 +45,7 @@ UnitIds = {
     T2TorpBomber   = { 'uea0204', 'uaa0204', 'ura0204', 'xsa0204' },
     T3ASF          = { 'uea0303', 'uaa0303', 'ura0303', 'xsa0303' },
     T3StratBomber  = { 'uea0304', 'uaa0304', 'ura0304', 'xsa0304' },
+    T3Gunship      = { 'uea0305', 'xaa0305', 'xra0305', false },   -- Seraphim has none
     T1Frigate      = { 'ues0103', 'uas0103', 'urs0103', 'xss0103' },
     T1Sub          = { 'ues0203', 'uas0203', 'urs0203', 'xss0203' },
     T2Destroyer    = { 'ues0201', 'uas0201', 'urs0201', 'xss0201' },
@@ -353,8 +354,16 @@ function BuildWeight(bp)
 end
 
 -- Exposed for tests: the decision itself.
-function SlotsAllow(usedWeight, newWeight)
-    return usedWeight + newWeight <= Config.MaxConcurrentBuilds
+function SlotsAllow(usedWeight, newWeight, banked)
+    local slots = Config.MaxConcurrentBuilds
+    if banked then slots = slots + Config.BankedExtraBuilds end
+    return usedWeight + newWeight <= slots
+end
+
+-- Mass storage well filled: spend it (more builds, units, engineers).
+function MassBanked(brain)
+    if not brain.GetEconomyStoredRatio then return false end
+    return brain:GetEconomyStoredRatio('MASS') >= Config.MassBankedRatio
 end
 
 function CanStartBuild(brain, bpId)
@@ -366,7 +375,7 @@ function CanStartBuild(brain, bpId)
     for _, u in ipairs(brain:GetListOfUnits(categories.STRUCTURE - CatFree, false)) do
         if Alive(u) and u:GetFractionComplete() < 1 then used = used + BuildWeight(u:GetBlueprint()) end
     end
-    return SlotsAllow(used, BuildWeight(bp))
+    return SlotsAllow(used, BuildWeight(bp), MassBanked(brain))
 end
 
 function CountAround(brain, category, pos, radius, alliance)

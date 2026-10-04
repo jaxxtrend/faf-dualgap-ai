@@ -303,6 +303,17 @@ function T4Trigger(role, fighters, midPushed, waterPushed, enemyT4)
     return false
 end
 
+-- Exposed for tests: the next game ender after `current` reached its cap.
+-- capped(key) tells whether a key is at its cap.
+function NextGameEnder(available, current, capped)
+    local have = {}
+    for _, k in ipairs(available) do have[k] = true end
+    for _, k in ipairs(Config.GameEnderNext) do
+        if k ~= current and have[k] and not capped(k) then return k end
+    end
+    return nil
+end
+
 -- Exposed for tests: pick ECO's game ender from the keys the faction has.
 function PickGameEnder(available, roll)
     local n = table.getn(available)
@@ -706,10 +717,25 @@ local function PlanExperimentals(brain, ctx)
             Add(brain, ctx, { name = 'AntiSMDArty', key = 'StratArtyT3', site = T4Site(ctx), count = 1, crewMax = 6,
                 minCrewTech = 2, priority = 2 })
         end
-        local cap = ctx.enderKey and Config.GameEnderMax[ctx.enderKey]
-        if cap then
-            local id = Utils.FactionId(brain, ctx.enderKey)
-            if id and Utils.Count(brain:GetListOfUnits(categories[id], false)) >= cap then return end
+        local function capped(key)
+            local cap = Config.GameEnderMax[key]
+            local id = Utils.FactionId(brain, key)
+            return cap and id and Utils.Count(brain:GetListOfUnits(categories[id], false)) >= cap
+        end
+        if ctx.enderKey and capped(ctx.enderKey) then
+            -- Enough of this one (more nukes don't get through anti-nukes
+            -- any better): stop it and go for the next game ender.
+            local p = Find(ctx, 'GameEnder')
+            if p and not Alive(p.unit) then Remove(ctx, p) end
+            if p and Alive(p.unit) then return end   -- let the one in progress finish
+            local available = {}
+            for _, key in ipairs(BO.GameEnders) do
+                if Utils.FactionId(brain, key) then table.insert(available, key) end
+            end
+            local nextKey = NextGameEnder(available, ctx.enderKey, capped)
+            Utils.Log(brain, 'game ender ' .. ctx.enderKey .. ' at its cap, next: ' .. tostring(nextKey))
+            ctx.enderKey = nextKey
+            if not nextKey then return end
         end
         if ctx.enderKey and HasT3Engineer(brain) then
             local behind = T4Site(ctx)
@@ -978,6 +1004,21 @@ local function WeaponsStep(brain, ctx)
         if Alive(s) and s:GetFractionComplete() >= 1 and not s.DGAuto then
             s:SetAutoMode(true)
             s.DGAuto = true
+        end
+    end
+    -- Energy short: nuke silos that already hold a missile stop loading
+    -- the next one (anti-nukes keep loading).
+    local e = brain:GetEconomyStoredRatio('ENERGY')
+    for _, s in ipairs(brain:GetListOfUnits(CatOwnNukes, false)) do
+        if Alive(s) and s:GetFractionComplete() >= 1 and s.SetPaused then
+            local ammo = s.GetNukeSiloAmmoCount and s:GetNukeSiloAmmoCount() or 0
+            if not s.DGPaused and e < Config.SiloPauseEnergy and ammo > 0 then
+                s:SetPaused(true)
+                s.DGPaused = true
+            elseif s.DGPaused and (e > Config.SiloResumeEnergy or ammo == 0) then
+                s:SetPaused(false)
+                s.DGPaused = nil
+            end
         end
     end
     NukeStep(brain, ctx)
