@@ -1160,7 +1160,7 @@ mx = lua.execute(r"""
 local Ec = import('/mods/DualGapAI/lua/AI/DualGapEconomy.lua')
 return Ec.T3PhaseOpen(0, true), Ec.T3PhaseOpen(2, true), Ec.T3PhaseOpen(5, true), Ec.T3PhaseOpen(0, false)
 """)
-check(mx[0] and mx[1] and not mx[2] and not mx[3], 'T3 mex upgrades are not held back by a couple of contested T1 mexes')
+check(mx[0] and not mx[1] and not mx[2] and not mx[3], 'T3 mex upgrades start once every base mex is T2 (mexes out of the base do not count)')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

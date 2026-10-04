@@ -60,9 +60,10 @@ local function Closest(list, pos)
     return best
 end
 
--- Exposed for tests: may T2 -> T3 mex upgrades run?
-function T3PhaseOpen(belowT2, t2Started)
-    return t2Started and belowT2 <= Config.MexT3WaitFor
+-- Exposed for tests: may T2 -> T3 mex upgrades run? baseBelowT2: base
+-- mexes still below T2.
+function T3PhaseOpen(baseBelowT2, t2Started)
+    return t2Started and baseBelowT2 == 0
 end
 
 local function UpgradeStep(brain, ctx)
@@ -80,10 +81,15 @@ local function UpgradeStep(brain, ctx)
         end
     end
 
-    -- T2 -> T3 once the T2 phase clock is running. A couple of mexes still
-    -- below T2 (contested ones at the mid, rebuilt as T1 again and again)
-    -- don't hold the T3 upgrades back.
-    if not T3PhaseOpen(table.getn(belowTarget), ctx.t2Time ~= nil) then return end
+    -- T2 -> T3 once the T2 phase clock is running and every base mex is T2
+    -- (as a player does it: the base mexes go T2, get their storages, then
+    -- T3). Mexes out of the base - contested ones at the mid, rebuilt as T1
+    -- again and again - don't hold it back.
+    local baseBelow = 0
+    for _, u in ipairs(belowTarget) do
+        if Utils.Dist2D(u:GetPosition(), ctx.startPos) <= Config.BaseRadius then baseBelow = baseBelow + 1 end
+    end
+    if not T3PhaseOpen(baseBelow, ctx.t2Time ~= nil) then return end
     if brain:GetEconomyStoredRatio('ENERGY') < 0.5 then return end
     local cap = Config.MaxConcurrentUpgrades
     if ctx.role == 'ECO' then cap = cap + 2 end
