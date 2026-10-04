@@ -45,7 +45,7 @@ end
 local function Team(side)
     if not teams[side] then
         teams[side] = { enders = {}, t4Seen = false, aa = {}, naval = {}, antiNukes = {}, shields = {},
-            t4Units = {}, lastKnownAt = 0, stale = false }
+            t4Units = {}, lastKnownAt = 0, stale = false, subACUs = {} }
     end
     return teams[side]
 end
@@ -118,6 +118,26 @@ local function Scan(side, brain)
     for _, e in ipairs(KnownEnemies(brain, CatEnemyAntiNuke)) do table.insert(t.antiNukes, e:GetPosition()) end
     t.shields = KnownEnemies(brain, CatShields)
 
+    -- Enemy ACUs seen under water: remembered (last position) for a while,
+    -- so torpedo bombers and fleets keep hunting them after contact is lost.
+    local now0 = GetGameTimeSeconds()
+    for _, e in ipairs(KnownEnemies(brain, categories.COMMAND)) do
+        local key = e.EntityId or tostring(e)
+        if Utils.IsUnderwater(e) then
+            if not t.subACUs[key] then
+                Comms.Say(brain, side, 'subacu:' .. key, 'Enemy ACU hiding under water here! Torpedo bombers and ships!',
+                    e:GetPosition(), 'attack')
+            end
+            local p = e:GetPosition()
+            t.subACUs[key] = { unit = e, pos = { p[1], p[2], p[3] }, at = now0 }
+        elseif t.subACUs[key] then
+            t.subACUs[key] = nil
+        end
+    end
+    for key, rec in pairs(t.subACUs) do
+        if not Alive(rec.unit) or now0 - rec.at > Config.SubACUMemory then t.subACUs[key] = nil end
+    end
+
     -- Stalemate watch.
     local now = GetGameTimeSeconds()
     if table.getn(KnownEnemies(brain, CatHuntable)) > 0 then
@@ -187,6 +207,22 @@ end
 function Stale(side)
     if not side then return false end
     return Team(side).stale
+end
+
+-- Enemy ACUs seen under water recently: { unit, pos (last seen), at }.
+function SubmergedACUs(side)
+    local out = {}
+    if not side then return out end
+    for _, rec in pairs(Team(side).subACUs or {}) do
+        if Alive(rec.unit) then table.insert(out, rec) end
+    end
+    return out
+end
+
+-- Hunt mode: the enemy is lost, or an enemy ACU is hiding under water.
+-- Torpedo bombers, subs and fleets are built and sent in small groups.
+function HuntMode(side)
+    return Stale(side) or table.getn(SubmergedACUs(side)) > 0
 end
 
 -- Deepest water in `side`'s rear: where an ACU hides. Map knowledge every

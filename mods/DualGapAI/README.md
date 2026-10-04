@@ -109,6 +109,9 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   Bombers mass at the staging point. On a strike the escort fighters leave first (1.2× the known enemy fighters at the target and on the way)
   and tie up the enemy fighter wall on the direct line. The bombers leave 6 seconds later on a flank route, on the side with less AA.
   The strike waits only while the free escort is below 0.8× the known enemy fighters. Air experimentals pick different targets so they don't crash onto each other.
+- **Hunting a hidden ACU.** An enemy ACU seen under water is remembered at its last spot for 5 minutes. Meanwhile AIR, ECO and NAVAL
+  build torpedo bombers (on any air factory tech), NAVAL and GROUND build subs, torpedo bombers and fleets go for it in groups of two or more,
+  and GROUND builds 2 naval yards to help the navy (also once its mid is pushed).
 - **Search.** If the team has known nothing about the enemy for 90 seconds (usually the last ACU hiding underwater), search mode starts:
   torpedo bombers and spy planes with sonar sweep the enemy's deepest water, fleets sail there even two ships at a time,
   land waves walk the enemy bases. Torpedo bombers attack a submerged ACU once it is found.

@@ -82,6 +82,11 @@ Production = {
             { 'T3Assault', cap = 40 },
         },
         Air = { { 'T1Interceptor', cap = 4 }, { 'T3ASF', cap = 6 } },
+        -- Yards GROUND builds to help the navy (see NavalHelpFactories).
+        Naval = {
+            { 'T1Frigate', cap = 6 }, { 'T1Sub', cap = 6 },
+            { 'T2Destroyer', cap = 8 }, { 'T3Battleship', cap = 4 },
+        },
     },
     AIR = {
         Air = {
@@ -114,14 +119,15 @@ Keep = {
     NAVAL  = { { 'AirScout', kind = 'Air', count = 1, late = 'SpyPlane' } },
 }
 
--- Extra units kept while the team has lost the enemy (DualGapIntel.Stale):
--- torpedo bombers and spy planes carry sonar and search the enemy's deep
--- water for a hidden ACU.
+-- Extra units kept in hunt mode (DualGapIntel.HuntMode: the enemy is lost,
+-- or an enemy ACU hides under water): torpedo bombers, subs and spy planes
+-- carry sonar and torpedoes - the only things that reach a submerged ACU.
+-- These are built on any factory tech (a T3 air factory still makes them).
 HuntKeep = {
-    AIR    = { { 'T2TorpBomber', kind = 'Air', count = 10 }, { 'SpyPlane', kind = 'Air', count = 2 } },
-    NAVAL  = { { 'T2TorpBomber', kind = 'Air', count = 4 } },
-    ECO    = { { 'SpyPlane', kind = 'Air', count = 1 } },
-    GROUND = {},
+    AIR    = { { 'T2TorpBomber', kind = 'Air', count = 12 }, { 'SpyPlane', kind = 'Air', count = 2 } },
+    NAVAL  = { { 'T2TorpBomber', kind = 'Air', count = 6 }, { 'T1Sub', kind = 'Naval', count = 6 } },
+    ECO    = { { 'T2TorpBomber', kind = 'Air', count = 6 }, { 'SpyPlane', kind = 'Air', count = 1 } },
+    GROUND = { { 'T1Sub', kind = 'Naval', count = 6 } },
 }
 
 -- Experimental each role builds once its T4 trigger fires (DualGapProjects):
@@ -146,6 +152,10 @@ EngineerTargets = {
     NAVAL  = { 10, 5, 10 },
     ECO    = { 10, 6, 15 },
 }
+
+-- Naval yards GROUND builds near its coast once its mid is pushed or the
+-- team is hunting a hidden ACU: the ground player helps the navy.
+NavalHelpFactories = 2
 
 -- Extra factories engineers build after the opening, per role.
 ExtraFactories = {

@@ -673,7 +673,13 @@ local function TryFactories(brain, ctx, u)
     if brain:GetEconomyStoredRatio('MASS') < 0.1 or brain:GetEconomyStoredRatio('ENERGY') < 0.5 then
         return false
     end
-    local wanted = BO.ExtraFactories[ctx.role] or {}
+    local wanted = {}
+    for k, v in pairs(BO.ExtraFactories[ctx.role] or {}) do wanted[k] = v end
+    -- The ground player helps the navy once its mid is pushed, or when the
+    -- team hunts an ACU hiding under water.
+    if ctx.role == 'GROUND' and (ctx.midPushed or import('/mods/DualGapAI/lua/AI/DualGapIntel.lua').HuntMode(ctx.side)) then
+        wanted.Naval = BO.NavalHelpFactories
+    end
     -- The start factory is always wanted back if it died.
     local startKind = BO.StartFactory[ctx.role]
     for kind, max in pairs(wanted) do

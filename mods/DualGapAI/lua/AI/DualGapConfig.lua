@@ -239,6 +239,8 @@ MassFabEnergySurplus = 1500     -- energy/s trend needed before a fabricator
 -- Stalemate: if the team has known nothing about the enemy (no structure,
 -- no unit) for this long, it starts searching the enemy's deep water.
 StaleSeconds = 90
+-- An enemy ACU seen under water is hunted at its last known spot this long.
+SubACUMemory = 300
 
 -- Game enders ECO keeps building, at most this many of a kind alive
 -- (nil = no limit).

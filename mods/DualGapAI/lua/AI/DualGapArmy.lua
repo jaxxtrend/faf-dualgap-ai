@@ -25,6 +25,9 @@
 --   Search when the team has lost the enemy (Intel.Stale): fleets and
 --          torpedo bombers sweep the enemy's deep water (an ACU hiding
 --          underwater), land waves walk the enemy bases.
+--   Hunt   an enemy ACU seen under water (Intel.SubmergedACUs): torpedo
+--          bombers and fleets go for it in groups of two or more, to its
+--          last known spot when it is out of sight.
 
 local Config = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
 local Utils = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
@@ -238,6 +241,10 @@ local function HuntTarget(brain, ctx, wave, c)
     if t then return t:GetPosition() end
     -- Nothing known: search. Fleets sweep the enemy's deep water (sonar finds
     -- a hidden ACU), land waves walk to a random enemy base.
+    if wave.kind == 'NAVAL' then
+        local sub = Intel.SubmergedACUs(ctx.side)[1]
+        if sub then return sub.pos end
+    end
     if Intel.Stale(ctx.side) then
         if wave.kind == 'NAVAL' then return Intel.DeepWater(OtherSide(ctx.side)) end
         local slots = EnemySlots(ctx)
@@ -350,7 +357,7 @@ local function NavalStep(brain, ctx)
     end
     local size = Config.NavalFleetSize[TopTech(brain)] or 6
     -- Searching for a hidden ACU: any two ships go.
-    if Intel.Stale(ctx.side) then size = math.min(size, 2) end
+    if Intel.HuntMode(ctx.side) then size = math.min(size, 2) end
     if WaveReady(ready, size) then
         local enemy = OtherSide(ctx.side)
         local ahead = KnownNear(brain, categories.NAVAL * categories.MOBILE, Routes.GetPoint('BasinCenter', ctx.side), 200)
@@ -570,14 +577,17 @@ local function AirStep(brain, ctx)
         if EntityCategoryContains(CatTorpBomber, u) then table.insert(torps, u) else table.insert(bombers, u) end
     end
     local stale = Intel.Stale(ctx.side)
-    -- Torpedo bombers always go after a known submerged ACU; while the enemy
-    -- is lost they sweep its deep water with their sonar.
-    if Utils.Count(torps) >= Config.AirStrikeSize or (stale and Utils.Count(torps) > 0) then
+    local hunt = Intel.HuntMode(ctx.side)
+    -- Torpedo bombers always go after a submerged ACU, two or more at a
+    -- time: in sight -> attack it, out of sight -> sweep its last spot;
+    -- while the enemy is lost they sweep its deep water with their sonar.
+    if Utils.Count(torps) >= Config.AirStrikeSize or (hunt and Utils.Count(torps) >= 2) then
         local target = PickStrikeTarget(brain, ctx, CatNavalTargets + categories.COMMAND, staging, false, TorpTargetOk)
+        local sub = Intel.SubmergedACUs(ctx.side)[1]
         if target then
             LaunchStrike(brain, ctx, torps, target, staging, now)
-        elseif stale then
-            local deep = Intel.DeepWater(OtherSide(ctx.side))
+        elseif sub or stale then
+            local deep = (sub and sub.pos) or Intel.DeepWater(OtherSide(ctx.side))
             if deep then
                 Claim(torps)
                 IssueClearCommands(torps)

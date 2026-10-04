@@ -408,7 +408,7 @@ capped = prod('AIR', 'Air', 1, lua.table_from({'uea0102': 12, 'uea0103': 6}))
 check(capped == '', 'T1 air factory stops when T1 caps are reached (got %r)' % capped)
 t3 = prod('GROUND', 'Land', 3, lua.table_from({}))
 check(set(t3.split(',')) == {'uel0303'}, 'T3 land factory builds only T3 (%s)' % t3)
-none = prod('GROUND', 'Naval', 1, lua.table_from({}))
+none = prod('ECO', 'Land', 1, lua.table_from({}))
 check(none == '', 'role without a table for that factory kind builds nothing')
 
 # ---------------------------------------------------------------- endgame / intel
@@ -788,6 +788,20 @@ check(not esc[0] and not esc[1], 'an experimental never leaves alone or with a h
 check(esc[2], 'an experimental with 8 other units makes a wave')
 check(esc[3] and not esc[4], 'waves without experimentals keep their normal size')
 check(not esc[5] and esc[6] and not esc[7] and esc[8], 'a full T4 crew needs 15 T3 units per experimental alive')
+
+print('\nHunting a submerged ACU')
+hunt = lua.execute(r"""
+local BO = import('/mods/DualGapAI/lua/AI/DualGapBuildOrders.lua')
+local function has(role, key)
+    for _, k in ipairs(BO.HuntKeep[role] or {}) do if k[1] == key then return true end end
+    return false
+end
+return has('AIR', 'T2TorpBomber'), has('ECO', 'T2TorpBomber'), has('NAVAL', 'T1Sub'), has('GROUND', 'T1Sub'),
+       BO.Production.GROUND.Naval ~= nil, BO.NavalHelpFactories
+""")
+check(hunt[0] and hunt[1], 'hunt mode: AIR and ECO build torpedo bombers on any air factory tech')
+check(hunt[2] and hunt[3], 'hunt mode: NAVAL and GROUND build subs')
+check(hunt[4] and hunt[5] == 2, 'GROUND has a naval production list and builds 2 yards to help the navy')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

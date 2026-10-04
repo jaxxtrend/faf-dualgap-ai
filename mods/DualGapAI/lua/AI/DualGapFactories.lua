@@ -157,7 +157,7 @@ end
 local function KeepUnits(brain, ctx, f)
     local kind = Utils.FactoryKind(f)
     if KeepList(brain, ctx, BO.Keep[ctx.role], f, kind) then return true end
-    if Intel.Stale(ctx.side) and KeepList(brain, ctx, BO.HuntKeep[ctx.role], f, kind) then return true end
+    if Intel.HuntMode(ctx.side) and KeepList(brain, ctx, BO.HuntKeep[ctx.role], f, kind) then return true end
     return false
 end
 
