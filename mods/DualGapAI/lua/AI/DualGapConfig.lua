@@ -142,6 +142,11 @@ AARadius          = 70
 -- Massing: units gather behind their own wall until the wave is this big
 -- (by the player's highest factory tech), or until the enemy comes close.
 WaveSize = { 10, 16, 20 }
+-- A land wave that moved less than WaveStuckDistance in WaveStuckSeconds
+-- with no known enemy around (formations jam in the mid chokes) walks on
+-- to its next target without the formation.
+WaveStuckSeconds  = 45
+WaveStuckDistance = 15
 NavalFleetSize = { 6, 8, 10 }
 -- An experimental counts as this many units toward a wave.
 ExperimentalWaveWeight = 10

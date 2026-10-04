@@ -141,6 +141,18 @@ local function Snap(brain, ctx)
         rec.acu = { x = p[1], z = p[3], hp = acu:GetHealth() / acu:GetMaxHealth(), state = tostring(ctx.acuState),
             under = Utils.IsUnderwater(acu) }
     end
+    -- Waves out: [kind, units, stage, x, z].
+    rec.waves = {}
+    for _, w in ipairs(ctx.waves or {}) do
+        local n, sx, sz = 0, 0, 0
+        for _, u in ipairs(w.units or {}) do
+            if Alive(u) then
+                local p = u:GetPosition()
+                n, sx, sz = n + 1, sx + p[1], sz + p[3]
+            end
+        end
+        if n > 0 then table.insert(rec.waves, { w.kind, n, tostring(w.stage), math.floor(sx / n), math.floor(sz / n) }) end
+    end
     rec.projects = {}
     for _, p in ipairs(ctx.projects or {}) do
         table.insert(rec.projects, p.name .. ':' .. p.built .. '/' .. tostring(p.count or '-') .. ':crew' .. table.getn(p.crew))

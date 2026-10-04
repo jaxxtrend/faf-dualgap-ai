@@ -1117,6 +1117,12 @@ check(ac[0] == 'ARMY' and ac[1] == 'POWER' and ac[2] == 'ENDER', 'bombers: enemy
 check(ac[3] and not ac[4] and not ac[5] and not ac[6], 'air sweep: enough fighters, clearly more than the enemy\'s, not too often')
 check(ac[7] == 3 and ac[8] == 1 and ac[9] == 2 and ac[10] == 3, 'land waves with nothing scouted walk on: enemy mid, its base, the other bases')
 
+ws = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+return A.WaveStuck(3, false), A.WaveStuck(3, true), A.WaveStuck(80, false)
+""")
+check(ws[0] and not ws[1] and not ws[2], 'a land wave standing still with no enemy around is stuck; fighting or moving is not')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

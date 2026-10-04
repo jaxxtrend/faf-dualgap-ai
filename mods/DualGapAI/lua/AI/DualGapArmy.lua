@@ -328,7 +328,35 @@ local function NavalStrength(units)
     return s
 end
 
+-- Exposed for tests: is a wave stuck? moved: distance in the last check
+-- window, fighting: known enemies around it.
+function WaveStuck(moved, fighting)
+    return moved < Config.WaveStuckDistance and not fighting
+end
+
+local CatWaveContact = categories.ALLUNITS - categories.WALL - categories.AIR
+
+local function UnstickWave(brain, ctx, wave, c, now)
+    if not wave.checkAt then
+        wave.checkAt, wave.checkPos = now, c
+        return
+    end
+    if now - wave.checkAt < Config.WaveStuckSeconds then return end
+    local moved = Utils.Dist2D(c, wave.checkPos)
+    wave.checkAt, wave.checkPos = now, c
+    local fighting = table.getn(KnownNear(brain, CatWaveContact, c, 60)) > 0
+    if not WaveStuck(moved, fighting) then return end
+    local t = HuntTarget(brain, ctx, wave, c)
+    if not t then return end
+    wave.stage = 2
+    IssueClearCommands(wave.units)
+    IssueAggressiveMove(wave.units, { t[1], GetSurfaceHeight(t[1], t[3]), t[3] })
+    Utils.Log(brain, 'land wave of ' .. table.getn(wave.units) .. ' was stuck at ' .. math.floor(c[1]) .. ','
+        .. math.floor(c[3]) .. ', walks on to ' .. math.floor(t[1]) .. ',' .. math.floor(t[3]))
+end
+
 local function UpdateWaves(brain, ctx)
+    local now = GetGameTimeSeconds()
     local keep = {}
     for _, wave in ipairs(ctx.waves) do
         wave.units = Utils.FilterAlive(wave.units)
@@ -343,7 +371,9 @@ local function UpdateWaves(brain, ctx)
                     wave.stage = 'retreat'
                 end
             end
+            if wave.kind == 'LAND' and not AllIdle(wave.units) then UnstickWave(brain, ctx, wave, c, now) end
             if AllIdle(wave.units) then
+                wave.checkAt = nil
                 if wave.stage == 'retreat' then
                     Release(wave.units)          -- rejoin the gathering fleet
                     wave.units = {}
