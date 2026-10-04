@@ -117,7 +117,8 @@ Start factories: GROUND — land, AIR — air, ECO and NAVAL — air (all factor
   (an upgraded one from the bottom of its chain). Mexes, factories, AA, shields, anti-nuke and artillery are rebuilt by their own planners.
 - **Base anti-air** is the AIR player's job: it builds it around every base of its group of three (its own first) - one T1 AA from the
   start, three T2 flak at T2 and a full ring of 8 T3 SAMs at T3 per base, and rebuilds lost ones. No other role builds base AA
-  (with a human AIR player, the human does).
+  (with a human AIR player, the human does). Once the AIR player is out of the game, the ally that took over its mexes takes over
+  the base AA of the group (and so on down the line).
 - **Mid.** Each GROUND fortifies the map author's defensive point in its zone. Short walls stand only in front of the point defences, so the gaps stay open.
   At T2 the ACU takes the engineering upgrade, builds a proxy base with T2 engineers (2 T2 shields and 3 T2 artillery ~100 from the enemy's mid defensive point)
   and holds the mid. Once the mid is pushed, the GROUND ACU goes to help the navy.

@@ -1003,15 +1003,20 @@ local tie = P.PickAntiNukeBuilder({
     { name = 'air', role = 'AIR', stored = 100, income = 10, ready = true },
     { name = 'eco', role = 'ECO', stored = 100, income = 10, ready = true } })
 local bases = { { name = 'A' }, { name = 'B' }, { name = 'C' } }
-local air = P.AABases('AIR', 'B', bases)
-local eco = P.AABases('ECO', 'A', bases)
-local ground = P.AABases('GROUND', 'A', bases)
-return rich, tie, table.getn(air), air[1].name, table.getn(eco), table.getn(ground)
+local air = P.AABases(true, 'B', bases)
+local other = P.AABases(false, 'A', bases)
+local alive = { air = false, naval = false, eco = true }
+local heirs = { air = 'naval', naval = 'eco' }
+local k1 = P.AAKeeperName('air', function(n) return n == 'air' end, function(n) return heirs[n] end)
+local k2 = P.AAKeeperName('air', function(n) return alive[n] end, function(n) return heirs[n] end)
+local k3 = P.AAKeeperName('air', function() return false end, function() return nil end)
+return rich, tie, table.getn(air), air[1].name, table.getn(other), k1, k2, k3 == nil
 """)
 check(an[0] == 'air', 'group anti-nuke: started by the member with the most resources (and a T3 engineer)')
 check(an[1] == 'eco', 'group anti-nuke: a tie goes to ECO')
 check(an[2] == 3 and an[3] == 'B', 'AIR builds the AA rings of all three bases of its group, its own first')
-check(an[4] == 0 and an[5] == 0, 'no other role builds base AA (a human AIR player builds it himself)')
+check(an[4] == 0 and an[5] == 'air', 'only the AA keeper builds base AA; a living AIR (bot or human) keeps it')
+check(an[6] == 'eco' and an[7], 'AIR gone -> whoever took its mexes keeps the AA, on down the line')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

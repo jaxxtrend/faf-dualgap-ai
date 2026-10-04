@@ -146,6 +146,13 @@ function SplitBetween(list, posA, posB)
     return a, b
 end
 
+-- Who took over a defeated player's mexes (the nearest ally): it also
+-- takes over the dead player's duties (e.g. the group's base AA).
+local heirs = {}
+function Heir(name)
+    return heirs[name]
+end
+
 local function Redistribute(deadName)
     local dead = BrainByName(deadName)
     local slots = RoleManager.GetSlots()
@@ -170,6 +177,7 @@ local function Redistribute(deadName)
     table.sort(allies, function(x, y) return x.d < y.d end)
     if table.getn(allies) == 0 then return end
 
+    heirs[deadName] = allies[1].name
     local list = Owned(deadName)
     if table.getn(allies) == 1 then
         for _, m in ipairs(list) do m.owner = allies[1].name end

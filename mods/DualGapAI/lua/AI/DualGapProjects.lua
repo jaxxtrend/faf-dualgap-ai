@@ -572,35 +572,67 @@ local function UpgradeIntel(brain, ctx)
     end
 end
 
--- Exposed for tests: the bases whose AA ring this player builds. The AIR
--- player builds the AA of every base of its group of three (its own
--- first); the others build none (with a human AIR player, the human does).
--- bases: { {name, pos} } of the group, own: this player's name.
-function AABases(role, own, bases)
+-- Exposed for tests: who keeps the group's base AA - the AIR player while
+-- it is in the game (bot or human: a human builds it himself), after it the
+-- ally that took over its mexes, and so on down the line.
+function AAKeeperName(airName, alive, heir)
+    local n = airName
+    for i = 1, 6 do
+        if not n then return nil end
+        if alive(n) then return n end
+        n = heir(n)
+    end
+    return nil
+end
+
+-- Exposed for tests: the bases whose AA ring the keeper builds - its own
+-- first, then the other living bases of the group.
+-- bases: { {name, pos} } of the group's living players, own: this player's name.
+function AABases(isKeeper, own, bases)
     local out = {}
-    if role == 'AIR' then
+    if isKeeper then
         for _, b in ipairs(bases) do if b.name == own then table.insert(out, b) end end
         for _, b in ipairs(bases) do if b.name ~= own then table.insert(out, b) end end
     end
     return out
 end
 
+local function BrainNamed(name)
+    for _, b in ipairs(ArmyBrains) do
+        if b.Name == name then return b end
+    end
+    return nil
+end
+
+local function InGame(name)
+    local b = BrainNamed(name)
+    return b ~= nil and not Utils.BrainDefeated(b)
+end
+
 -- Anti-air rings per tech tier.
 local function PlanBaseAA(brain, ctx)
     local tech = TopFactoryTech(brain)
     local slot = RoleManager.GetSlots()[brain.Name]
-    if ctx.role ~= 'AIR' then return end
+    if not slot then return end
+    local members = GroupInfo(ctx.side, GroupOf(slot.rank))
+    if not members then return end
+    local airName
+    for _, m in ipairs(members) do if m.role == 'AIR' then airName = m.name end end
+    local Mex = import('/mods/DualGapAI/lua/AI/DualGapMexOwnership.lua')
+    local keeper = AAKeeperName(airName, InGame, Mex.Heir)
+    if keeper ~= brain.Name then return end
+    if ctx.role ~= 'AIR' and not ctx.aaKeeperSaid then
+        ctx.aaKeeperSaid = true
+        Comms.Say(brain, ctx.side, 'aakeeper:' .. brain.Name, 'Our AIR is gone, I take over the base anti-air.', ctx.startPos, 'move')
+    end
     local bases = { { name = brain.Name, pos = ctx.startPos } }
-    if slot then
-        local members = GroupInfo(ctx.side, GroupOf(slot.rank))
-        if members then
-            local slots = RoleManager.GetSlots()
-            for _, m in ipairs(members) do
-                if m.name ~= brain.Name and slots[m.name] then table.insert(bases, { name = m.name, pos = slots[m.name].pos }) end
-            end
+    local slots = RoleManager.GetSlots()
+    for _, m in ipairs(members) do
+        if m.name ~= brain.Name and slots[m.name] and InGame(m.name) then
+            table.insert(bases, { name = m.name, pos = slots[m.name].pos })
         end
     end
-    for i, b in ipairs(AABases(ctx.role, brain.Name, bases)) do
+    for i, b in ipairs(AABases(true, brain.Name, bases)) do
         for t = 1, 3 do
             local spec = Config.BaseAA[t]
             if spec and tech >= t then
