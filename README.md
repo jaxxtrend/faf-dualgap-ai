@@ -5,23 +5,37 @@
 An AI mod for **Supreme Commander: Forged Alliance Forever (FAF)** built for the **Dual Gap Adaptive v14** map (6v6).
 Each bot reads its spawn and plays a role: **GROUND** (land mid), **NAVAL** (water), **AIR** (air force) or **ECO** (economy and game enders).
 
-What it does: a strict opening build order, own-mex ownership (a fallen ally's mexes are split between the two nearest allies),
-scouting with a shared team memory, waves that move in formation and air patrols along the front, a proxy base in the mid,
-experimentals on role-specific triggers, one shared anti-nuke per three players, and responses to scouted game enders (the whole team piles on one), mass air attacks of 250-300 planes.
+The bots play like a team, not like twelve strangers:
+- **Team play.** Adaptive roles (a fallen player's job passes to the ally who takes its mexes), help calls, base anti-air by AIR,
+  a shared anti-nuke per three players.
+- **Game enders.** Plans like a player's: usually one nuke first, then artillery or a T4; the whole team piles on a scouted enemy game ender.
+- **Air.** Mass bomber strikes under fighter cover (ACU first, then game enders, anti-nukes, T3 economy), escorted Czar / Ahwassa
+  raids along the map edges at the enemy ECO commander, every free fighter on an enemy air T4.
+- **Land and navy.** Waves that push through the mid instead of standing around, fleets that regroup instead of feeding ships one by one,
+  destroyers helping ground at the mid.
+- **Commanders.** They hide in their own water, spread out on a nuke launch, step out of the base when no anti-nuke is loaded,
+  and take cover under anti-air when an air T4 comes in.
+- **Base and economy.** A player-like base with tight adjacency, base mexes T2 → storages → T3, and spending that grows with the income.
+
+The standard AI plays with fog of war: it reacts only to what its team has seen or has on radar.
+What changed in version 2: [CHANGELOG.md](CHANGELOG.md).
 
 ## Video
-Test match with DualGap AI bots: https://youtu.be/36RrrPkwhb8
+DualGap AI v2 demo match: https://youtu.be/qkAYdtKiQqw
 
-[![DualGap AI test match](https://img.youtube.com/vi/36RrrPkwhb8/hqdefault.jpg)](https://youtu.be/36RrrPkwhb8)
+[![DualGap AI v2 demo match](https://img.youtube.com/vi/qkAYdtKiQqw/hqdefault.jpg)](https://youtu.be/qkAYdtKiQqw)
 
 ## Support
 If you like the project and want to see where it goes next, follow and support it on [Patreon](https://www.patreon.com/c/cityzenone).
 
 ## Install
-1. Copy the [`mods/DualGapAI`](mods/DualGapAI) folder to
-   `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
-   The folder must be named exactly `DualGapAI`.
-2. In the FAF lobby, enable the **DualGap AI** mod and put **AI: DualGap (beta)** or **AIx: DualGap (beta)** bots on Dual Gap Adaptive v14.
+1. Get the mod one of two ways:
+   - from the **FAF mod vault**: find **DualGap AI** (version 2) in the FAF client and install it;
+   - or by hand: copy the [`mods/DualGapAI`](mods/DualGapAI) folder to
+     `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
+     The folder must be named exactly `DualGapAI`.
+2. In the FAF lobby, open **Mods** and enable **DualGap AI**, then put **AI: DualGap (beta)** or **AIx: DualGap (beta)** bots on Dual Gap Adaptive v14.
+   The bots appear in the AI list only while the mod is enabled.
 
 Roles, build order and settings are described in [mods/DualGapAI/README.md](mods/DualGapAI/README.md).
 Edit build orders and production tables in [DualGapBuildOrders.lua](mods/DualGapAI/lua/AI/DualGapBuildOrders.lua),
