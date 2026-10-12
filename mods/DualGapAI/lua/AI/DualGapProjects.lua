@@ -960,12 +960,23 @@ local function PlanGameEnder(brain, ctx)
         local id = Utils.FactionId(brain, key)
         return id and Utils.Count(brain:GetListOfUnits(categories[id], false)) or 0
     end
+    -- Strategic command: steps the situation makes pointless count as done
+    -- (nukes into a wall of anti-nukes, air T4s into a stronger air force).
+    local Strat = import('/mods/DualGapAI/lua/AI/DualGapStratCommand.lua')
+    local skip = { NukeSilo = Strat.SkipNuke(ctx.side), AirT4 = Strat.SkipAirT4(ctx.side) }
     local function count(key)
+        if skip[key] then return 1000 end
         return EnderCount(key, alive(key), (ctx.enderBuilt or {})[key] or 0, IsStructureKey(brain, key))
     end
     local p = Find(ctx, 'GameEnder')
     if p and Alive(p.unit) then return end          -- one in progress: let it finish
     local i, st = EnderStep(ctx.enderPlan, count)
+    -- The whole plan skipped (four nukes into a wall of anti-nukes): T3
+    -- artillery instead, so ECO keeps a game ender going.
+    if not st and (skip.NukeSilo or skip.AirT4) then
+        local fb = { 'StratArtyT3', Config.StratFallbackArty }
+        if Utils.FactionId(brain, fb[1]) and count(fb[1]) < fb[2] then i, st = 0, fb end
+    end
     if p and (not st or p.key ~= st[1]) then Remove(ctx, p); p = nil end
     if not st then
         if not ctx.enderDoneSaid then
@@ -1219,7 +1230,10 @@ local function NukeStep(brain, ctx)
     local n = table.getn(loaded)
     if n == 0 then return end
 
-    local f = ctx.nukeFocus
+    -- One focus for the whole team (strategic command): every silo of the
+    -- team hits the same point, so the missiles saturate its anti-nukes.
+    local Strat = import('/mods/DualGapAI/lua/AI/DualGapStratCommand.lua')
+    local f = Strat.NukeFocus(ctx.side) or ctx.nukeFocus
     if f then
         local keep, why = NukeKeepFocus(f.shots, f.value0, ValueAround(brain, f.pos))
         if not keep then
@@ -1232,6 +1246,7 @@ local function NukeStep(brain, ctx)
                 Utils.Log(brain, 'nuke target destroyed')
             end
             f = nil
+            Strat.SetNukeFocus(ctx.side, nil)
         end
     end
     if not f then
@@ -1254,6 +1269,7 @@ local function NukeStep(brain, ctx)
         Comms.Say(brain, ctx.side, 'nuke:' .. brain.Name, 'Nuking their core here, again and again!', pos, 'attack')
     end
     ctx.nukeFocus = f
+    Strat.SetNukeFocus(ctx.side, f, brain.Name)
 
     local target = f.pos
     -- Saturate the anti-nukes: missiles land together, one more than the

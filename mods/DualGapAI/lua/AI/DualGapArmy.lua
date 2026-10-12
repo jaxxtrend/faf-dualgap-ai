@@ -255,6 +255,9 @@ end
 -- The enemy game ender the team piles on: the nearest scouted one to the
 -- enemy... any scouted one (they are rare), the first in the list.
 function EnderTarget(ctx)
+    -- The strategic command's pick (the most dangerous one), else any.
+    local t = import('/mods/DualGapAI/lua/AI/DualGapStratCommand.lua').EnderTarget(ctx.side)
+    if t then return t end
     return Intel.Enders(ctx.side)[1]
 end
 

@@ -1269,6 +1269,20 @@ check(nc[0] == 'DEFEND', 'naval command: a clearly weaker navy stays home (even 
 check(nc[1] == 'SUPPORT_MID', 'naval command: the navy helps the lower mid when it defends')
 check(nc[2] == 'PUSH' and nc[3] and nc[4] == 'CONTEST' and nc[5] == 1, 'naval command: a stronger navy pushes with smaller fleets; even water: own rules')
 
+sc = lua.execute(r"""
+local S = import('/mods/DualGapAI/lua/AI/DualGapStratCommand.lua')
+local n1, a1 = S.PlanSkips(3, 'HOLD')
+local n2, a2 = S.PlanSkips(1, 'DEFEND')
+return S.EnderRank('YOLONA', false, true) < S.EnderRank('NUKE', false, true),
+       S.EnderRank('NUKE', false, true) < S.EnderRank('ARTY', true, true),
+       S.EnderRank('ARTY', true, true) < S.EnderRank('ARTY', false, true),
+       S.EnderRank('ARTY', false, true) < S.EnderRank('NUKE', false, false),
+       n1, a1, n2, a2
+""")
+check(sc[0] and sc[1] and sc[2], 'strategic command: Yolona > nuke > T4 artillery > T3 artillery')
+check(sc[3], 'strategic command: a finished game ender before one under construction')
+check(sc[4] and not sc[5] and not sc[6] and sc[7], 'strategic command: no more nukes into 3+ anti-nukes, no air T4s into a stronger air force')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

@@ -618,3 +618,12 @@ AirMassDominateScale  = 0.75
 NavalCommandSeconds  = 10
 NavalPushScale       = 0.7
 NavalMidSupportExtra = 2
+
+-- Strategic command (DualGapStratCommand): every StratCommandSeconds it
+-- picks the team's game ender target, skips nuke steps of the own plans
+-- while the enemy has StratSkipNukeAntiNukes+ known anti-nukes, and keeps a
+-- shared nuke focus (forgotten after StratNukeFocusSeconds without a shot).
+StratCommandSeconds    = 15
+StratSkipNukeAntiNukes = 3
+StratNukeFocusSeconds  = 300
+StratFallbackArty      = 3      -- T3 artillery when every step of the plan is skipped
