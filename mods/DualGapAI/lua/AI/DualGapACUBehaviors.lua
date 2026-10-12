@@ -357,25 +357,38 @@ end
 ---------------------------------------------------------------------------
 -- GROUND: march along the arc to the choke, fortify, hold.
 ---------------------------------------------------------------------------
+-- Exposed for tests: the mid fortification plan of a variant
+-- (Config.MidPlans): point defences, a shield, AA, short walls in front of
+-- the point defences. Spots are {dx toward the enemy, dz} from the choke.
+function MidPlanItems(plan)
+    local items = { pd = plan.pd or {}, shield = plan.shield or {}, aa = plan.aa or {}, walls = {} }
+    if plan.walls then
+        for _, p in ipairs(items.pd) do
+            for _, dz in ipairs({ -1, 0, 1 }) do table.insert(items.walls, { p[1] + 3, p[2] + dz }) end
+        end
+    end
+    return items
+end
+
 local function FortifyPlan(brain, ctx)
     local choke = ctx.choke
     local dir = (ctx.side == 'LEFT') and 1 or -1
     local pd = Utils.FactionId(brain, 'PointDefenseT2')
     local acu = Utils.Commander(brain)
     if not (acu and pd and acu:CanBuild(pd)) then pd = Utils.FactionId(brain, 'PointDefenseT1') end
-    local plan = {
-        { id = pd, cat = CatPD, want = 3, spots = { Offset(choke, dir * 4, -8), Offset(choke, dir * 4, 0), Offset(choke, dir * 4, 8) } },
-        { id = Utils.FactionId(brain, 'ShieldT2'), cat = CatShield, want = 1, spots = { Offset(choke, -dir * 3, 0) } },
-        { id = Utils.FactionId(brain, 'Wall'), cat = CatWall, want = 9, spots = {} },
-    }
-    -- A short wall in front of each point defence only: the gaps between
-    -- them stay open so our own waves can walk through.
-    for _, pdz in ipairs({ -8, 0, 8 }) do
-        for _, dz in ipairs({ -1, 0, 1 }) do
-            table.insert(plan[3].spots, Offset(choke, dir * 7, pdz + dz))
-        end
+    local items = MidPlanItems(Config.MidPlans[ctx.midPlan or 'LINE'] or Config.MidPlans.LINE)
+    local function spots(list)
+        local out = {}
+        for _, p in ipairs(list) do table.insert(out, Offset(choke, dir * p[1], p[2])) end
+        return out
     end
-    return plan
+    return {
+        { id = pd, cat = CatPD, want = table.getn(items.pd), spots = spots(items.pd) },
+        { id = Utils.FactionId(brain, 'ShieldT2'), cat = CatShield, want = table.getn(items.shield), spots = spots(items.shield) },
+        { id = Utils.FactionId(brain, 'AntiAirT1'), cat = categories.STRUCTURE * categories.ANTIAIR,
+          want = table.getn(items.aa), spots = spots(items.aa) },
+        { id = Utils.FactionId(brain, 'Wall'), cat = CatWall, want = table.getn(items.walls), spots = spots(items.walls) },
+    }
 end
 
 local function GroundACUStep(brain, ctx)
@@ -658,6 +671,16 @@ function Start(brain, ctx)
     -- Each GROUND player holds its own zone: upper slot (rank 2) the upper
     -- mid mex group via the north arc, lower slot (rank 3) the lower one.
     local slot = RoleManager.GetSlots()[brain.Name]
+    -- Each GROUND picks a mid fortification variant at random, so the mid
+    -- never looks the same twice (Config.MidPlans).
+    if slot and slot.role == 'GROUND' then
+        local names = {}
+        for name, _ in pairs(Config.MidPlans) do table.insert(names, name) end
+        table.sort(names)
+        local r = (Random and Random(1, table.getn(names))) or math.random(1, table.getn(names))
+        ctx.midPlan = names[r]
+        Utils.Log(brain, 'mid plan: ' .. ctx.midPlan)
+    end
     if slot and slot.role == 'GROUND' and slot.rank == 3 then
         ctx.choke = Routes.GetPoint('ChokeLower', ctx.side)
         ctx.groundArc = 'GroundArcSouth'

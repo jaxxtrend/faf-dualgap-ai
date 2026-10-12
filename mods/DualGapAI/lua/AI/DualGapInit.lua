@@ -34,6 +34,7 @@ function GetContext(brain)
         role = role,
         side = side,
         level = level,
+        name = brain.Name,
         startPos = { x, GetSurfaceHeight(x, z), z },
         started = false,
     }

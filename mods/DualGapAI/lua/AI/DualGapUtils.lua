@@ -37,6 +37,9 @@ UnitIds = {
     AirScout       = { 'uea0101', 'uaa0101', 'ura0101', 'xsa0101' },
 
     T1Tank         = { 'uel0201', 'ual0201', 'url0107', 'xsl0201' },
+    T1AA           = { 'uel0104', 'ual0104', 'url0104', 'xsl0104' },
+    T2AA           = { 'uel0205', 'ual0205', 'url0205', 'xsl0205' },
+    T3AA           = { 'delk002', 'dalk003', 'drlk001', 'dslk004' },
     T1Artillery    = { 'uel0103', 'ual0103', 'url0103', 'xsl0103' },
     T2Tank         = { 'uel0202', 'ual0202', 'url0202', 'xsl0202' },
     T2MML          = { 'uel0111', 'ual0111', 'url0111', 'xsl0111' },

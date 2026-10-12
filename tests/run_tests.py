@@ -407,7 +407,8 @@ check(set(t2.split(',')) == {'uea0204'}, 'T2 air factory builds no T1 units (%s)
 capped = prod('AIR', 'Air', 1, lua.table_from({'uea0102': 12, 'uea0103': 6}))
 check(capped == '', 'T1 air factory stops when T1 caps are reached (got %r)' % capped)
 t3 = prod('GROUND', 'Land', 3, lua.table_from({}))
-check(set(t3.split(',')) == {'uel0303'}, 'T3 land factory builds only T3 (%s)' % t3)
+check('uel0303' in t3.split(',') and set(t3.split(',')) <= {'uel0201', 'uel0103', 'uel0202', 'uel0111', 'uel0303'},
+      'T3 land factory builds T3 with a mix of cheaper tiers (%s)' % t3)
 none = prod('ECO', 'Land', 1, lua.table_from({}))
 check(none == '', 'role without a table for that factory kind builds nothing')
 
@@ -1356,6 +1357,37 @@ for _, e in ipairs(ai.CheatAIList) do ok = ok and e.ratingCheatMultiplier > 0 an
 return r.dualgapeasy < r.dualgapnormal and r.dualgapnormal < r.dualgaphard and r.dualgaphard < r.dualgap, ok
 """)
 check(rt[0] and rt[1], 'lobby ratings rise with the level; full fields for the lobby (map multiplier, thresholds, AIx bonuses)')
+
+f7 = lua.execute(r"""
+local F = import('/mods/DualGapAI/lua/AI/DualGapFactories.lua')
+local C = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local AC = import('/mods/DualGapAI/lua/AI/DualGapAirCommand.lua')
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+local B = import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
+local open = { { tech = 1 }, { tech = 2 } }
+local t1 = F.MixTier(C.Levels and C.LandMix[2], open, 0.1)
+local t2 = F.MixTier(C.LandMix[2], open, 0.9)
+local only2 = F.MixTier(C.LandMix[3], { { tech = 2 } }, 0.05)
+local gun = F.SupportCap({ 'T3Gunship', cap = 20, support = 'LAND' }, { build = 'NAVY' })
+local torp = F.SupportCap({ 'T2TorpBomber', cap = 12, support = 'NAVY' }, { build = 'NAVY' })
+local plain = F.SupportCap({ 'T3ASF', cap = 110 }, { build = 'NAVY' })
+local plans, ok = 0, true
+for _, p in pairs(C.MidPlans) do
+    plans = plans + 1
+    local items = B.MidPlanItems(p)
+    ok = ok and table.getn(items.pd) >= 2 and p.proxy.arty >= 2
+end
+return t1, t2, only2, gun, torp, plain,
+       AC.SupportBuild(true, false, false), AC.SupportBuild(false, false, false), AC.SupportBuild(true, false, true),
+       AC.SupportBuild(false, true, false),
+       I.ScoutHalfOk(true, 0.3), I.ScoutHalfOk(true, 0.8), I.ScoutHalfOk(false, 0.8), I.ScoutHalfOk(false, 0.52),
+       plans, ok
+""")
+check(f7[0] == 1 and f7[1] == 2 and f7[2] == 2, 'land mix: T2 factories keep building some T1 bodies; only open tiers are picked')
+check(f7[3] == 4 and f7[4] == 16 and f7[5] == 110, 'air support caps: a navy-backing AIR builds torpedo bombers, few gunships')
+check(f7[6] == 'LAND' and f7[7] == 'NAVY' and f7[8] == 'NAVY' and f7[9] == 'LAND', 'air support: upper backs the land, lower the navy; both back the losing branch')
+check(f7[10] and not f7[11] and f7[12] and f7[13], 'scouting: each AIR scouts its half of the map (overlapping in the middle)')
+check(f7[14] >= 3 and f7[15], 'mid fortification: several variants, each with point defences and a proxy')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

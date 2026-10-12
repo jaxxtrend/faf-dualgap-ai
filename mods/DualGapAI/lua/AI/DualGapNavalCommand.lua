@@ -40,6 +40,7 @@ function Register(brain, ctx)
 end
 
 function Task(side, name)
+    if not side then return nil end
     return Cmd(side).tasks[name]
 end
 

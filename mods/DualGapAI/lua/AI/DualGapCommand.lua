@@ -147,6 +147,7 @@ end
 
 -- The team's current orders (nil before the first evaluation).
 function Orders(side)
+    if not side then return nil end
     return Staff(side).orders
 end
 

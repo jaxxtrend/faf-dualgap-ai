@@ -540,11 +540,20 @@ local function PlanProxy(brain, ctx)
     ctx.proxyPlanned = true
     local name = (ctx.groundArc == 'GroundArcSouth') and 'ProxyLower' or 'ProxyUpper'
     local site = Routes.GetPoint(name, ctx.side)
+    -- The mid plan variant: how many shields / guns / AA, and where along
+    -- the front the proxy sits.
+    local plan = (Config.MidPlans[ctx.midPlan or 'LINE'] or Config.MidPlans.LINE).proxy
+    site = { site[1], site[2], site[3] + (plan.shift or 0) }
+    site[2] = GetSurfaceHeight(site[1], site[3])
     ctx.proxy = site
-    Add(brain, ctx, { name = 'ProxyShield', key = 'ShieldT2', site = site, crewMax = 3, count = 2,
+    Add(brain, ctx, { name = 'ProxyShield', key = 'ShieldT2', site = site, crewMax = 3, count = plan.shields,
         minCrewTech = 2, gap = 0, priority = 3 })
-    Add(brain, ctx, { name = 'ProxyArty', key = 'ArtilleryT2', site = site, crewMax = 3, count = 3,
+    Add(brain, ctx, { name = 'ProxyArty', key = 'ArtilleryT2', site = site, crewMax = 3, count = plan.arty,
         minCrewTech = 2, gap = 0, priority = 3 })
+    if (plan.aa or 0) > 0 then
+        Add(brain, ctx, { name = 'ProxyAA', key = 'AntiAirT2', site = site, crewMax = 2, count = plan.aa,
+            minCrewTech = 2, gap = 0, priority = 3 })
+    end
 end
 
 -- Exposed for tests: n points evenly on the circle of radius r around

@@ -503,6 +503,13 @@ end
 local CatAirScout = categories.AIR * categories.SCOUT * categories.MOBILE
 local CatLandScout = categories.LAND * categories.SCOUT * categories.MOBILE
 
+-- Exposed for tests: does a scout point (normalised z) belong to this
+-- AIR's half?
+function ScoutHalfOk(upper, nz)
+    if upper then return nz <= Config.ScoutHalfSplit + Config.ScoutHalfOverlap end
+    return nz >= Config.ScoutHalfSplit - Config.ScoutHalfOverlap
+end
+
 local function AirScoutRoute(ctx, offset)
     local pts = {}
     local enemy = OtherSide(ctx.side)
@@ -528,6 +535,18 @@ local function AirScoutRoute(ctx, offset)
     end
     table.insert(pts, Routes.GetPoint('BasinCenter', ctx.side))
     table.insert(pts, Routes.GetPoint('LandCenter', ctx.side))
+    -- Each AIR scouts its half of the map: the upper one the upper part,
+    -- the lower one the lower part (they overlap a little in the middle).
+    local slot = RoleManager.GetSlots()[ctx.name or '']
+    if slot then
+        local upper = slot.rank <= 3
+        local keep = {}
+        for _, p in ipairs(pts) do
+            local _, nz = Utils.Normalise(p[1], p[3])
+            if ScoutHalfOk(upper, nz) then table.insert(keep, p) end
+        end
+        if table.getn(keep) > 0 then pts = keep end
+    end
     -- Rotate so several scouts don't fly in a bunch.
     local out = {}
     local n = table.getn(pts)

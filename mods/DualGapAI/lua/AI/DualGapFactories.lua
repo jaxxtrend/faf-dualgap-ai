@@ -201,6 +201,51 @@ function HoldForUpgrade(factoryTech, topTech, isMain, marked)
     return not isMain and factoryTech < topTech and marked == true
 end
 
+-- Exposed for tests: the tier to build from a mix ({ [tier] = weight }),
+-- among the tiers that have an open entry; r in [0, 1).
+function MixTier(mix, open, r)
+    local avail, total = {}, 0
+    for _, o in ipairs(open) do
+        if mix[o.tech] and not avail[o.tech] then avail[o.tech] = mix[o.tech]; total = total + mix[o.tech] end
+    end
+    if total <= 0 then return nil end
+    local acc = 0
+    for tier = 1, 3 do
+        if avail[tier] then
+            acc = acc + avail[tier] / total
+            if r < acc then return tier end
+        end
+    end
+    for tier = 3, 1, -1 do if avail[tier] then return tier end end
+    return nil
+end
+
+-- Exposed for tests: an entry's cap under the air command's support task
+-- (gunships for the land, torpedo bombers for the navy).
+function SupportCap(entry, airTask)
+    if not entry.support or not airTask or not airTask.build then return entry.cap end
+    local caps = Config.AirSupportCaps[airTask.build]
+    return (caps and caps[entry.support]) or entry.cap
+end
+
+-- Enemy bombers / gunships over our army or base and our air not owning
+-- the sky: the land factories mix in mobile AA.
+local CatGroundAttackAir = categories.AIR * categories.MOBILE * (categories.BOMBER + categories.GROUNDATTACK)
+    - categories.ANTINAVY
+function LandAAWanted(brain, ctx)
+    local Command = import('/mods/DualGapAI/lua/AI/DualGapCommand.lua')
+    if Command.ZoneStance(ctx.side, 'AIR') == 'ATTACK' then return false end
+    if not (brain.GetArmyIndex and brain.GetUnitsAroundPoint) then return false end
+    local army = brain:GetArmyIndex()
+    local n = 0
+    for _, p in ipairs({ ctx.choke or ctx.startPos, ctx.startPos }) do
+        for _, e in ipairs(brain:GetUnitsAroundPoint(CatGroundAttackAir, p, Config.LandAARadius, 'Enemy') or {}) do
+            if Intel.Known(e, army) then n = n + 1 end
+        end
+    end
+    return n >= Config.LandAAThreat
+end
+
 -- Global so tests can drive it.
 function Produce(brain, ctx, f)
     if f == ctx.mainFactory and RefillEngineers(brain, ctx, f) then return end
@@ -221,24 +266,46 @@ function Produce(brain, ctx, f)
     if not list then return end
     local tech = TechOf(f)
     local capMul = Utils.MassBanked(brain) and Config.BankedCapMul or 1
+    local mixed = fkind == 'Land' and Config.LandMix[tech] ~= nil
+    local aaWanted = fkind == 'Land' and LandAAWanted(brain, ctx)
+    local AirCmd = import('/mods/DualGapAI/lua/AI/DualGapAirCommand.lua')
+    local airTask = AirCmd.Task(ctx.side, brain.Name)
 
-    -- Highest tech level that still has an entry under its cap. T1 entries
-    -- are only allowed on a T1 factory: no T1 spam after the upgrade.
-    local open = {}
+    -- Open entries: under their cap and buildable here. T1 entries only on
+    -- a T1 factory, except land mixes (LandMix) that keep T1 bodies.
+    local open, aa = {}, {}
     local topTech = 0
     for _, entry in ipairs(list) do
         local key = entry[1]
         local et = EntryTech(key)
         local id = Utils.FactionId(brain, key)
-        if id and et <= tech and (et > 1 or tech == 1)
-            and (not entry.cap or CountId(brain, id) < entry.cap * capMul) then
-            table.insert(open, { id = id, tech = et })
-            if et > topTech then topTech = et end
+        local cap = entry.cap and SupportCap(entry, airTask) or nil
+        if id and et <= tech and (et > 1 or tech == 1 or mixed)
+            and (not cap or CountId(brain, id) < cap * capMul) and f:CanBuild(id) then
+            if entry.aa then
+                if aaWanted then table.insert(aa, { id = id, tech = et }) end
+            else
+                table.insert(open, { id = id, tech = et })
+                if et > topTech then topTech = et end
+            end
         end
     end
+    -- Enemy air over the army: every other unit is AA (the best tech here).
+    if table.getn(aa) > 0 then
+        f.DGAA = not f.DGAA
+        if f.DGAA then
+            local best
+            for _, o in ipairs(aa) do if not best or o.tech > best.tech then best = o end end
+            Build(f, best.id)
+            return
+        end
+    end
+    -- The tier to build: the top one, or by the land mix's weights.
+    local want = topTech
+    if mixed then want = MixTier(Config.LandMix[tech], open, (Random and Random()) or math.random()) or topTech end
     local pick = {}
     for _, o in ipairs(open) do
-        if o.tech == topTech then table.insert(pick, o) end
+        if o.tech == want then table.insert(pick, o) end
     end
     local n = table.getn(pick)
     if n == 0 then return end

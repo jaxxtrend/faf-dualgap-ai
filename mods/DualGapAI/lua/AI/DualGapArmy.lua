@@ -210,13 +210,16 @@ function FormationPath(units, path, from)
             prev = p
         end
     end
+    -- Experimentals walk (they shoot on the move) instead of attack-moving:
+    -- they don't stop for every tank on the way. Only another experimental
+    -- stops them (T4Engage in UpdateWaves).
     local offsets = SpreadOffsets(table.getn(exps), Config.T4Spacing)
     for i, u in ipairs(exps) do
         local prev = start
         for _, wp in ipairs(path) do
             local px, pz = Perp(prev, wp)
             local x, z = wp[1] + px * offsets[i], wp[3] + pz * offsets[i]
-            IssueAggressiveMove({ u }, { x, GetSurfaceHeight(x, z), z })
+            IssueMove({ u }, { x, GetSurfaceHeight(x, z), z })
             prev = wp
         end
     end
@@ -380,6 +383,25 @@ local function UnstickWave(brain, ctx, wave, c, now)
         .. math.floor(c[3]) .. ', walks on to ' .. math.floor(t[1]) .. ',' .. math.floor(t[3]))
 end
 
+-- The wave's experimentals turn on a known enemy experimental close by
+-- (the only thing worth stopping for); otherwise they keep walking.
+local CatEnemyT4Ground = categories.EXPERIMENTAL * categories.MOBILE * (categories.LAND + categories.NAVAL)
+function T4Engage(brain, wave)
+    for _, u in ipairs(wave.units) do
+        if EntityCategoryContains(categories.EXPERIMENTAL, u) and Alive(u) then
+            local e = NearestKnown(brain, CatEnemyT4Ground, u:GetPosition(), Config.T4EngageRadius)
+            if e and u.DGT4Target ~= e then
+                u.DGT4Target = e
+                IssueClearCommands({ u })
+                IssueAttack({ u }, e)
+            elseif not e and u.DGT4Target then
+                u.DGT4Target = nil
+                if wave.lastTarget then IssueMove({ u }, wave.lastTarget) end
+            end
+        end
+    end
+end
+
 -- Exposed for tests: is a point (world x) in the enemy half for `side`?
 function InEnemyHalfX(side, nx)
     if side == 'LEFT' then return nx > 0.5 end
@@ -421,6 +443,7 @@ local function UpdateWaves(brain, ctx)
                 wave.stage = 'regroup'
                 Utils.Log(brain, 'land wave of ' .. table.getn(wave.units) .. ' falls back to the wall (land command: DEFEND)')
             end
+            if wave.kind == 'LAND' then T4Engage(brain, wave) end
             if wave.kind == 'LAND' and wave.stage ~= 'regroup' and Utils.Level(ctx).micro and not AllIdle(wave.units) then
                 UnstickWave(brain, ctx, wave, c, now)
             end
@@ -432,7 +455,10 @@ local function UpdateWaves(brain, ctx)
                 else
                     wave.stage = 2
                     local t = HuntTarget(brain, ctx, wave, c)
-                    if t then FormationPath(wave.units, { t }, c) end
+                    if t then
+                        wave.lastTarget = t
+                        FormationPath(wave.units, { t }, c)
+                    end
                 end
             end
         end
@@ -509,8 +535,11 @@ end
 ---------------------------------------------------------------------------
 -- Waves gather behind the furthest defence line the player holds
 -- (DualGapProjects moves ctx.frontPoint forward as the front advances).
+-- Units gather behind the own mid choke, not at an advanced front point:
+-- walking there one by one, they were picked off on the way. The wave
+-- passes the front point on its way out.
 local function LandRally(ctx)
-    return Shift(ctx.frontPoint or ctx.choke, -Toward(ctx) * 25)
+    return Shift(ctx.choke or ctx.frontPoint, -Toward(ctx) * 25)
 end
 
 -- Exposed for tests: does a free land unit count as gathered?

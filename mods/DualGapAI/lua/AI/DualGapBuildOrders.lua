@@ -76,10 +76,15 @@ HydroStorages = 3
 ---------------------------------------------------------------------------
 Production = {
     GROUND = {
+        -- T1 tanks stay in the mix after the upgrade (Config.LandMix): cheap
+        -- bodies soak the defences' fire while the T2 / T3 units kill.
+        -- Mobile AA (aa = true) only while enemy bombers / gunships are
+        -- over the army and our air doesn't own the sky.
         Land = {
-            { 'T1Tank', cap = 12 }, { 'T1Artillery', cap = 4 },
+            { 'T1Tank', cap = 24 }, { 'T1Artillery', cap = 4 },
             { 'T2Tank', cap = 30 }, { 'T2MML', cap = 8 },
             { 'T3Assault', cap = 40 },
+            { 'T1AA', cap = 4, aa = true }, { 'T2AA', cap = 6, aa = true }, { 'T3AA', cap = 8, aa = true },
         },
         Air = { { 'T1Interceptor', cap = 4 }, { 'T3ASF', cap = 6 } },
         -- Yards GROUND builds to help the navy (see NavalHelpFactories).
@@ -91,9 +96,12 @@ Production = {
     AIR = {
         Air = {
             { 'T1Interceptor', cap = 12 }, { 'T1Bomber', cap = 6 },
-            { 'T2TorpBomber', cap = 12 },
+            { 'T2TorpBomber', cap = 12, support = 'NAVY' },
             -- Mass air: up to ~170 planes per AIR player (see AirMassSize).
-            { 'T3ASF', cap = 110 }, { 'T3StratBomber', cap = 40 }, { 'T3Gunship', cap = 20 },
+            -- Torpedo bombers and gunships: caps set by the air command's
+            -- support task (Config.AirSupportCaps): the upper AIR backs the
+            -- land, the lower one the navy.
+            { 'T3ASF', cap = 110 }, { 'T3StratBomber', cap = 40 }, { 'T3Gunship', cap = 20, support = 'LAND' },
         },
     },
     ECO = {

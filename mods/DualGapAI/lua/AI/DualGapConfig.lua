@@ -191,7 +191,7 @@ ScoutRepathSeconds = 60
 -- (NavalScoutRadius). ECO builds its scouts once its game ender is
 -- EcoScoutEnderFraction built and sends them over the enemy ECO base.
 ScoutPackSize        = 5
-ScoutPackInterval    = 300   -- at most one pack out per this many seconds
+ScoutPackInterval    = 180   -- at most one pack out per this many seconds
 ScoutPackSizeLate    = 10
 ScoutPackLateSeconds = 1500
 NavalScoutRadius     = 40
@@ -686,3 +686,46 @@ NukeFriendlyMax    = 600
 NukeFriendlyMargin = 15
 -- A project with hands already takes no engineer from farther than this.
 ProjectCrewRange   = 200
+
+-- Land factories after the upgrade keep a mix of tiers, as players do (T1
+-- bodies soak the defences' fire while T2 / T3 kill): weights per tier, by
+-- the factory's tech.
+LandMix = {
+    [2] = { [1] = 0.4, [2] = 0.6 },
+    [3] = { [1] = 0.25, [2] = 0.3, [3] = 0.45 },
+}
+-- Mobile AA in the land factories: LandAAThreat or more known enemy
+-- bombers / gunships within LandAARadius of the mid choke or the base, and
+-- the team's air not owning the sky.
+LandAAThreat = 3
+LandAARadius = 250
+-- Air support builds: the upper AIR backs the land (gunships), the lower
+-- one the navy (torpedo bombers); both back whichever is losing. Caps of
+-- those units per support task.
+AirSupportCaps = {
+    LAND = { LAND = 24, NAVY = 2 },
+    NAVY = { LAND = 4, NAVY = 16 },
+}
+-- AIR scouting by halves: the upper AIR scouts points above
+-- ScoutHalfSplit (normalised z), the lower one below, with
+-- ScoutHalfOverlap shared.
+ScoutHalfSplit   = 0.5
+ScoutHalfOverlap = 0.08
+-- Land experimentals turn on an enemy experimental within this; nothing
+-- smaller stops them.
+T4EngageRadius   = 90
+-- Mid fortification variants, one picked at random by each GROUND:
+--   pd / shield / aa  spots {dx toward the enemy, dz} from the own choke
+--   walls             short walls in front of the point defences
+--   proxy             the T2 proxy base: shields, artillery, T2 AA, and its
+--                     shift along the front (dz)
+MidPlans = {
+    LINE    = { pd = { { 4, -8 }, { 4, 0 }, { 4, 8 } }, shield = { { -3, 0 } }, aa = {}, walls = true,
+                proxy = { shields = 2, arty = 3, aa = 0, shift = 0 } },
+    WEDGE   = { pd = { { 7, 0 }, { 2, -9 }, { 2, 9 } }, shield = { { -3, 0 } }, aa = { { -4, 7 } }, walls = false,
+                proxy = { shields = 1, arty = 3, aa = 1, shift = 10 } },
+    NEST    = { pd = { { 4, -6 }, { 4, 6 } }, shield = { { -2, 0 } }, aa = { { -5, -6 } }, walls = true,
+                proxy = { shields = 2, arty = 4, aa = 0, shift = -10 } },
+    STAGGER = { pd = { { 4, -9 }, { -1, 0 }, { 4, 9 } }, shield = { { -4, -4 } }, aa = { { -4, 5 } }, walls = false,
+                proxy = { shields = 2, arty = 2, aa = 2, shift = 0 } },
+}

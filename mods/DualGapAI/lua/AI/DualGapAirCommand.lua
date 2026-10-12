@@ -38,6 +38,16 @@ function AirTask(zones, focus)
     return mode, support or focus
 end
 
+-- Exposed for tests: what an AIR player builds for support: 'LAND'
+-- (gunships) or 'NAVY' (torpedo bombers). The upper AIR backs the land, the
+-- lower one the navy; when the land (a mid) or the navy is losing, both
+-- back that one (the land first when both are).
+function SupportBuild(upper, landLosing, navyLosing)
+    if landLosing then return 'LAND' end
+    if navyLosing then return 'NAVY' end
+    return upper and 'LAND' or 'NAVY'
+end
+
 -- Where the gunships work for a support zone: the own defensive point of a
 -- mid, the water by the own mid for the basin.
 function SupportPoint(zone, side)
@@ -60,6 +70,7 @@ function Register(brain, ctx)
 end
 
 function Task(side, name)
+    if not side then return nil end
     return Cmd(side).tasks[name]
 end
 
@@ -76,8 +87,17 @@ local function Step(side)
         local b, ctx = m.brain, m.ctx
         if not Utils.BrainDefeated(b) and Utils.HasDuty(ctx, 'AIR') and Utils.Level(ctx).commands then
             local mode, support = AirTask(orders.zones, orders.focus)
+            local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
+            local slot = RoleManager.GetSlots()[b.Name]
+            local z = orders.zones
+            local build = SupportBuild(not slot or slot.rank <= 3,
+                (z.UPPER and z.UPPER.stance == 'DEFEND') or (z.LOWER and z.LOWER.stance == 'DEFEND'),
+                z.WATER and z.WATER.stance == 'DEFEND')
             local prev = cmd.tasks[b.Name]
-            cmd.tasks[b.Name] = { mode = mode, support = support, at = GetGameTimeSeconds() }
+            cmd.tasks[b.Name] = { mode = mode, support = support, build = build, at = GetGameTimeSeconds() }
+            if prev and prev.build ~= build then
+                Utils.Log(b, 'AIR COMMAND: support build ' .. build)
+            end
             if not prev or prev.mode ~= mode or prev.support ~= support then
                 Utils.Log(b, 'AIR COMMAND: ' .. mode .. ' support ' .. tostring(support))
                 if (not prev or prev.mode ~= mode) and SayText[mode] then
