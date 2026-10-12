@@ -876,6 +876,101 @@ local function PlanFrontline(brain, ctx)
     end
 end
 
+-- Siege defence, every role: the base is besieged and the player fights
+-- back from it, as players do, instead of carrying on with its economy.
+--  * a seen enemy land army at the base: point defences (T2, T1 before
+--    the T2 factory) between the base and the attackers - cheap and they
+--    hold off a lot;
+--  * seen enemy warships off the base, or tactical missile launchers in
+--    reach: tactical missile defence, and torpedo launchers on the base
+--    water against the ships.
+-- Exposed for tests: what the siege calls for (point defences, TMD,
+-- torpedo launchers), from the seen enemy mass around the base.
+function SiegeNeeds(landMass, navalMass, tacticalLaunchers)
+    return landMass >= Config.SiegeLandMass,
+        navalMass >= Config.SiegeNavalMass or tacticalLaunchers > 0,
+        navalMass >= Config.SiegeNavalMass
+end
+
+-- Exposed for tests: the defence point, `offset` from the base toward the
+-- attackers (at most half the way to them).
+function SiegeSite(base, threat, offset)
+    local dx, dz = threat[1] - base[1], threat[3] - base[3]
+    local len = math.sqrt(dx * dx + dz * dz)
+    if len < 1 then return { base[1], base[2], base[3] } end
+    local d = math.min(offset, len / 2)
+    return { base[1] + dx / len * d, base[2], base[3] + dz / len * d }
+end
+
+local CatSiegeLand = categories.LAND * categories.MOBILE - categories.ENGINEER - categories.SCOUT - categories.AIR
+local CatSiegeShips = categories.NAVAL * categories.MOBILE
+local CatTacticalLaunchers = categories.TACTICALMISSILEPLATFORM + categories.NAVAL * categories.MOBILE * categories.INDIRECTFIRE
+local CatTMDs = categories.STRUCTURE * categories.ANTIMISSILE * categories.TECH2
+
+-- Seen enemy mass of `cat` around pos and where it stands (centroid).
+local function KnownMass(brain, cat, pos, radius)
+    local army = brain:GetArmyIndex()
+    local mass, n, cx, cz = 0, 0, 0, 0
+    for _, e in ipairs(brain:GetUnitsAroundPoint(cat, pos, radius, 'Enemy') or {}) do
+        if not e.Dead and Intel.Known(e, army) then
+            local eco = e:GetBlueprint().Economy
+            mass = mass + ((eco and eco.BuildCostMass) or 0)
+            local p = e:GetPosition()
+            n, cx, cz = n + 1, cx + p[1], cz + p[3]
+        end
+    end
+    if n == 0 then return 0, nil end
+    return mass, { cx / n, 0, cz / n }
+end
+
+local function PlanSiegeCluster(brain, ctx, name, key, have, site, want, near, minTech)
+    if Find(ctx, name) then return end
+    site[2] = GetSurfaceHeight(site[1], site[3])
+    local n = Utils.CountAround(brain, have, site, near, 'Ally')
+    if n < want then
+        Add(brain, ctx, { name = name, key = key, site = site, count = want - n, crewMax = 4,
+            minCrewTech = minTech, gap = 1, maxRadius = near, priority = 1 })
+    end
+end
+
+local function PlanSiegeDefense(brain, ctx)
+    local base = ctx.startPos
+    local landMass, landAt = KnownMass(brain, CatSiegeLand, base, Config.SiegeRadius)
+    local navalMass, navalAt = KnownMass(brain, CatSiegeShips, base, Config.SiegeNavalRadius)
+    local _, tmlAt = KnownMass(brain, CatTacticalLaunchers, base, Config.SiegeTacticalRadius)
+    local wantPD, wantTMD, wantTorp = SiegeNeeds(landMass, navalMass, tmlAt and 1 or 0)
+    local tech = TopFactoryTech(brain)
+    if wantPD and landAt then
+        local key = (tech >= 2) and 'PointDefenseT2' or 'PointDefenseT1'
+        if not Find(ctx, 'SiegePD') then
+            Utils.Log(brain, string.format('besieged by land (~%d mass): point defences toward them', landMass))
+        end
+        PlanSiegeCluster(brain, ctx, 'SiegePD', key, CatPDs, SiegeSite(base, landAt, Config.SiegePDOffset),
+            Config.SiegePDs, 18, 1)
+    end
+    if wantTMD and tech >= 2 then
+        local from = navalAt or tmlAt
+        if not Find(ctx, 'SiegeTMD') then
+            Utils.Log(brain, 'missiles / warships at the base: tactical missile defence')
+        end
+        PlanSiegeCluster(brain, ctx, 'SiegeTMD', 'TMD', CatTMDs, SiegeSite(base, from, Config.SiegeTMDOffset),
+            Config.SiegeTMDs, 25, 2)
+    end
+    if wantTorp then
+        if ctx.baseWater == nil then
+            ctx.baseWater = Utils.FindNearestWater(base, 2, Config.BaseTorpedoRange) or false
+        end
+        if ctx.baseWater then
+            local key, t = TorpedoKey(brain)
+            if not Find(ctx, 'SiegeTorpedo') then
+                Utils.Log(brain, string.format('besieged by sea (~%d mass): torpedo launchers', navalMass))
+            end
+            PlanSiegeCluster(brain, ctx, 'SiegeTorpedo', key, CatTorps,
+                { ctx.baseWater[1], ctx.baseWater[2], ctx.baseWater[3] }, Config.SiegeTorpedoes, 25, t)
+        end
+    end
+end
+
 local function PlanBaseShields(brain, ctx)
     local arty = table.getn(Intel.Enders(ctx.side, 'ARTY')) > 0
     for _, s in ipairs(ShieldPlan(TopFactoryTech(brain), arty)) do
@@ -1547,6 +1642,7 @@ local function PlannerStep(brain, ctx)
     UpdatePushState(brain, ctx)
     PlanProxy(brain, ctx)
     PlanForwardBase(brain, ctx)
+    PlanSiegeDefense(brain, ctx)
     PlanFrontline(brain, ctx)
     PlanBaseTorpedoes(brain, ctx)
     PlanBaseAA(brain, ctx)

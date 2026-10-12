@@ -308,10 +308,10 @@ end
 
 -- Team distress calls: { [brain name] = { pos, mass, at } }. A call is
 -- current for 20 seconds (posted every planner tick while it lasts).
-function PostDistress(side, name, pos, mass)
+function PostDistress(side, name, pos, mass, landMass)
     local t = Team(side)
     t.distress = t.distress or {}
-    t.distress[name] = { pos = pos, mass = mass, at = GetGameTimeSeconds(), name = name }
+    t.distress[name] = { pos = pos, mass = mass, land = landMass, at = GetGameTimeSeconds(), name = name }
 end
 
 function Distresses(side)

@@ -755,3 +755,23 @@ RebuildClearRadius = 120
 -- Energy out (below EnergyStall) for StallPullSeconds: the non-urgent
 -- projects keep one engineer each, the others build or help power.
 StallPullSeconds = 15
+
+-- Siege defence (every role, DualGapProjects.PlanSiegeDefense), urgent:
+--  seen enemy land army of SiegeLandMass+ within SiegeRadius of the base ->
+--    SiegePDs point defences SiegePDOffset toward it;
+--  seen warships of SiegeNavalMass+ within SiegeNavalRadius, or tactical
+--    missile launchers within SiegeTacticalRadius -> SiegeTMDs tactical
+--    missile defences (and SiegeTorpedoes torpedo launchers vs ships).
+SiegeRadius          = 110
+SiegeLandMass        = 1200
+SiegePDs             = 4
+SiegePDOffset        = 30
+SiegeNavalRadius     = 200
+SiegeNavalMass       = 1500
+SiegeTacticalRadius  = 280
+SiegeTMDs            = 3
+SiegeTMDOffset       = 20
+SiegeTorpedoes       = 4
+-- Engineers keep this far from seen enemy warships (their guns outrange
+-- anything on land).
+NavalUnsafeRadius    = 90

@@ -61,6 +61,7 @@ UnitIds = {
     ArtilleryT2    = { 'ueb2303', 'uab2303', 'urb2303', 'xsb2303' },
     -- Cybran has no directly buildable T3 shield: ED1 is built and upgraded.
     ShieldT3       = { 'ueb4301', 'uab4301', 'urb4202', 'xsb4301' },
+    TMD            = { 'ueb4201', 'uab4201', 'urb4201', 'xsb4201' },   -- tactical missile defence
     AntiNuke       = { 'ueb4302', 'uab4302', 'urb4302', 'xsb4302' },
 
     -- Experimentals per role. Seraphim has no naval experimental: the

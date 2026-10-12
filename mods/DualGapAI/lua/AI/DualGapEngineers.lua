@@ -329,6 +329,11 @@ local function Unsafe(brain, pos)
     for _, e in ipairs(brain:GetUnitsAroundPoint(CatEnemyArmy, pos, Config.MidReclaimSafeRadius, 'Enemy') or {}) do
         if Intel.Known(e, army) then return true end
     end
+    -- Warships outrange everything on land: keep clear of their guns.
+    for _, e in ipairs(brain:GetUnitsAroundPoint(categories.NAVAL * categories.MOBILE - categories.ENGINEER,
+        pos, Config.NavalUnsafeRadius, 'Enemy') or {}) do
+        if Intel.Known(e, army) then return true end
+    end
     return false
 end
 

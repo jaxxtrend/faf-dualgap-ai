@@ -490,7 +490,12 @@ local function DistressStep(brain, ctx)
     local mass = EnemyArmyMass(brain, ctx.startPos, Config.DistressRadius)
     local own = mass >= Config.DistressMass
     if own then
-        Intel.PostDistress(ctx.side, brain.Name, ctx.startPos, mass)
+        local landMass = 0
+        for _, e in ipairs(KnownNear(brain, CatEnemyArmy - categories.NAVAL - categories.AIR, ctx.startPos, Config.DistressRadius)) do
+            local eco = e:GetBlueprint().Economy
+            landMass = landMass + ((eco and eco.BuildCostMass) or 0)
+        end
+        Intel.PostDistress(ctx.side, brain.Name, ctx.startPos, mass, landMass)
         local seen = KnownNear(brain, CatEnemyArmy, ctx.startPos, Config.DistressRadius)
         Comms.Say(brain, ctx.side, 'distress:' .. brain.Name, 'My base is under attack by ' .. Comms.Describe(seen)
             .. ' (~' .. math.floor(mass) .. ' mass), help!', ctx.startPos, 'alert')
@@ -505,10 +510,17 @@ local function DistressStep(brain, ctx)
     end
 end
 
+-- Exposed for tests: is a land wave any use against this attack (mass of
+-- it all, of it on land)? Not against ships or planes alone.
+function LandHelpUseful(mass, landMass)
+    if not landMass then return true end
+    return landMass >= Config.DistressMass / 2 or landMass >= 0.3 * mass
+end
+
 -- Land: ready units go defend the ally (any size from HelpWaveMin).
 local function HelpLand(brain, ctx)
     local d = ctx.helpTarget
-    if not d then return false end
+    if not d or not LandHelpUseful(d.mass, d.land) then return false end
     local ready = {}
     for _, u in ipairs(FreeUnits(brain, CatLandDF)) do table.insert(ready, u) end
     if Utils.Count(ready) < Config.HelpWaveMin then return false end

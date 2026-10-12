@@ -1425,6 +1425,22 @@ return P.StallCrew(4, 2, true), P.StallCrew(4, 1, true), P.StallCrew(4, 2, false
 check(st[0] == 1 and st[1] == 4 and st[2] == 4, 'energy out: non-urgent projects keep one engineer, the rest go to power')
 check(st[3] and not st[4] and not st[5], 'energy out: engineers help the generators already going up')
 
+sg = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local pd1, tmd1, tp1 = P.SiegeNeeds(5000, 0, 0)
+local pd2, tmd2, tp2 = P.SiegeNeeds(0, 8000, 0)
+local pd3, tmd3, tp3 = P.SiegeNeeds(0, 0, 1)
+local pd4, tmd4, tp4 = P.SiegeNeeds(100, 100, 0)
+local s = P.SiegeSite({ 100, 0, 100 }, { 200, 0, 100 }, 30)
+local s2 = P.SiegeSite({ 100, 0, 100 }, { 120, 0, 100 }, 30)
+return pd1 and not tmd1 and not tp1, not pd2 and tmd2 and tp2, not pd3 and tmd3 and not tp3, not (pd4 or tmd4 or tp4),
+       s[1], s2[1], A.LandHelpUseful(10000, 0), A.LandHelpUseful(10000, 5000), A.LandHelpUseful(10000, nil)
+""")
+check(sg[0] and sg[1] and sg[2] and sg[3], 'siege: land army -> point defences; warships -> TMD + torpedoes; missile launchers -> TMD')
+check(sg[4] == 130 and sg[5] == 110, 'siege: defences go toward the attackers, at most half way')
+check(not sg[6] and sg[7] and sg[8], 'no land waves sent to help against ships alone')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
