@@ -1222,6 +1222,23 @@ check(gs[4] == 'ATTACK' and gs[5] == 'DEFEND' and gs[6] == 'HOLD' and gs[7] == '
 check(gs[8] == 'HOLD', 'staff stance: a handful of units is no attack force')
 check(gs[9] == 'LOWER', 'staff focus: the attack zone with the best ratio')
 
+lc = lua.execute(r"""
+local L = import('/mods/DualGapAI/lua/AI/DualGapLandCommand.lua')
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local m1 = L.LandTask('UPPER', 'DEFEND', 'ATTACK', 'LOWER')
+local m2, s2, z2 = L.LandTask('UPPER', 'HOLD', 'DEFEND', nil)
+local m3 = L.LandTask('UPPER', 'ATTACK', 'DEFEND', 'UPPER')
+local m4, s4 = L.LandTask('LOWER', 'ATTACK', 'HOLD', 'LOWER')
+local m5, s5 = L.LandTask('LOWER', 'HOLD', 'HOLD', nil)
+return m1, m2, z2, m3, m4, s4 < 1, m5, s5,
+       A.InEnemyHalfX('LEFT', 0.6), A.InEnemyHalfX('LEFT', 0.4), A.InEnemyHalfX('RIGHT', 0.4)
+""")
+check(lc[0] == 'DEFEND', 'land command: a clearly weaker zone defends')
+check(lc[1] == 'SUPPORT' and lc[2] == 'LOWER', 'land command: a holding GROUND supports the other mid when it defends')
+check(lc[3] == 'PUSH', 'land command: the team focus keeps pushing even when the other mid defends')
+check(lc[4] == 'PUSH' and lc[5] and lc[6] == 'HOLD' and lc[7] == 1, 'land command: a stronger zone pushes with smaller, earlier waves; an even one holds')
+check(lc[8] and not lc[9] and lc[10], 'enemy half is mirrored per side')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

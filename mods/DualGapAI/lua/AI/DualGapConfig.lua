@@ -593,3 +593,11 @@ StaffHoldRatio     = 1.1
 StaffDefendRatio   = 1.4
 StaffMinForce      = 1500
 StaffDefenceWeight = 0.5
+
+-- Land command (DualGapLandCommand): every LandCommandSeconds it turns the
+-- staff's stances into tasks for the GROUND players. PUSH waves leave at
+-- LandPushScale of the usual size, SUPPORT waves (to the other mid when it
+-- defends) at LandSupportScale.
+LandCommandSeconds = 10
+LandPushScale      = 0.6
+LandSupportScale   = 0.75

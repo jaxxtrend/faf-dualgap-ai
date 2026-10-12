@@ -49,6 +49,7 @@ local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
 local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
 local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
+local LandCmd = import('/mods/DualGapAI/lua/AI/DualGapLandCommand.lua')
 
 local function ACU()
     return import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
@@ -374,6 +375,16 @@ local function UnstickWave(brain, ctx, wave, c, now)
         .. math.floor(c[3]) .. ', walks on to ' .. math.floor(t[1]) .. ',' .. math.floor(t[3]))
 end
 
+-- Exposed for tests: is a point (world x) in the enemy half for `side`?
+function InEnemyHalfX(side, nx)
+    if side == 'LEFT' then return nx > 0.5 end
+    return nx < 0.5
+end
+
+function InEnemyHalf(side, pos)
+    return InEnemyHalfX(side, (Utils.Normalise(pos[1], pos[3])))
+end
+
 local function UpdateWaves(brain, ctx)
     local now = GetGameTimeSeconds()
     local keep = {}
@@ -391,11 +402,20 @@ local function UpdateWaves(brain, ctx)
                     wave.stage = 'retreat'
                 end
             end
-            if wave.kind == 'LAND' and not AllIdle(wave.units) then UnstickWave(brain, ctx, wave, c, now) end
+            -- Land command says DEFEND: a wave out in the enemy half falls
+            -- back to the own wall instead of being fed in alone.
+            local task = (wave.kind == 'LAND') and LandCmd.Task(ctx.side, brain.Name)
+            if task and task.mode == 'DEFEND' and wave.stage ~= 'regroup' and not wave.defending
+                and InEnemyHalf(ctx.side, c) then
+                FormationPath(wave.units, { Shift(ctx.frontPoint or ctx.choke, -Toward(ctx) * 25) }, c)
+                wave.stage = 'regroup'
+                Utils.Log(brain, 'land wave of ' .. table.getn(wave.units) .. ' falls back to the wall (land command: DEFEND)')
+            end
+            if wave.kind == 'LAND' and wave.stage ~= 'regroup' and not AllIdle(wave.units) then UnstickWave(brain, ctx, wave, c, now) end
             if AllIdle(wave.units) then
                 wave.checkAt = nil
-                if wave.stage == 'retreat' then
-                    Release(wave.units)          -- rejoin the gathering fleet
+                if wave.stage == 'retreat' or wave.stage == 'regroup' then
+                    Release(wave.units)          -- rejoin the gathering army / fleet
                     wave.units = {}
                 else
                     wave.stage = 2
@@ -504,7 +524,18 @@ local function LandStep(brain, ctx)
     local size = Config.WaveSize[TopTech(brain)] or 10
     local ender = EnderTarget(ctx)
     if ender then size = math.max(4, math.floor(size * Config.EnderWaveShare)) end
-    if WaveReady(ready, size) or (enemyAtWall and Utils.Count(ready) >= 4) then
+    -- Land command task (PUSH / HOLD / DEFEND / SUPPORT), when there is one.
+    local task = LandCmd.Task(ctx.side, brain.Name)
+    if task then size = math.max(4, math.floor(size * task.scale)) end
+    local holdBack = task and task.mode == 'DEFEND' and not enemyAtWall and not ender
+    if not holdBack and task and task.mode == 'SUPPORT' and not enemyAtWall and not ender
+        and WaveReady(ready, size) then
+        local to = LandCmd.ZonePoint(task.support, ctx.side)
+        Claim(ready)
+        FormationPath(ready, { to }, rally)
+        table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1 })
+        Utils.Log(brain, 'land wave of ' .. Utils.Count(ready) .. ' supports the ' .. task.support .. ' mid (land command)')
+    elseif not holdBack and (WaveReady(ready, size) or (enemyAtWall and Utils.Count(ready) >= 4)) then
         local enemy = OtherSide(ctx.side)
         local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
         -- Through the own front, over the enemy's mid choke, on to its base.
@@ -521,7 +552,7 @@ local function LandStep(brain, ctx)
         elseif ctx.enemyGroundBase then table.insert(path, ctx.enemyGroundBase) end
         Claim(ready)
         FormationPath(ready, path, rally)
-        table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1 })
+        table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1, defending = enemyAtWall })
         Utils.Log(brain, 'land wave of ' .. Utils.Count(ready) .. (enemyAtWall and ' (defending)' or ''))
         if not enemyAtWall then
             local where = (zone == 'ChokeLower') and 'lower' or 'upper'
