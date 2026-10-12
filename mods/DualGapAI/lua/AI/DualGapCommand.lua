@@ -107,7 +107,9 @@ local function Measure(brain)
     for _, name in ipairs(ZoneOrder) do out[name] = { own = 0, enemy = 0 } end
     local function add(list, key, weight)
         for _, u in ipairs(list or {}) do
-            if Alive(u) and u:GetFractionComplete() >= 1 and (key == 'own' or Intel.Known(u, army)) then
+            local done = (key == 'own') and u:GetFractionComplete() >= 1
+                or (key == 'enemy' and Intel.Known(u, army) and Intel.SeenFraction(u, army) >= 1)
+            if Alive(u) and done then
                 local m = Mass(u) * weight
                 if EntityCategoryContains(CatAirForce, u) then
                     out.AIR[key] = out.AIR[key] + m

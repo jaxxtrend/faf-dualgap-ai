@@ -95,7 +95,8 @@ local function Step(side, brain)
     local best, bestR, bestD
     for _, rec in ipairs(Intel.Enders(side)) do
         if Alive(rec.unit) then
-            local r = EnderRank(rec.kind, EntityCategoryContains(CatT4Arty, rec.unit), rec.unit:GetFractionComplete() >= 1)
+            -- Finished or not as the team last saw it (no peeking).
+            local r = EnderRank(rec.kind, EntityCategoryContains(CatT4Arty, rec.unit), rec.complete ~= false)
             local d = Utils.Dist2D(rec.unit:GetPosition(), center)
             if not bestR or r < bestR or (r == bestR and d < bestD) then best, bestR, bestD = rec, r, d end
         end

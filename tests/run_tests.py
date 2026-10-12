@@ -576,7 +576,7 @@ return I.Known(unit(true, true, false), 1), I.Known(unit(true, false, false), 1)
 
 check(known[0] and not known[1], 'a structure counts as known once it was ever seen')
 
-check(not known[2] and known[3], 'a mobile unit counts only while it is seen (or on radar)')
+check(not known[2] and known[3], 'a mobile unit counts only while it is seen')
 
 # ---------------------------------------------------------------- feedback round 4
 print('\nTargets, anti-nuke, base defence, T4 spacing, escorts, scouts, grid')
@@ -1331,6 +1331,19 @@ check(fb[2] and not fb[3], 'mass attack: a stack of 40 may face ~10 known AA, no
 check(fb[4] and not fb[5] and fb[6], 'mass attack gathers until 80% are together (or waited long enough)')
 check(fb[7] and not fb[8], 'nukes never land on our own army or base')
 check(fb[9] == 1 and fb[10] == 0 and fb[11], 'every base builds an anti-nuke once the enemy has launched a nuke')
+
+kn = lua.execute(r"""
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+EntityCategoryContains = function(cat, u) return cat.name == 'STRUCTURE' and u.structure end
+local function unit(seenEver, seenNow, radar)
+    return { structure = false, GetBlip = function(self, army)
+        return { IsSeenEver = function() return seenEver end, IsSeenNow = function() return seenNow end,
+                 IsOnRadar = function() return radar end } end }
+end
+return I.Known(unit(false, false, true), 1), I.Known(unit(true, false, true), 1), I.Known(unit(true, false, false), 1)
+""")
+check(not kn[0], 'a radar blip never seen is unknown (its type is not known): no attacking an unscouted T4')
+check(kn[1] and not kn[2], 'a unit seen before is followed on radar; out of sight and radar it is not known')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

@@ -1169,7 +1169,7 @@ local function ValueAround(brain, pos)
     for _, e in ipairs(brain:GetUnitsAroundPoint(categories.ALLUNITS - categories.WALL, pos, 30, 'Enemy') or {}) do
         if Intel.Known(e, army) then
             local eco = e:GetBlueprint().Economy
-            v = v + ((eco and eco.BuildCostMass) or 0) * e:GetFractionComplete()
+            v = v + ((eco and eco.BuildCostMass) or 0) * Intel.SeenFraction(e, army)
         end
     end
     return v

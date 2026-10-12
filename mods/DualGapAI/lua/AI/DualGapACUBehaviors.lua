@@ -63,7 +63,7 @@ local function OverchargeStep(brain, ctx)
     local enemies = brain:GetUnitsAroundPoint(CatEnemyTargets, pos, Config.OverchargeRange, 'Enemy')
     local target, bestHp
     for _, e in ipairs(enemies or {}) do
-        if Alive(e) and not e:IsUnitState('BeingBuilt') then
+        if Alive(e) and not e:IsUnitState('BeingBuilt') and Intel.Known(e, brain:GetArmyIndex()) then
             -- Prefer the toughest target OC can still hurt badly.
             local hp = e:GetHealth()
             if not bestHp or hp > bestHp then target, bestHp = e, hp end

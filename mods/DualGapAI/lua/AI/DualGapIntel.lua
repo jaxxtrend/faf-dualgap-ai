@@ -46,17 +46,40 @@ local function Team(side)
     return teams[side]
 end
 
--- Does `army` have intel on enemy unit e?
+-- Does `army` know what enemy unit e is and where it is? Only what a
+-- player knows (no cheating on any level):
+--   a structure once it was seen (its spot is remembered);
+--   a mobile unit while it is in sight or on omni, or while a unit that
+--   was seen before (so its type is known) is followed on radar / sonar.
+-- A radar blip that was never seen is only "something there": its type is
+-- unknown, so it doesn't count.
 function Known(e, army)
     if not Alive(e) or not e.GetBlip then return false end
     local ok, blip = pcall(e.GetBlip, e, army)
     if not ok or not blip then return false end
     if EntityCategoryContains(categories.STRUCTURE, e) then return blip:IsSeenEver(army) end
-    if blip:IsSeenNow(army) or blip:IsOnRadar(army) then return true end
-    -- Submerged units only show up on sonar (or omni).
-    if blip.IsOnSonar and blip:IsOnSonar(army) then return true end
+    if blip:IsSeenNow(army) then return true end
     if blip.IsOnOmni and blip:IsOnOmni(army) then return true end
-    return false
+    local tracked = blip:IsOnRadar(army) or (blip.IsOnSonar and blip:IsOnSonar(army))
+    return tracked and blip:IsSeenEver(army) == true
+end
+
+-- Is e in sight of `army` right now (its true state visible)?
+function SeenNow(e, army)
+    if not Alive(e) or not e.GetBlip then return false end
+    local ok, blip = pcall(e.GetBlip, e, army)
+    return ok and blip ~= nil and (blip:IsSeenNow(army) or (blip.IsOnOmni and blip:IsOnOmni(army))) == true
+end
+
+-- How far built e looked when `army` last saw it (the true progress only
+-- while in sight; remembered after that; 1 if never noted).
+local seenFraction = {}
+function SeenFraction(e, army)
+    local key = army .. ':' .. tostring(e.EntityId or e)
+    if SeenNow(e, army) then
+        seenFraction[key] = e:GetFractionComplete()
+    end
+    return seenFraction[key] or 1
 end
 
 local function EnderKind(e)
@@ -143,12 +166,13 @@ local function Scan(side, brain)
             local what = 'Enemy ' .. Comms.UnitName(e)
             if EnderKind(e) == 'NUKE' then what = 'Enemy NUKE' end
             if EnderKind(e) == 'YOLONA' then what = 'Enemy YOLONA OSS (rapid nukes), build anti-nukes!' end
-            local state = (e:GetFractionComplete() < 1) and ' under construction' or ''
+            local state = (SeenFraction(e, brain:GetArmyIndex()) < 1) and ' under construction' or ''
             Comms.Say(brain, side, 'ender:' .. key, what .. state .. ' spotted here! Everyone on it!', e:GetPosition(), 'alert')
         end
     end
     for key, rec in pairs(t.enders) do
-        if not Alive(rec.unit) then t.enders[key] = nil end
+        if not Alive(rec.unit) then t.enders[key] = nil
+        else rec.complete = SeenFraction(rec.unit, brain:GetArmyIndex()) >= 1 end
     end
     for _, e in ipairs(KnownEnemies(brain, CatEnemyT4)) do
         local key = e.EntityId or tostring(e)
