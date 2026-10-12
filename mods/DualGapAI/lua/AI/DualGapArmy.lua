@@ -421,7 +421,9 @@ local function UpdateWaves(brain, ctx)
                 wave.stage = 'regroup'
                 Utils.Log(brain, 'land wave of ' .. table.getn(wave.units) .. ' falls back to the wall (land command: DEFEND)')
             end
-            if wave.kind == 'LAND' and wave.stage ~= 'regroup' and not AllIdle(wave.units) then UnstickWave(brain, ctx, wave, c, now) end
+            if wave.kind == 'LAND' and wave.stage ~= 'regroup' and Utils.Level(ctx).micro and not AllIdle(wave.units) then
+                UnstickWave(brain, ctx, wave, c, now)
+            end
             if AllIdle(wave.units) then
                 wave.checkAt = nil
                 if wave.stage == 'retreat' or wave.stage == 'regroup' then
@@ -859,7 +861,9 @@ local function Intercept(brain, ctx, now)
             local want = math.max(Config.InterceptMin, Config.InterceptPerEnemy * group,
                 Config.MidCoverPerBomber * heavy)
             -- An air experimental (a Czar going for our ECO): every free fighter.
-            if EntityCategoryContains(categories.EXPERIMENTAL, e) then want = math.max(want, Config.InterceptT4) end
+            if EntityCategoryContains(categories.EXPERIMENTAL, e) and Utils.Level(ctx).advanced then
+                want = math.max(want, Config.InterceptT4)
+            end
             if isT4 then want = math.max(0, want - onIt) end
             local units = Nearest(FreeFighters(ctx), p, want)
             if table.getn(units) > 0 then
@@ -898,7 +902,7 @@ local function SweepStep(brain, ctx, now)
         end
         return
     end
-    if not Utils.HasDuty(ctx, 'AIR') then return end
+    if not Utils.HasDuty(ctx, 'AIR') or not Utils.Level(ctx).advanced then return end
     local free = FreeFighters(ctx)
     local enemy = table.getn(KnownNear(brain, CatEnemyFighter, ctx.startPos, MapRadius()))
     local task = AirCmd.Task(ctx.side, brain.Name)
@@ -1092,6 +1096,7 @@ end
 -- enders / anti-nukes, then an enemy army - instead of flying home over it.
 local CatFollowArmy = categories.MOBILE * categories.EXPERIMENTAL * (categories.LAND + categories.NAVAL)
 function FollowUp(brain, ctx, st, now)
+    if not Utils.Level(ctx).advanced then return end
     if st.search or not st.target or Alive(st.target) or Utils.Count(st.units) == 0 then return end
     if (st.followUps or 0) >= Config.FollowUpMax then return end
     local c = Centroid(st.units)

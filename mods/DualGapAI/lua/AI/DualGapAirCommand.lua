@@ -74,7 +74,7 @@ local function Step(side)
     if not orders then return end
     for _, m in ipairs(cmd.members) do
         local b, ctx = m.brain, m.ctx
-        if not Utils.BrainDefeated(b) and Utils.HasDuty(ctx, 'AIR') then
+        if not Utils.BrainDefeated(b) and Utils.HasDuty(ctx, 'AIR') and Utils.Level(ctx).commands then
             local mode, support = AirTask(orders.zones, orders.focus)
             local prev = cmd.tasks[b.Name]
             cmd.tasks[b.Name] = { mode = mode, support = support, at = GetGameTimeSeconds() }

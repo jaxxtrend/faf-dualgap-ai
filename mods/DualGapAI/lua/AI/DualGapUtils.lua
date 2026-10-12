@@ -502,7 +502,25 @@ end
 
 -- Run step(brain, ctx) every `interval` seconds until the brain is defeated.
 -- Each step is pcall'd so a single error never kills the controller.
+-- Exposed for tests: the difficulty level from a lobby personality key
+-- ('dualgapeasy', 'dualgapnormalcheat', 'dualgap' ...). Plain 'dualgap'
+-- (the original key) is Expert.
+function ParseLevel(personality)
+    local p = string.lower(personality or '')
+    if string.find(p, 'easy', 1, true) then return 'EASY' end
+    if string.find(p, 'normal', 1, true) then return 'NORMAL' end
+    if string.find(p, 'hard', 1, true) then return 'HARD' end
+    return 'EXPERT'
+end
+
+-- The difficulty settings of a bot (Config.Levels).
+function Level(ctx)
+    return Config.Levels[(ctx and ctx.level) or 'EXPERT'] or Config.Levels.EXPERT
+end
+
 function RunLoop(name, brain, ctx, interval, step)
+    -- Lower levels react slower: every loop waits longer.
+    interval = interval * Level(ctx).slow
     while not BrainDefeated(brain) do
         local ok, err = pcall(step, brain, ctx)
         if not ok then

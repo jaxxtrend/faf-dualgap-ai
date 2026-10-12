@@ -627,3 +627,26 @@ StratCommandSeconds    = 15
 StratSkipNukeAntiNukes = 3
 StratNukeFocusSeconds  = 300
 StratFallbackArty      = 3      -- T3 artillery when every step of the plan is skipped
+
+-- Difficulty levels (picked in the lobby: AI: DualGap Easy / Normal / Hard /
+-- Expert, and the AIx versions). Expert is the full bot.
+--   slow        every loop of the bot waits this many times longer (reaction)
+--   staffNoise  the general staff misjudges the enemy's mass by up to this
+--               share, either way
+--   commands    the branch commands give this bot tasks (else own rules)
+--   micro       ACU survival tricks (nuke dodge, refuge, spreading out),
+--               unsticking waves
+--   advanced    air sweeps, bomber follow-ups, the air T4 intercepted first
+--   banked      spends banked mass: extra factories (up to bankedMax),
+--               engineers assisting factories
+--   nukes       nuke silos in the game ender plans (else artillery)
+Levels = {
+    EASY   = { slow = 1.8, staffNoise = 0.4, commands = false, micro = false, advanced = false,
+               banked = false, bankedMax = 0, nukes = false },
+    NORMAL = { slow = 1.35, staffNoise = 0.2, commands = true, micro = true, advanced = false,
+               banked = true, bankedMax = 3, nukes = true },
+    HARD   = { slow = 1.1, staffNoise = 0.1, commands = true, micro = true, advanced = true,
+               banked = true, bankedMax = 6, nukes = true },
+    EXPERT = { slow = 1.0, staffNoise = 0, commands = true, micro = true, advanced = true,
+               banked = true, bankedMax = 8, nukes = true },
+}

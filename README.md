@@ -34,8 +34,20 @@ If you like the project and want to see where it goes next, follow and support i
    - or by hand: copy the [`mods/DualGapAI`](mods/DualGapAI) folder to
      `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
      The folder must be named exactly `DualGapAI`.
-2. In the FAF lobby, open **Mods** and enable **DualGap AI**, then put **AI: DualGap (beta)** or **AIx: DualGap (beta)** bots on Dual Gap Adaptive v14.
+2. In the FAF lobby, open **Mods** and enable **DualGap AI**, then put DualGap bots on Dual Gap Adaptive v14.
    The bots appear in the AI list only while the mod is enabled.
+
+## Difficulty
+Each slot can get its own level: **AI: DualGap Easy / Normal / Hard / Expert** (and **AIx: DualGap …**, the cheating versions with extra resources).
+
+| Level | What it means |
+|---|---|
+| Easy | Slow reactions, no team commands (every bot plays on its own rules), no ACU survival tricks, doesn't spend banked mass, artillery instead of nukes |
+| Normal | Team commands with a rough staff estimate (±20%), ACU survival tricks, some banked spending |
+| Hard | Nearly full speed, staff estimate ±10%, air sweeps, bomber follow-ups, every fighter on an enemy air T4 |
+| Expert | The full bot (the old "AI: DualGap (beta)") |
+
+The settings of each level are the `Levels` table at the end of [DualGapConfig.lua](mods/DualGapAI/lua/AI/DualGapConfig.lua).
 
 Roles, build order and settings are described in [mods/DualGapAI/README.md](mods/DualGapAI/README.md).
 Edit build orders and production tables in [DualGapBuildOrders.lua](mods/DualGapAI/lua/AI/DualGapBuildOrders.lua),

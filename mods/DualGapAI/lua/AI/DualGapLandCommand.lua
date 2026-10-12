@@ -71,7 +71,7 @@ local function Step(side)
     local focus = Command.Orders(side).focus
     for _, m in ipairs(cmd.members) do
         local b, ctx = m.brain, m.ctx
-        if not Utils.BrainDefeated(b) and Utils.HasDuty(ctx, 'GROUND') then
+        if not Utils.BrainDefeated(b) and Utils.HasDuty(ctx, 'GROUND') and Utils.Level(ctx).commands then
             local zone = ZoneOfPlayer(ctx)
             local mode, scale, support = LandTask(zone, Command.ZoneStance(side, zone),
                 Command.ZoneStance(side, OtherZone[zone]), focus)

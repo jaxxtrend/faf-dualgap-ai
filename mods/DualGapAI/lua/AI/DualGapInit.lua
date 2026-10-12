@@ -25,13 +25,19 @@ function GetContext(brain)
     if brain.DualGap then return brain.DualGap end
     local role, side = RoleManager.DetermineRoleBySpawn(brain)
     local x, z = brain:GetArmyStartPos()
+    -- The lobby key (dualgapeasy / dualgapnormal / dualgaphard / dualgap)
+    -- carries the difficulty; read it now: FirstBasePriority overwrites the
+    -- personality with 'dualgap'.
+    local setup = ScenarioInfo.ArmySetup and ScenarioInfo.ArmySetup[brain.Name]
+    local level = Utils.ParseLevel(setup and setup.AIPersonality)
     brain.DualGap = {
         role = role,
         side = side,
+        level = level,
         startPos = { x, GetSurfaceHeight(x, z), z },
         started = false,
     }
-    Utils.Log(brain, 'role=' .. role .. ' side=' .. side)
+    Utils.Log(brain, 'role=' .. role .. ' side=' .. side .. ' level=' .. level)
     return brain.DualGap
 end
 

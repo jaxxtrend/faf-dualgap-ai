@@ -858,7 +858,9 @@ local function TryFactories(brain, ctx, u)
     local wanted = {}
     -- Banked mass and energy: the production factories are not enough to
     -- spend the income, so a few more of them.
-    local extra = Utils.MassBanked(brain) and BankedExtra(brain:GetEconomyIncome('MASS') * 10) or 0
+    local lv = Utils.Level(ctx)
+    local extra = (lv.banked and Utils.MassBanked(brain))
+        and math.min(lv.bankedMax, BankedExtra(brain:GetEconomyIncome('MASS') * 10)) or 0
     for k, v in pairs(BO.ExtraFactories[ctx.role] or {}) do wanted[k] = v + extra end
     -- Inherited roles bring their factories too.
     for role, _ in pairs(ctx.duties or {}) do
@@ -974,7 +976,7 @@ local function GeneralTask(brain, ctx, u, baseOnly)
     if baseOnly and ctx.role == 'ECO' and Economy().TryRAS(brain, ctx, u) then return end
     -- Banked mass and energy: more factories and faster upgrades come first
     -- (more mexes don't help a full mass store).
-    local banked = Utils.MassBanked(brain)
+    local banked = Utils.MassBanked(brain) and Utils.Level(ctx).banked
     if banked and (TryFactories(brain, ctx, u) or TryAssistUpgrade(brain, ctx, u)
         or TryAssistFactories(brain, ctx, u)) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end

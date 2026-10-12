@@ -345,8 +345,8 @@ local function SafetyStep(brain, ctx)
             SetHideSpot(brain, ctx, nil)
         end
     else
-        if NukeDodgeStep(brain, ctx, acu, pos) then return end
-        if RefugeStep(brain, ctx, acu, pos) then return end
+        if Utils.Level(ctx).micro and NukeDodgeStep(brain, ctx, acu, pos) then return end
+        if Utils.Level(ctx).micro and RefugeStep(brain, ctx, acu, pos) then return end
         if hp < Config.ACURetreatHealth and Utils.Dist2D(pos, ctx.startPos) > 20 then
             IssueClearCommands({ acu })
             IssueMove({ acu }, ctx.startPos)
@@ -552,7 +552,7 @@ function SubmergedStep(brain, ctx)
     -- An enemy nuke shows up with no anti-nuke over us: spread out from
     -- the other hidden ACUs (one missile must not catch two).
     local inFlight, loaded = NukeDanger(brain, ctx, ctx.submergePos)
-    if ctx.submergePos and HideSpacing(inFlight, loaded) > Config.HideSpacingNear then
+    if Utils.Level(ctx).micro and ctx.submergePos and HideSpacing(inFlight, loaded) > Config.HideSpacingNear then
         local crowded = false
         for _, o in ipairs(OtherHideSpots(brain, ctx)) do
             if Utils.Dist2D(o, ctx.submergePos) < Config.HideSpacing then crowded = true; break end

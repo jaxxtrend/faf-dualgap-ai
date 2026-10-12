@@ -1283,6 +1283,25 @@ check(sc[0] and sc[1] and sc[2], 'strategic command: Yolona > nuke > T4 artiller
 check(sc[3], 'strategic command: a finished game ender before one under construction')
 check(sc[4] and not sc[5] and not sc[6] and sc[7], 'strategic command: no more nukes into 3+ anti-nukes, no air T4s into a stronger air force')
 
+lv = lua.execute(r"""
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local C = import('/mods/DualGapAI/lua/AI/DualGapConfig.lua')
+local ai = import('/mods/DualGapAI/lua/AI/CustomAIs_v2/DualGapAI.lua').AI
+local keys = {}
+for _, e in ipairs(ai.AIList) do keys[e.key] = U.ParseLevel(e.key) end
+for _, e in ipairs(ai.CheatAIList) do keys[e.key] = U.ParseLevel(e.key) end
+return U.ParseLevel('dualgapeasy'), U.ParseLevel('dualgapnormalcheat'), U.ParseLevel('dualgaphard'), U.ParseLevel('dualgap'),
+       U.ParseLevel(nil), keys.dualgapcheat, keys.dualgapeasycheat,
+       C.Levels.EASY.slow > C.Levels.NORMAL.slow and C.Levels.NORMAL.slow > C.Levels.HARD.slow and C.Levels.HARD.slow >= C.Levels.EXPERT.slow,
+       C.Levels.EXPERT.staffNoise == 0 and C.Levels.EXPERT.commands and C.Levels.EXPERT.micro and C.Levels.EXPERT.advanced,
+       not C.Levels.EASY.commands and not C.Levels.EASY.nukes,
+       U.Level({ level = 'HARD' }).bankedMax, U.Level(nil).bankedMax
+""")
+check(lv[0] == 'EASY' and lv[1] == 'NORMAL' and lv[2] == 'HARD' and lv[3] == 'EXPERT' and lv[4] == 'EXPERT', 'difficulty from the lobby key; the old plain key is Expert')
+check(lv[5] == 'EXPERT' and lv[6] == 'EASY', 'the AIx entries carry the level too')
+check(lv[7] and lv[8] and lv[9], 'levels: slower reactions going down, Expert is the full bot, Easy without commands or nukes')
+check(lv[10] == 6 and lv[11] == 8, 'level settings per bot, Expert by default')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

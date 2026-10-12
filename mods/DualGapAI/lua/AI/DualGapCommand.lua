@@ -133,6 +133,14 @@ local function Evaluate(side, brain)
     local st = Staff(side)
     local prev = st.orders
     local m = Measure(brain)
+    -- Lower levels misjudge the enemy (DualGapConfig.Levels staffNoise).
+    local noise = Utils.Level(brain.DualGap).staffNoise
+    if noise > 0 then
+        for _, name in ipairs(ZoneOrder) do
+            local r = (Random and Random()) or math.random()
+            m[name].enemy = m[name].enemy * (1 + noise * (2 * r - 1))
+        end
+    end
     local orders = { at = GetGameTimeSeconds(), zones = {} }
     for _, name in ipairs(ZoneOrder) do
         local prevStance = prev and prev.zones[name] and prev.zones[name].stance

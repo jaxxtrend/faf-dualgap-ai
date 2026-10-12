@@ -55,7 +55,7 @@ local function Step(side)
     local water, lower = Command.ZoneStance(side, 'WATER'), Command.ZoneStance(side, 'LOWER')
     for _, m in ipairs(cmd.members) do
         local b, ctx = m.brain, m.ctx
-        if not Utils.BrainDefeated(b) and Utils.HasDuty(ctx, 'NAVAL') then
+        if not Utils.BrainDefeated(b) and Utils.HasDuty(ctx, 'NAVAL') and Utils.Level(ctx).commands then
             local mode, scale = NavalTask(water, lower)
             local prev = cmd.tasks[b.Name]
             cmd.tasks[b.Name] = { mode = mode, scale = scale, at = GetGameTimeSeconds() }

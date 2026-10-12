@@ -963,7 +963,7 @@ local function PlanGameEnder(brain, ctx)
     -- Strategic command: steps the situation makes pointless count as done
     -- (nukes into a wall of anti-nukes, air T4s into a stronger air force).
     local Strat = import('/mods/DualGapAI/lua/AI/DualGapStratCommand.lua')
-    local skip = { NukeSilo = Strat.SkipNuke(ctx.side), AirT4 = Strat.SkipAirT4(ctx.side) }
+    local skip = { NukeSilo = Strat.SkipNuke(ctx.side) or not Utils.Level(ctx).nukes, AirT4 = Strat.SkipAirT4(ctx.side) }
     local function count(key)
         if skip[key] then return 1000 end
         return EnderCount(key, alive(key), (ctx.enderBuilt or {})[key] or 0, IsStructureKey(brain, key))

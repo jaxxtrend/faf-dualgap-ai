@@ -34,8 +34,20 @@
    - вручную: скопировать папку [`mods/DualGapAI`](mods/DualGapAI) в
      `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
      Папка должна называться именно `DualGapAI`.
-2. В лобби FAF открыть **Mods**, включить **DualGap AI** и поставить ботов **AI: DualGap (beta)** или **AIx: DualGap (beta)** на карте Dual Gap Adaptive v14.
+2. В лобби FAF открыть **Mods**, включить **DualGap AI** и поставить ботов DualGap на карте Dual Gap Adaptive v14.
    Боты появляются в списке ИИ, только пока мод включён.
+
+## Сложность
+Каждому слоту можно дать свой уровень: **AI: DualGap Easy / Normal / Hard / Expert** (и **AIx: DualGap …** — читерские версии с дополнительными ресурсами).
+
+| Уровень | Что это значит |
+|---|---|
+| Easy | Медленная реакция, без командований (каждый бот играет по своим правилам), без уловок командира, не тратит накопленную массу, арта вместо ядерок |
+| Normal | Командования с грубой оценкой генштаба (±20%), уловки командира, частично тратит накопленную массу |
+| Hard | Почти полная скорость, оценка генштаба ±10%, прочёсывания авиацией, добивание целей бомберами, все истребители на вражеский воздушный T4 |
+| Expert | Полный бот (бывший «AI: DualGap (beta)») |
+
+Настройки уровней — таблица `Levels` в конце [DualGapConfig.lua](mods/DualGapAI/lua/AI/DualGapConfig.lua).
 
 Подробно про роли, билд-ордер и настройки — в [mods/DualGapAI/README.md](mods/DualGapAI/README.ru.md).
 Билд-ордеры и таблицы производства правятся в [DualGapBuildOrders.lua](mods/DualGapAI/lua/AI/DualGapBuildOrders.lua),
