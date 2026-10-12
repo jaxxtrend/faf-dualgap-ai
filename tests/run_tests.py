@@ -1239,6 +1239,24 @@ check(lc[3] == 'PUSH', 'land command: the team focus keeps pushing even when the
 check(lc[4] == 'PUSH' and lc[5] and lc[6] == 'HOLD' and lc[7] == 1, 'land command: a stronger zone pushes with smaller, earlier waves; an even one holds')
 check(lc[8] and not lc[9] and lc[10], 'enemy half is mirrored per side')
 
+ac2 = lua.execute(r"""
+local C = import('/mods/DualGapAI/lua/AI/DualGapAirCommand.lua')
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local z1 = { AIR = { stance = 'ATTACK' }, UPPER = { stance = 'DEFEND', enemy = 3000 }, LOWER = { stance = 'DEFEND', enemy = 5000 },
+             WATER = { stance = 'HOLD', enemy = 0 } }
+local m1, s1 = C.AirTask(z1, 'WATER')
+local m2, s2 = C.AirTask({ AIR = { stance = 'DEFEND' }, UPPER = { stance = 'HOLD' } }, 'UPPER')
+local m3, s3 = C.AirTask({ AIR = { stance = 'HOLD' } }, nil)
+return m1, s1, m2, s2, m3, s3,
+       A.SweepWanted(18, 10, 500, 'DOMINATE'), A.SweepWanted(18, 10, 500, nil), A.SweepWanted(80, 1, 500, 'DEFEND'),
+       A.MassAirDecision(200, false, false, 1000, 0, 'DEFEND'), A.MassAirDecision(60, true, false, 1000, 0, 'DEFEND'),
+       A.MassAirDecision(110, false, false, 1000, 0, 'DOMINATE'), A.MassAirDecision(110, false, false, 1000, 0, nil)
+""")
+check(ac2[0] == 'DOMINATE' and ac2[1] == 'LOWER', 'air command: air superiority dominates; gunships go where the enemy is strongest among defending zones')
+check(ac2[2] == 'DEFEND' and ac2[3] == 'UPPER' and ac2[4] == 'CONTEST' and ac2[5] is None, 'air command: outclassed air defends; with no defending zone the gunships follow the focus')
+check(ac2[6] and not ac2[7] and not ac2[8], 'air command: sweeps start earlier when dominating, never when defending')
+check(ac2[9] is None and ac2[10] == 'ender' and ac2[11] == 'mass' and ac2[12] is None, 'air command: no mass strikes while defending (game enders excepted), sooner while dominating')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

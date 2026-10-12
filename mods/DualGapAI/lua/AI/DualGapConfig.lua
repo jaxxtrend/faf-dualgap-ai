@@ -601,3 +601,12 @@ StaffDefenceWeight = 0.5
 LandCommandSeconds = 10
 LandPushScale      = 0.6
 LandSupportScale   = 0.75
+
+-- Air command (DualGapAirCommand): every AirCommandSeconds it turns the
+-- staff's air stance into a mode for the AIR players. DOMINATE: sweeps from
+-- AirSweepMinDominate free fighters at AirSweepRatioDominate x the known
+-- enemy fighters, mass attacks at AirMassDominateScale of the usual size.
+AirCommandSeconds     = 10
+AirSweepMinDominate   = 15
+AirSweepRatioDominate = 1.2
+AirMassDominateScale  = 0.75

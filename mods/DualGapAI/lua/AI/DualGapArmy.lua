@@ -50,6 +50,7 @@ local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
 local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
 local LandCmd = import('/mods/DualGapAI/lua/AI/DualGapLandCommand.lua')
+local AirCmd = import('/mods/DualGapAI/lua/AI/DualGapAirCommand.lua')
 
 local function ACU()
     return import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
@@ -851,9 +852,12 @@ end
 
 -- Exposed for tests: send a sweep? free: own free fighters, enemy: known
 -- enemy fighters, since: seconds since the last one.
-function SweepWanted(free, enemy, since)
-    if since < Config.AirSweepCooldown or free < Config.AirSweepMin then return false end
-    return free >= Config.AirSweepRatio * enemy
+function SweepWanted(free, enemy, since, mode)
+    if mode == 'DEFEND' then return false end
+    local min, ratio = Config.AirSweepMin, Config.AirSweepRatio
+    if mode == 'DOMINATE' then min, ratio = Config.AirSweepMinDominate, Config.AirSweepRatioDominate end
+    if since < Config.AirSweepCooldown or free < min then return false end
+    return free >= ratio * enemy
 end
 
 -- Air superiority: the fighters fly over the enemy's side of the front
@@ -871,7 +875,8 @@ local function SweepStep(brain, ctx, now)
     if not Utils.HasDuty(ctx, 'AIR') then return end
     local free = FreeFighters(ctx)
     local enemy = table.getn(KnownNear(brain, CatEnemyFighter, ctx.startPos, MapRadius()))
-    if not SweepWanted(table.getn(free), enemy, now - (ctx.sweepAt or -1000)) then return end
+    local task = AirCmd.Task(ctx.side, brain.Name)
+    if not SweepWanted(table.getn(free), enemy, now - (ctx.sweepAt or -1000), task and task.mode) then return end
     local pts = {}
     for _, np in ipairs(ctx.airZones or Config.AirPatrolAll) do
         local p = Utils.ToWorld({ np[1], np[2] }, OtherSide(ctx.side))
@@ -1029,6 +1034,11 @@ function GunshipStep(brain, ctx, park)
         for _, w in ipairs(ctx.waves or {}) do
             if w.kind == 'LAND' and table.getn(Utils.FilterAlive(w.units)) > 0 then front = Centroid(Utils.FilterAlive(w.units)) end
         end
+        -- Air command: work over the mid the team needs help in (gunships
+        -- hunt land armies; the water is the torpedo bombers' business).
+        local task = AirCmd.Task(ctx.side, brain.Name)
+        local sp = task and task.support and task.support ~= 'WATER' and AirCmd.SupportPoint(task.support, ctx.side)
+        if sp then front = sp end
         local e = NearestKnown(brain, CatEnemyLand, front, Config.GunshipFrontRadius)
         if e then target = e:GetPosition() end
     end
@@ -1130,7 +1140,8 @@ local function AirStep(brain, ctx)
     local inOp = JoinAirT4Op(brain, ctx, bombers, now)
     if inOp then bombers = {} end
     local massed = (not defended) and (not inOp) and MassAirStep(brain, ctx, staging, bombers, now)
-    if not massed and Utils.Count(bombers) >= Config.AirStrikeSize then
+    local airTask = AirCmd.Task(ctx.side, brain.Name)
+    if not massed and Utils.Count(bombers) >= Config.AirStrikeSize and not (airTask and airTask.mode == 'DEFEND') then
         -- The bigger the group, the more AA it may fly into. Past
         -- AirRaidMaxAir the strategic targets wait for the mass attack, but
         -- enemy armies at the front still get bombed.
@@ -1458,12 +1469,15 @@ end
 
 -- Exposed for tests: launch a mass attack now? Returns 'ender', 'mass',
 -- 'join' or nil.
-function MassAirDecision(air, enderKnown, teamStrikeOn, sinceLast, bombers)
+function MassAirDecision(air, enderKnown, teamStrikeOn, sinceLast, bombers, mode)
     if sinceLast < Config.AirMassCooldown then return nil end
-    if teamStrikeOn and air >= Config.AirMassSize * Config.AirMassJoinShare then return 'join' end
     if enderKnown and air >= Config.AirEnderStrikeMin then return 'ender' end
-    if air >= Config.AirMassSize then return 'mass' end
-    if (bombers or 0) >= Config.AirMassBombers then return 'bombers' end
+    -- The enemy rules the sky: only a game ender is worth the losses.
+    if mode == 'DEFEND' then return nil end
+    local scale = (mode == 'DOMINATE') and Config.AirMassDominateScale or 1
+    if teamStrikeOn and air >= Config.AirMassSize * Config.AirMassJoinShare * scale then return 'join' end
+    if air >= Config.AirMassSize * scale then return 'mass' end
+    if (bombers or 0) >= Config.AirMassBombers * scale then return 'bombers' end
     return nil
 end
 
@@ -1487,7 +1501,7 @@ function MassAirStep(brain, ctx, staging, bombers, now)
     local teamOn = team and now - team.at < 90 and Alive(team.unit)
     local nBombers = table.getn(FreeUnits(brain, CatBomber - CatTorpBomber)) + Utils.Count(bombers)
     local why = MassAirDecision(air, EnderTarget(ctx) ~= nil, teamOn and team.by ~= brain:GetArmyIndex(),
-        now - (ctx.airMassAt or -1000), nBombers)
+        now - (ctx.airMassAt or -1000), nBombers, (AirCmd.Task(ctx.side, brain.Name) or {}).mode)
     if not why then return false end
     local target = (why == 'join') and team.unit or MassAirTarget(brain, ctx)
     if not Alive(target) then return false end
