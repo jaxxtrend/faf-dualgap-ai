@@ -658,3 +658,31 @@ Levels = {
     EXPERT = { slow = 1.0, staffNoise = 0, commands = true, micro = true, advanced = true,
                banked = true, bankedMax = 8, nukes = true },
 }
+
+-- Air routes: strikes and mass attacks fly the line (direct or a dog-leg to
+-- either side) with the least known enemy AA (ships included) within
+-- AirRouteAARadius of points sampled every AirRouteSample; the last
+-- AirRouteSkipEnd before the target don't count.
+AirRouteSample   = 50
+AirRouteAARadius = 45
+AirRouteSkipEnd  = 60
+-- Mass attacks gather over the own base first: they leave once
+-- AirGatherShare of the planes are within AirGatherRadius, or after
+-- AirGatherSeconds. Fighters against an air T4 meet the same way, at
+-- T4GatherShare of the way from the base to the T4.
+AirGatherShare   = 0.8
+AirGatherRadius  = 50
+AirGatherSeconds = 45
+T4GatherShare    = 0.35
+-- An escort fighter idle this long goes back to the patrol.
+EscortIdleSeconds = 20
+-- Torpedo bombers go for a known submerged ACU from this many.
+TorpACUStrikeMin  = 6
+
+-- Nukes never go where more than NukeFriendlyMax of our own team's mass
+-- stands within NukeRadius + NukeFriendlyMargin; before a salvo the team's
+-- units inside the blast walk out of it.
+NukeFriendlyMax    = 600
+NukeFriendlyMargin = 15
+-- A project with hands already takes no engineer from farther than this.
+ProjectCrewRange   = 200

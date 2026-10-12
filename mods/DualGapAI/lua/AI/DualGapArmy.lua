@@ -866,7 +866,18 @@ local function Intercept(brain, ctx, now)
             end
             if isT4 then want = math.max(0, want - onIt) end
             local units = Nearest(FreeFighters(ctx), p, want)
-            if table.getn(units) > 0 then
+            if table.getn(units) > 0 and isT4 and Utils.Level(ctx).advanced then
+                -- Against an air T4 the fighters meet first, between our
+                -- base and the T4, and hit it together (no trickle into its
+                -- escort and guns).
+                local gp = { ctx.startPos[1] + (p[1] - ctx.startPos[1]) * Config.T4GatherShare, 0,
+                    ctx.startPos[3] + (p[3] - ctx.startPos[3]) * Config.T4GatherShare }
+                gp[2] = GetSurfaceHeight(gp[1], gp[3])
+                IssueClearCommands(units)
+                IssueMove(units, gp)
+                ctx.t4Packs = ctx.t4Packs or {}
+                table.insert(ctx.t4Packs, { target = e, units = units, point = gp, at = now })
+            elseif table.getn(units) > 0 then
                 IssueClearCommands(units)
                 IssueAttack(units, e)
                 IssueAggressiveMove(units, p)
@@ -924,6 +935,33 @@ local function SweepStep(brain, ctx, now)
     Utils.Log(brain, 'air sweep: ' .. table.getn(units) .. ' fighters over the enemy front (' .. enemy .. ' enemy fighters known)')
 end
 
+-- Fighter packs gathering against an air T4: go in together once most of
+-- the pack is at the meeting point (or after AirGatherSeconds).
+local function T4PackStep(ctx, now)
+    local keep = {}
+    for _, pk in ipairs(ctx.t4Packs or {}) do
+        pk.units = Utils.FilterAlive(pk.units)
+        if Alive(pk.target) and table.getn(pk.units) > 0 then
+            if not pk.go then
+                local near = 0
+                for _, u in ipairs(pk.units) do
+                    if Utils.Dist2D(u:GetPosition(), pk.point) < Config.AirGatherRadius then near = near + 1 end
+                end
+                if GatherDone(near, table.getn(pk.units), now - pk.at) then
+                    pk.go = true
+                    IssueClearCommands(pk.units)
+                    IssueAttack(pk.units, pk.target)
+                    IssueAggressiveMove(pk.units, pk.target:GetPosition())
+                end
+                -- Keep them flagged as intercepting meanwhile.
+                for _, u in ipairs(pk.units) do u.DGIntercept = now + Config.InterceptSeconds end
+            end
+            if not pk.go then table.insert(keep, pk) end
+        end
+    end
+    ctx.t4Packs = keep
+end
+
 local function FightersStep(brain, ctx, now)
     local line = FrontLine(ctx.side, Utils.ToWorld, function(p) return Intel.AAThreat(ctx.side, p) end, ctx.airZones)
     local key = LineKey(line)
@@ -935,12 +973,21 @@ local function FightersStep(brain, ctx, now)
     for _, u in ipairs(fresh) do table.insert(ctx.fighters, u) end
 
     Intercept(brain, ctx, now)
+    T4PackStep(ctx, now)
     SweepStep(brain, ctx, now)
 
     -- Back to the patrol: interceptors that are done, new fighters, and
     -- everyone when the line moved.
     local patrol = {}
     for _, u in ipairs(ctx.fighters) do
+        -- An escort with nothing left to do (its strike or op is over, or
+        -- it was never released) goes back to the patrol instead of
+        -- hanging over the enemy base.
+        if u.DGEscort and u:IsIdleState() and not u.DGIdleSince then u.DGIdleSince = now end
+        if not u:IsIdleState() then u.DGIdleSince = nil end
+        if u.DGEscort and u.DGIdleSince and now - u.DGIdleSince > Config.EscortIdleSeconds then
+            u.DGEscort, u.DGLine, u.DGIdleSince = nil, nil, nil
+        end
         if u.DGIntercept and (now > u.DGIntercept or u:IsIdleState()) then
             u.DGIntercept, u.DGInterceptPos, u.DGInterceptTarget = nil, nil, nil
         end
@@ -973,6 +1020,49 @@ local function FlankPoint(ctx, from, to)
     return a
 end
 
+-- Exposed for tests: the AA cost of flying a polyline (sampled every
+-- AirRouteSample along it; the last AirRouteSkipEnd before the target are
+-- left out - the target's own AA is paid on every route).
+function AirRouteCost(points, aaAt)
+    local cost = 0
+    local n = table.getn(points)
+    local total = 0
+    for i = 2, n do total = total + Utils.Dist2D(points[i - 1], points[i]) end
+    local walked = 0
+    for i = 2, n do
+        local a, b = points[i - 1], points[i]
+        local len = Utils.Dist2D(a, b)
+        local t = 0
+        while t < len do
+            if walked + t < total - Config.AirRouteSkipEnd then
+                local k = t / math.max(len, 0.01)
+                cost = cost + aaAt({ a[1] + (b[1] - a[1]) * k, 0, a[3] + (b[3] - a[3]) * k })
+            end
+            t = t + Config.AirRouteSample
+        end
+        walked = walked + len
+    end
+    return cost
+end
+
+-- Waypoints from `from` to `to` around the known enemy AA (ships included):
+-- the direct line, or a dog-leg to either side (near or wide), whichever
+-- flies past the least AA. Returns the waypoints before `to`.
+function SafeAirPath(ctx, from, to)
+    local px, pz = Perp(from, to)
+    local mid = { (from[1] + to[1]) / 2, 0, (from[3] + to[3]) / 2 }
+    local dist = Utils.Dist2D(from, to)
+    local aaAt = function(p) return Intel.AAThreat(ctx.side, p, Config.AirRouteAARadius) end
+    local best, bestCost = {}, AirRouteCost({ from, to }, aaAt)
+    for _, k in ipairs({ 0.35, -0.35, 0.7, -0.7 }) do
+        local wp = Clamp({ mid[1] + px * dist * k, 0, mid[3] + pz * dist * k })
+        -- A detour costs a little for its length, so straight wins a tie.
+        local cost = AirRouteCost({ from, wp, to }, aaAt) + math.abs(k)
+        if cost < bestCost then best, bestCost = { wp }, cost end
+    end
+    return best
+end
+
 -- Exposed for tests: escort size for a strike, or nil to hold it.
 function EscortSize(enemyFighters, available)
     if enemyFighters > Config.EscortIgnore and available < math.ceil(enemyFighters * Config.EscortLaunchRatio) then return nil end
@@ -994,21 +1084,21 @@ local function LaunchStrike(brain, ctx, units, target, staging, now)
         return false
     end
     local escort = Nearest(free, staging, n)
+    local route = SafeAirPath(ctx, staging, tpos)
     for _, u in ipairs(escort) do u.DGEscort, u.DGLine = true, nil end
     if table.getn(escort) > 0 then
-        -- The escort flies the direct line and draws the enemy fighters.
+        -- The escort flies ahead on the route with the least known AA.
         IssueClearCommands(escort)
-        IssueAggressiveMove(escort, Clamp(mid))
+        for _, wp in ipairs(route) do IssueAggressiveMove(escort, wp) end
         IssueAggressiveMove(escort, tpos)
     end
     Claim(units)
     IssueClearCommands(units)
-    local flank = FlankPoint(ctx, staging, tpos)
     ForkThread(function()
         WaitSeconds(Config.BomberDelay)
         local alive = Utils.FilterAlive(units)
         if table.getn(alive) == 0 or not Alive(target) then return end
-        IssueMove(alive, flank)
+        for _, wp in ipairs(route) do IssueMove(alive, wp) end
         IssueAttack(alive, target)
         IssueMove(alive, staging)
     end)
@@ -1140,12 +1230,19 @@ local function AirStep(brain, ctx)
     -- time: in sight -> attack it, out of sight -> sweep its last spot;
     -- while the enemy is lost they sweep its deep water with their sonar.
     local torpsBusy = false
-    if Utils.Count(torps) >= Config.AirStrikeSize or (hunt and Utils.Count(torps) >= 2) then
+    local subACU = NearestKnown(brain, categories.COMMAND, ctx.startPos, MapRadius())
+    subACU = subACU and Utils.IsUnderwater(subACU)
+    if Utils.Count(torps) >= Config.AirStrikeSize or (hunt and Utils.Count(torps) >= 2)
+        or (subACU and Utils.Count(torps) >= Config.TorpACUStrikeMin) then
         -- A small hunting group goes for the hidden ACU only, not for any
         -- ship in the basin.
         local few = Utils.Count(torps) < Config.AirStrikeSize
         local cat = few and categories.COMMAND or (CatNavalTargets + categories.COMMAND)
-        local target = PickStrikeTarget(brain, ctx, cat, staging, false, TorpTargetOk)
+        -- A bigger group may fly into more AA (a submerged ACU sits under
+        -- the base's AA, and torpedoes are the only thing that reach it).
+        local maxAA = Config.AAThreat + Utils.Count(torps) / Config.BomberAAPerUnit
+        local target = PickStrikeTarget(brain, ctx, categories.COMMAND, staging, false, TorpTargetOk, maxAA)
+            or PickStrikeTarget(brain, ctx, cat, staging, false, TorpTargetOk, maxAA)
         if target then
             torpsBusy = LaunchStrike(brain, ctx, torps, target, staging, now)
         elseif hunt or stale then
@@ -1189,7 +1286,7 @@ local function AirStep(brain, ctx)
         st.units = Utils.FilterAlive(st.units)
         FollowUp(brain, ctx, st, now)
         local timeout = (st.search and 120) or (st.mass and Config.AirMassTimeout) or Config.StrikeTimeout
-        local idle = now - st.started > Config.BomberDelay + 5 and AllIdle(st.units)
+        local idle = not st.gathering and now - st.started > Config.BomberDelay + 5 and AllIdle(st.units)
         if Utils.Count(st.units) == 0 or idle or now - st.started > timeout then
             Release(st.units)
             for _, u in ipairs(Utils.FilterAlive(st.escort)) do u.DGEscort, u.DGLine = nil, nil end
@@ -1200,6 +1297,7 @@ local function AirStep(brain, ctx)
     ctx.strikes = keep
 
     AirT4OpStep(brain, ctx, staging, now)
+    MassOpStep(brain, ctx, now)
 
     -- Air experimentals hunt game enders, else the best economy target;
     -- each picks a different target, so they don't crash onto each other.
@@ -1537,6 +1635,16 @@ function MassAirStep(brain, ctx, staging, bombers, now)
     local target = (why == 'join') and team.unit or MassAirTarget(brain, ctx)
     if not Alive(target) then return false end
     local tpos = target:GetPosition()
+    -- Not into a wall of AA: the stack must be big enough for the AA there
+    -- (a game ender deep in the enemy base waits for a bigger stack).
+    if not MassAAOk(Intel.AAThreat(ctx.side, tpos, 50), air) then
+        if not ctx.massAAHeldAt or now - ctx.massAAHeldAt > 60 then
+            ctx.massAAHeldAt = now
+            Utils.Log(brain, 'mass air attack held: ' .. Intel.AAThreat(ctx.side, tpos, 50) .. ' known AA at the target, '
+                .. air .. ' planes')
+        end
+        return false
+    end
     ctx.airMassAt = now
     if why ~= 'join' then Intel.SetAirMass(ctx.side, { unit = target, pos = tpos, at = now, by = brain:GetArmyIndex() }) end
 
@@ -1549,12 +1657,12 @@ function MassAirStep(brain, ctx, staging, bombers, now)
     table.sort(byDist, function(a, b) return a.d > b.d end)
     local escort = {}
     for i = 1, table.getn(byDist) - keepHome do table.insert(escort, byDist[i].u) end
-    local mid = Clamp({ (staging[1] + tpos[1]) / 2, 0, (staging[3] + tpos[3]) / 2 })
+    -- Everyone gathers over the own base first and leaves together
+    -- (MassOpStep): planes from the patrol line would otherwise trickle in.
+    for _, u in ipairs(escort) do u.DGEscort, u.DGLine = true, nil end
     if table.getn(escort) > 0 then
-        for _, u in ipairs(escort) do u.DGEscort, u.DGLine = true, nil end
         IssueClearCommands(escort)
-        IssueAggressiveMove(escort, mid)
-        IssueAggressiveMove(escort, tpos)
+        IssueMove(escort, staging)
     end
     -- Bombers: every free one (raids are off by now), plus air experimentals.
     local strikers = {}
@@ -1566,15 +1674,73 @@ function MassAirStep(brain, ctx, staging, bombers, now)
     end
     for _, u in ipairs(FreeUnits(brain, CatAirT4)) do table.insert(strikers, u) end
     Claim(strikers)
-    -- Close behind the fighters, then the target and whatever is worth it
-    -- around it, then home.
+    if table.getn(strikers) > 0 then
+        IssueClearCommands(strikers)
+        IssueMove(strikers, staging)
+    end
+    ctx.massOp = { target = target, escort = escort, strikers = strikers, staging = staging, at = now }
+    table.insert(ctx.strikes, { units = strikers, escort = escort, started = now, mass = true, target = target,
+        staging = staging, gathering = true })
+    local what = Comms.UnitName(target)
+    Utils.Log(brain, 'mass air attack (' .. why .. '): ' .. table.getn(escort) .. ' fighters, '
+        .. table.getn(strikers) .. ' bombers on ' .. what)
+    local text = (why == 'join') and ('Joining the air attack on their ' .. what .. ' with ' .. air .. ' planes!')
+        or ('Massing all air over the base: ' .. air .. ' planes for their ' .. what .. '!')
+    Comms.Say(brain, ctx.side, 'massair:' .. brain.Name, text, tpos, 'attack')
+    return true
+end
+
+-- Exposed for tests: may a stack of `air` planes go at a target with
+-- `aa` known AA around it?
+function MassAAOk(aa, air)
+    return aa <= Config.AAThreat + air / Config.BomberAAPerUnit
+end
+
+-- Exposed for tests: has the stack gathered (share of it within reach of
+-- the gathering point) or waited long enough?
+function GatherDone(near, total, waited)
+    if total == 0 then return true end
+    return near / total >= Config.AirGatherShare or waited >= Config.AirGatherSeconds
+end
+
+-- The mass attack's gathering: once the stack is together over the own
+-- base, fighters go first on the route with the least AA, bombers right
+-- behind them, then the target and what is worth it around it, then home.
+function MassOpStep(brain, ctx, now)
+    local op = ctx.massOp
+    if not op then return end
+    op.escort = Utils.FilterAlive(op.escort)
+    op.strikers = Utils.FilterAlive(op.strikers)
+    local all = {}
+    for _, u in ipairs(op.escort) do table.insert(all, u) end
+    for _, u in ipairs(op.strikers) do table.insert(all, u) end
+    if not Alive(op.target) or table.getn(all) == 0 then
+        Release(op.strikers)
+        for _, u in ipairs(op.escort) do u.DGEscort, u.DGLine = nil, nil end
+        for _, st in ipairs(ctx.strikes) do if st.gathering and st.target == op.target then st.units = {} end end
+        ctx.massOp = nil
+        return
+    end
+    local near = 0
+    for _, u in ipairs(all) do
+        if Utils.Dist2D(u:GetPosition(), op.staging) < Config.AirGatherRadius then near = near + 1 end
+    end
+    if not GatherDone(near, table.getn(all), now - op.at) then return end
+    local tpos = op.target:GetPosition()
+    local route = SafeAirPath(ctx, op.staging, tpos)
+    if table.getn(op.escort) > 0 then
+        IssueClearCommands(op.escort)
+        for _, wp in ipairs(route) do IssueAggressiveMove(op.escort, wp) end
+        IssueAggressiveMove(op.escort, tpos)
+    end
+    local strikers, target, staging = op.strikers, op.target, op.staging
     local extra = KnownNear(brain, CatBomberExtras, tpos, 60)
     ForkThread(function()
         WaitSeconds(Config.BomberDelay)
         local alive = Utils.FilterAlive(strikers)
         if table.getn(alive) == 0 then return end
         IssueClearCommands(alive)
-        IssueMove(alive, mid)
+        for _, wp in ipairs(route) do IssueMove(alive, wp) end
         if Alive(target) then IssueAttack(alive, target) end
         local n = 0
         for _, x in ipairs(extra) do
@@ -1582,14 +1748,12 @@ function MassAirStep(brain, ctx, staging, bombers, now)
         end
         IssueMove(alive, staging)
     end)
-    table.insert(ctx.strikes, { units = strikers, escort = escort, started = now, mass = true, target = target, staging = staging })
-    local what = Comms.UnitName(target)
-    Utils.Log(brain, 'mass air attack (' .. why .. '): ' .. table.getn(escort) .. ' fighters, '
-        .. table.getn(strikers) .. ' bombers on ' .. what)
-    local text = (why == 'join') and ('Joining the air attack on their ' .. what .. ' with ' .. air .. ' planes!')
-        or ('All air in: ' .. air .. ' planes on their ' .. what .. '!')
-    Comms.Say(brain, ctx.side, 'massair:' .. brain.Name, text, tpos, 'attack')
-    return true
+    for _, st in ipairs(ctx.strikes) do
+        if st.gathering and st.target == op.target then st.gathering, st.started = nil, now end
+    end
+    Utils.Log(brain, 'mass air attack goes in: ' .. near .. '/' .. table.getn(all) .. ' planes gathered, '
+        .. table.getn(route) .. ' detour waypoint(s)')
+    ctx.massOp = nil
 end
 
 -- Torpedo bombers with nothing to strike patrol over the team's hidden

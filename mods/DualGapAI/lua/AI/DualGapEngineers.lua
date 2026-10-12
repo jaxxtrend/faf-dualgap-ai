@@ -742,7 +742,10 @@ end
 
 local function TryAssistSMD(brain, ctx, u)
     local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
-    if table.getn(Intel.Enders(ctx.side, 'YOLONA')) == 0 then return false end
+    -- Any enemy nuke known: the anti-nukes' missiles load faster with help.
+    if table.getn(Intel.Enders(ctx.side, 'YOLONA')) == 0 and table.getn(Intel.Enders(ctx.side, 'NUKE')) == 0 then
+        return false
+    end
     for _, s in ipairs(brain:GetListOfUnits(CatSMD, false)) do
         if Alive(s) and s:GetFractionComplete() >= 1 and s.GetTacticalSiloAmmoCount
             and s:GetTacticalSiloAmmoCount() < Config.SMDAmmoWanted then

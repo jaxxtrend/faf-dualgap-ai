@@ -127,7 +127,11 @@ function Offer(brain, ctx, u, maxPriority)
     local total = Utils.Count(brain:GetListOfUnits(CatEngineer, false))
     for _, p in ipairs(ctx.projects or {}) do
         local capped = p.priority > 1 and held >= math.max(1, math.floor(total * Config.ProjectCrewShare))
-        if (not maxPriority or p.priority <= maxPriority) and not capped
+        -- No engineer crosses the map for a project that already has hands
+        -- (one from the mid for the base and one from the base for the mid).
+        local far = p.site and Utils.Count(p.crew) > 0
+            and Utils.Dist2D(u:GetPosition(), p.site) > Config.ProjectCrewRange
+        if (not maxPriority or p.priority <= maxPriority) and not capped and not far
             and Utils.Count(p.crew) < CrewWanted(brain, p)
             and Utils.TechOf(u) >= (p.minCrewTech or 1) then
             u.DualGapAssigned = true
@@ -516,9 +520,13 @@ local function PlanAntiNuke(brain, ctx)
         center, 40, 'Ally') or {}) do
         if Alive(s) and s:GetFractionComplete() < 1 then return end
     end
-    if not HasT3Engineer(brain) or not IsGroupBuilder(brain, members, ctx.side .. GroupOf(slot.rank)) then return end
-    local p = Add(brain, ctx, { name = 'AntiNuke', key = 'AntiNuke', site = center, crewMax = 4,
-        count = want - have, minCrewTech = 2, priority = 1 })
+    if not HasT3Engineer(brain) then return end
+    -- An enemy nuke known: no waiting for the picked member, whoever can
+    -- starts it, with a big crew. Before that the richest one does.
+    local urgent = nukes > 0
+    if not urgent and not IsGroupBuilder(brain, members, ctx.side .. GroupOf(slot.rank)) then return end
+    local p = Add(brain, ctx, { name = 'AntiNuke', key = 'AntiNuke', site = center, crewMax = urgent and 8 or 4,
+        count = want - have, minCrewTech = 2, priority = 1, maxRadius = 80 })
     if p then
         local why = (nukes > 0) and 'enemy nuke scouted' or 'T3 power is up'
         Comms.Say(brain, ctx.side, 'antinuke:' .. GroupOf(slot.rank), 'Building anti-nuke here (' .. why .. ').',
@@ -728,17 +736,37 @@ end
 
 -- Yolona Oss fires nukes one after another: every base needs a stack of
 -- anti-nukes of its own (on top of the shared group one).
+-- Exposed for tests: anti-nukes a base wants of its own (on top of the
+-- group's): a stack against a Yolona Oss, one once the enemy has launched
+-- a nuke (a player builds one at every base after the first launch).
+function BaseAntiNukesWanted(yolona, enemyLaunched)
+    if yolona then return Config.YolonaAntiNukes end
+    if enemyLaunched then return 1 end
+    return 0
+end
+
+local function EnemyEverLaunched(brain)
+    local me = brain:GetArmyIndex()
+    for i, b in ipairs(ArmyBrains or {}) do
+        if IsEnemy(me, i) and Intel.NukeLaunchTime(i) then return true end
+    end
+    return false
+end
+
 local function PlanYolonaDefense(brain, ctx)
-    if table.getn(Intel.Enders(ctx.side, 'YOLONA')) == 0 or not HasT3Engineer(brain) then return end
-    if Find(ctx, 'AntiNukeBase') then return end
+    if not HasT3Engineer(brain) or Find(ctx, 'AntiNukeBase') then return end
+    local yolona = table.getn(Intel.Enders(ctx.side, 'YOLONA')) > 0
+    local want = BaseAntiNukesWanted(yolona, EnemyEverLaunched(brain))
+    if want == 0 then return end
     local have = Utils.CountAround(brain, categories.ANTIMISSILE * categories.TECH3 * categories.STRUCTURE,
         ctx.startPos, 60, 'Ally')
-    if have < Config.YolonaAntiNukes then
+    if have < want then
         local p = Add(brain, ctx, { name = 'AntiNukeBase', key = 'AntiNuke', site = ctx.startPos, crewMax = 8,
-            count = Config.YolonaAntiNukes - have, minCrewTech = 2, gap = 1, priority = 1 })
+            count = want - have, minCrewTech = 2, gap = 1, priority = 1 })
         if p then
-            Comms.Say(brain, ctx.side, 'yolona:' .. brain.Name, 'Enemy Yolona Oss! Stacking anti-nukes at my base.',
-                ctx.startPos, 'alert')
+            local text = yolona and 'Enemy Yolona Oss! Stacking anti-nukes at my base.'
+                or 'They are nuking us: anti-nuke at my base, now.'
+            Comms.Say(brain, ctx.side, 'yolona:' .. brain.Name, text, ctx.startPos, 'alert')
         end
     end
 end
@@ -1170,6 +1198,40 @@ function NukeKeepFocus(shots, value0, valueNow)
     return true
 end
 
+-- Own team's (allied) mass within the blast of a point.
+function FriendlyMassAround(brain, pos)
+    local m = 0
+    for _, u in ipairs(brain:GetUnitsAroundPoint(categories.ALLUNITS - categories.WALL, pos,
+        Config.NukeRadius + Config.NukeFriendlyMargin, 'Ally') or {}) do
+        if Alive(u) then
+            local eco = u:GetBlueprint().Economy
+            m = m + ((eco and eco.BuildCostMass) or 0)
+        end
+    end
+    return m
+end
+
+-- Exposed for tests: may a nuke go where this much of our own team's mass
+-- stands?
+function NukeFriendlyOk(friendlyMass)
+    return friendlyMass <= Config.NukeFriendlyMax
+end
+
+-- Before a salvo: the team's DualGap units inside the blast walk out of it.
+local function EvacuateBlast(brain, target)
+    local r = Config.NukeRadius + Config.NukeFriendlyMargin
+    for _, u in ipairs(brain:GetUnitsAroundPoint(categories.MOBILE - categories.AIR, target, r, 'Ally') or {}) do
+        if Alive(u) and u:GetAIBrain().DualGap then
+            local p = u:GetPosition()
+            local dx, dz = p[1] - target[1], p[3] - target[3]
+            local d = math.max(1, math.sqrt(dx * dx + dz * dz))
+            local x, z = target[1] + dx / d * (r + 25), target[3] + dz / d * (r + 25)
+            IssueClearCommands({ u })
+            IssueMove({ u }, { x, GetSurfaceHeight(x, z), z })
+        end
+    end
+end
+
 local function PickNukeTarget(brain, ctx, from)
     local army = brain:GetArmyIndex()
     local ecoBases = EnemyEcoBases(ctx)
@@ -1189,7 +1251,9 @@ local function PickNukeTarget(brain, ctx, from)
                 local kind = TargetKind(e)
                 local value = ValueAround(brain, p)
                 local ender, acu = kind == 'ENDER', kind == 'ACU'
-                if ender or acu or value >= Config.NukeMinValue then
+                -- Never into our own team's army or base.
+                local friendly = FriendlyMassAround(brain, p)
+                if NukeFriendlyOk(friendly) and (ender or acu or value >= Config.NukeMinValue) then
                     local score = NukeTargetScore(value, NearAny(p, ecoBases, 90), ender, acu)
                     if not bestScore or score > bestScore then
                         best, bestScore, bestValue = { p[1], p[2], p[3] }, score, value
@@ -1293,6 +1357,7 @@ local function NukeStep(brain, ctx)
     f.shots = f.shots + n
     Utils.Log(brain, 'nuke salvo of ' .. n .. ' (' .. f.shots .. '/' .. Config.NukeShotsPerTarget .. ' at this point)')
     for _, sh in ipairs(shots) do sh.unit.DGNukeBusy = true end
+    EvacuateBlast(brain, target)
     ForkThread(function()
         local last = shots[1].flight
         for _, sh in ipairs(shots) do

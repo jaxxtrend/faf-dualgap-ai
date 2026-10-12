@@ -1314,6 +1314,24 @@ check(sm[0] == 3400 and sm[1] == 5000, 'staff memory: an enemy army out of sight
 check(sm[2] and not sm[3] and not sm[4], 'staff: a stance holds 30 s, going to DEFEND is never delayed')
 check(sm[5] and sm[6] is False and sm[7] is False, 'staff: the focus holds a minute; after that a clearly better zone takes it')
 
+fb = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+local aaWall = function(p) if p[1] > 180 and p[1] < 220 and p[3] < 130 and p[3] > 70 then return 5 end return 0 end
+local straight = A.AirRouteCost({ { 0, 0, 100 }, { 400, 0, 100 } }, aaWall)
+local around = A.AirRouteCost({ { 0, 0, 100 }, { 200, 0, 250 }, { 400, 0, 100 } }, aaWall)
+return straight > 0, around == 0,
+       A.MassAAOk(10, 40), A.MassAAOk(30, 40),
+       A.GatherDone(8, 10, 5), A.GatherDone(5, 10, 5), A.GatherDone(5, 10, 60),
+       P.NukeFriendlyOk(300), P.NukeFriendlyOk(5000),
+       P.BaseAntiNukesWanted(false, true), P.BaseAntiNukesWanted(false, false), P.BaseAntiNukesWanted(true, false) > 1
+""")
+check(fb[0] and fb[1], 'air route: a line through AA costs, a dog-leg around it does not')
+check(fb[2] and not fb[3], 'mass attack: a stack of 40 may face ~10 known AA, not a wall of 30')
+check(fb[4] and not fb[5] and fb[6], 'mass attack gathers until 80% are together (or waited long enough)')
+check(fb[7] and not fb[8], 'nukes never land on our own army or base')
+check(fb[9] == 1 and fb[10] == 0 and fb[11], 'every base builds an anti-nuke once the enemy has launched a nuke')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
