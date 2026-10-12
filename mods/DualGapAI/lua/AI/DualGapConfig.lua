@@ -580,3 +580,16 @@ StatsMoveInterval   = 10
 -- Team chat and map pings (DualGapComms): the same alert is repeated no more
 -- often than this.
 PingCooldown = 60
+
+-- General staff (DualGapCommand): every StaffSeconds it weighs the team's
+-- forces against the known enemy forces per zone. ATTACK when own mass is
+-- StaffAttackRatio x the enemy's (kept until it drops below
+-- StaffHoldRatio x), DEFEND when the enemy's is StaffDefendRatio x ours;
+-- a side needs StaffMinForce mass to attack / to count as a threat. Static
+-- defences count at StaffDefenceWeight of their mass.
+StaffSeconds       = 15
+StaffAttackRatio   = 1.4
+StaffHoldRatio     = 1.1
+StaffDefendRatio   = 1.4
+StaffMinForce      = 1500
+StaffDefenceWeight = 0.5

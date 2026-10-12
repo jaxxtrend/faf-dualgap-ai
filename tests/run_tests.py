@@ -1209,6 +1209,19 @@ return p[1]
 """)
 check(nd == 2, 'a base ACU dodges a nuke to the least built-up spot')
 
+gs = lua.execute(r"""
+local G = import('/mods/DualGapAI/lua/AI/DualGapCommand.lua')
+local zones = { UPPER = { own = 5000, enemy = 2000, stance = 'ATTACK' }, LOWER = { own = 6000, enemy = 1000, stance = 'ATTACK' },
+                WATER = { own = 1000, enemy = 3000, stance = 'DEFEND' } }
+return G.ZoneOf(0.45, 0.31), G.ZoneOf(0.45, 0.43), G.ZoneOf(0.5, 0.72), G.ZoneOf(0.1, 0.3),
+       G.Stance(3000, 1000, nil), G.Stance(1000, 3000, nil), G.Stance(2000, 1800, nil), G.Stance(2000, 1700, 'ATTACK'),
+       G.Stance(500, 0, nil), G.PickFocus(zones)
+""")
+check(gs[0] == 'UPPER' and gs[1] == 'LOWER' and gs[2] == 'WATER' and gs[3] is None, 'staff zones: the mid defensive points and the basin fall into their zones, the bases into none')
+check(gs[4] == 'ATTACK' and gs[5] == 'DEFEND' and gs[6] == 'HOLD' and gs[7] == 'ATTACK', 'staff stance: attack when clearly stronger (and keeps it), defend when clearly weaker, else hold')
+check(gs[8] == 'HOLD', 'staff stance: a handful of units is no attack force')
+check(gs[9] == 'LOWER', 'staff focus: the attack zone with the best ratio')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
