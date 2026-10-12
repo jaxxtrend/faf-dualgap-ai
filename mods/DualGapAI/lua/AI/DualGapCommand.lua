@@ -67,6 +67,31 @@ function PickFocus(zones)
     return best
 end
 
+-- Exposed for tests: the remembered enemy mass of a zone - what is seen
+-- now, or what was seen before fading by StaffMemoryDecay per evaluation
+-- (an army out of sight has not gone away).
+function Remember(known, prevEstimate, decay)
+    return math.max(known, (prevEstimate or 0) * decay)
+end
+
+-- Exposed for tests: keep the previous stance? A stance holds at least
+-- StaffStanceHold seconds; going to DEFEND is never delayed.
+function KeepStance(prevStance, changedAt, now, newStance)
+    if not prevStance or newStance == prevStance or newStance == 'DEFEND' then return false end
+    return now - (changedAt or -1000) < Config.StaffStanceHold
+end
+
+-- Exposed for tests: keep the previous focus? While it is still an ATTACK
+-- zone, for at least StaffFocusHold seconds and against a candidate that is
+-- not StaffFocusSwitch x better.
+function KeepFocus(prevFocus, focusAt, now, zones, candidate)
+    if not prevFocus or not zones[prevFocus] or zones[prevFocus].stance ~= 'ATTACK' then return false end
+    if candidate == prevFocus or not candidate then return true end
+    if now - (focusAt or -1000) < Config.StaffFocusHold then return true end
+    local function ratio(z) return zones[z].own / math.max(1, zones[z].enemy) end
+    return ratio(candidate) < Config.StaffFocusSwitch * ratio(prevFocus)
+end
+
 local function Mass(u)
     local eco = u:GetBlueprint().Economy
     return (eco and eco.BuildCostMass) or 0
@@ -141,13 +166,25 @@ local function Evaluate(side, brain)
             m[name].enemy = m[name].enemy * (1 + noise * (2 * r - 1))
         end
     end
-    local orders = { at = GetGameTimeSeconds(), zones = {} }
+    local now = GetGameTimeSeconds()
+    local orders = { at = now, zones = {} }
     for _, name in ipairs(ZoneOrder) do
-        local prevStance = prev and prev.zones[name] and prev.zones[name].stance
-        orders.zones[name] = { own = math.floor(m[name].own), enemy = math.floor(m[name].enemy),
-            stance = Stance(m[name].own, m[name].enemy, prevStance) }
+        local pz = prev and prev.zones[name]
+        local prevStance = pz and pz.stance
+        local enemy = Remember(m[name].enemy, pz and pz.enemyEst, Config.StaffMemoryDecay)
+        local stance = Stance(m[name].own, enemy, prevStance)
+        local changedAt = pz and pz.changedAt
+        if KeepStance(prevStance, changedAt, now, stance) then stance = prevStance
+        elseif stance ~= prevStance then changedAt = now end
+        orders.zones[name] = { own = math.floor(m[name].own), enemy = math.floor(enemy), enemyEst = enemy,
+            stance = stance, changedAt = changedAt }
     end
-    orders.focus = PickFocus(orders.zones)
+    local candidate = PickFocus(orders.zones)
+    if prev and KeepFocus(prev.focus, prev.focusAt, now, orders.zones, candidate) then
+        orders.focus, orders.focusAt = prev.focus, prev.focusAt
+    else
+        orders.focus, orders.focusAt = candidate, now
+    end
     st.orders = orders
 
     -- Announce changes.

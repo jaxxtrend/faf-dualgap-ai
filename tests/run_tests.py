@@ -1302,6 +1302,18 @@ check(lv[5] == 'EXPERT' and lv[6] == 'EASY', 'the AIx entries carry the level to
 check(lv[7] and lv[8] and lv[9], 'levels: slower reactions going down, Expert is the full bot, Easy without commands or nukes')
 check(lv[10] == 6 and lv[11] == 8, 'level settings per bot, Expert by default')
 
+sm = lua.execute(r"""
+local G = import('/mods/DualGapAI/lua/AI/DualGapCommand.lua')
+local z = { UPPER = { own = 3000, enemy = 1000, stance = 'ATTACK' }, LOWER = { own = 5000, enemy = 1000, stance = 'ATTACK' },
+            WATER = { own = 9000, enemy = 1000, stance = 'ATTACK' } }
+return G.Remember(0, 4000, 0.85), G.Remember(5000, 1000, 0.85),
+       G.KeepStance('ATTACK', 100, 110, 'HOLD'), G.KeepStance('ATTACK', 100, 140, 'HOLD'), G.KeepStance('ATTACK', 100, 105, 'DEFEND'),
+       G.KeepFocus('UPPER', 100, 130, z, 'LOWER'), G.KeepFocus('UPPER', 100, 200, z, 'LOWER'), G.KeepFocus('UPPER', 100, 200, z, 'WATER')
+""")
+check(sm[0] == 3400 and sm[1] == 5000, 'staff memory: an enemy army out of sight fades, a bigger one seen now counts at once')
+check(sm[2] and not sm[3] and not sm[4], 'staff: a stance holds 30 s, going to DEFEND is never delayed')
+check(sm[5] and sm[6] is False and sm[7] is False, 'staff: the focus holds a minute; after that a clearly better zone takes it')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

@@ -411,6 +411,9 @@ end
 
 function FindBuildSpot(brain, bpId, pos, maxRadius, gap)
     maxRadius = maxRadius or 30
+    if type(pos) ~= 'table' or not pos[1] or not pos[3] then
+        error('FindBuildSpot: bad position ' .. tostring(pos) .. ' for ' .. tostring(bpId))
+    end
     if not Reserved(bpId, pos) and brain:CanBuildStructureAt(bpId, pos) and HasClearance(brain, bpId, pos, gap) then return pos end
     local r = 4
     while r <= maxRadius do

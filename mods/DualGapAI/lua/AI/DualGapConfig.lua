@@ -593,6 +593,14 @@ StaffHoldRatio     = 1.1
 StaffDefendRatio   = 1.4
 StaffMinForce      = 1500
 StaffDefenceWeight = 0.5
+-- The staff remembers an enemy force out of sight, fading by
+-- StaffMemoryDecay per evaluation (0.85 per 15 s: about half in a minute).
+-- A stance holds StaffStanceHold seconds (DEFEND at once); the focus holds
+-- StaffFocusHold seconds and moves only to a zone StaffFocusSwitch x better.
+StaffMemoryDecay   = 0.85
+StaffStanceHold    = 30
+StaffFocusHold     = 60
+StaffFocusSwitch   = 1.3
 
 -- Land command (DualGapLandCommand): every LandCommandSeconds it turns the
 -- staff's stances into tasks for the GROUND players. PUSH waves leave at

@@ -1458,7 +1458,22 @@ local function ProjectsStep(brain, ctx)
     -- Iterate a copy: finished projects remove themselves.
     local list = {}
     for _, p in ipairs(ctx.projects) do table.insert(list, p) end
-    for _, p in ipairs(list) do ProjectTick(brain, ctx, p) end
+    for _, p in ipairs(list) do
+        -- One broken project must not stop the others (they tick in turn):
+        -- drop it for a while and say what was wrong with it.
+        local ok, err = pcall(ProjectTick, brain, ctx, p)
+        if not ok then
+            local site = p.site
+            local where = (type(site) == 'table')
+                and (tostring(site[1]) .. ',' .. tostring(site[2]) .. ',' .. tostring(site[3]) .. ' n=' .. table.getn(site))
+                or tostring(site)
+            WARN('DualGap [' .. tostring(brain.Name) .. '] project ' .. tostring(p.name) .. ' failed at site ' .. where
+                .. ': ' .. tostring(err))
+            ctx.projectRetry = ctx.projectRetry or {}
+            ctx.projectRetry[p.name] = GetGameTimeSeconds() + Config.ProjectRetrySeconds
+            Remove(ctx, p)
+        end
+    end
 end
 
 function Start(brain, ctx)
