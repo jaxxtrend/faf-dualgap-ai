@@ -1345,6 +1345,18 @@ return I.Known(unit(false, false, true), 1), I.Known(unit(true, false, true), 1)
 check(not kn[0], 'a radar blip never seen is unknown (its type is not known): no attacking an unscouted T4')
 check(kn[1] and not kn[2], 'a unit seen before is followed on radar; out of sight and radar it is not known')
 
+rt = lua.execute(r"""
+local ai = import('/mods/DualGapAI/lua/AI/CustomAIs_v2/DualGapAI.lua').AI
+local r, ok = {}, true
+for _, e in ipairs(ai.AIList) do
+    r[e.key] = e.rating
+    ok = ok and e.ratingMapMultiplier[1024] == 1.0 and e.ratingNegativeThreshold ~= nil
+end
+for _, e in ipairs(ai.CheatAIList) do ok = ok and e.ratingCheatMultiplier > 0 and e.ratingOmniBonus > 0 end
+return r.dualgapeasy < r.dualgapnormal and r.dualgapnormal < r.dualgaphard and r.dualgaphard < r.dualgap, ok
+""")
+check(rt[0] and rt[1], 'lobby ratings rise with the level; full fields for the lobby (map multiplier, thresholds, AIx bonuses)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
