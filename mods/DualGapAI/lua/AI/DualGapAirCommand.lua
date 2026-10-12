@@ -103,7 +103,9 @@ local function Step(side)
                 if (not prev or prev.mode ~= mode) and SayText[mode] then
                     Comms.Say(b, side, 'aircmd:' .. b.Name, SayText[mode], ctx.startPos, (mode == 'DEFEND') and 'alert' or 'attack')
                 end
-                if support and (not prev or prev.support ~= support) then
+                -- Gunships work over the mids only (the water is the torpedo
+                -- bombers' business), so no call for the water.
+                if support and support ~= 'WATER' and (not prev or prev.support ~= support) then
                     Comms.Say(b, side, 'airsupport:' .. b.Name, 'Gunships to the ' .. ZoneName[support] .. '.',
                         SupportPoint(support, side), 'move')
                 end
