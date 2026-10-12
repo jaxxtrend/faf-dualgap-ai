@@ -105,7 +105,20 @@ local function Remove(ctx, p)
     end
 end
 
+-- Exposed for tests: crew of a project while the energy has been out a
+-- while (DualGapEngineers sets brain.DGEnergyOut): the non-urgent ones keep
+-- one engineer, the rest go build power, as players pull engineers off
+-- their projects in a stall.
+function StallCrew(wanted, priority, energyOut)
+    if energyOut and priority > 1 then return math.min(wanted, 1) end
+    return wanted
+end
+
 local function CrewWanted(brain, p)
+    return StallCrew(BaseCrewWanted(brain, p), p.priority or 1, brain.DGEnergyOut)
+end
+
+function BaseCrewWanted(brain, p)
     if p.throttle and p.throttle(brain) then return 1 end
     if p.share then
         local total = Utils.Count(brain:GetListOfUnits(CatEngineer, false))

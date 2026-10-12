@@ -1407,6 +1407,24 @@ return S.TechSlot(true, 3), S.TechSlot(false, 2), S.TechSlot(false, nil)
 """)
 check(ts[0] == 4 and ts[1] == 2 and ts[2] == 1, 'telemetry: army composition by tech slot (experimental = 4)')
 
+rb = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
+return A.RebuildDecision(true, false, 0, false, false), A.RebuildDecision(false, false, 0, false, false),
+       A.RebuildDecision(true, true, 0, false, false), A.RebuildDecision(true, false, 99, false, false),
+       A.RebuildDecision(true, false, 0, true, false), A.RebuildDecision(true, false, 0, false, true)
+""")
+check(rb[0] and not rb[1] and not rb[2] and not rb[3] and not rb[4] and not rb[5],
+      'an ACU without a base comes out to rebuild it, only while nothing seen threatens it')
+
+st = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+local E = import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua')
+return P.StallCrew(4, 2, true), P.StallCrew(4, 1, true), P.StallCrew(4, 2, false),
+       E.PowerHelp(2, true), E.PowerHelp(1, true), E.PowerHelp(3, false)
+""")
+check(st[0] == 1 and st[1] == 4 and st[2] == 4, 'energy out: non-urgent projects keep one engineer, the rest go to power')
+check(st[3] and not st[4] and not st[5], 'energy out: engineers help the generators already going up')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

@@ -199,6 +199,23 @@ function SafetyDecision(hp, lateT2, stratArty, torp, bombers, otherAir, landT4)
     return nil
 end
 
+-- Exposed for tests: the base is gone (no factory, no engineer left) and
+-- nothing seen threatens the start area: the hidden ACU comes out and
+-- rebuilds it, as a player would (sitting under water with nothing to build
+-- with only waits for the end).
+function RebuildDecision(homeless, enemyNear, bombers, landT4, stratArty)
+    return homeless and not enemyNear and bombers < Config.BomberThreat and not landT4 and not stratArty
+end
+
+local CatOwnBuilders = categories.FACTORY * categories.STRUCTURE + categories.ENGINEER - categories.COMMAND
+
+local function Homeless(brain)
+    for _, u in ipairs(brain:GetListOfUnits(CatOwnBuilders, false)) do
+        if not u.Dead and u:GetFractionComplete() >= 1 then return false end
+    end
+    return true
+end
+
 -- Exposed for tests: how well a spot is defended against an air T4
 -- (T3 anti-air near it counts double, being under a shield a lot).
 function RefugeScore(aaT3, aaOther, shielded)
@@ -311,11 +328,36 @@ local function SafetyStep(brain, ctx)
         local lateT2 = ctx.t2EndTime ~= nil and GetGameTimeSeconds() >= ctx.t2EndTime
         local torp, bombers, otherAir = AirThreat(brain, pos)
         local landT4 = KnownStrength(brain, CatEnemyLandT4, pos, Config.T4DangerRadius) > 0
-        local want = SafetyDecision(hp, lateT2, EnemyStratArtyPresent(brain, pos), torp, bombers, otherAir, landT4)
+        local stratArty = EnemyStratArtyPresent(brain, pos)
+        local want = SafetyDecision(hp, lateT2, stratArty, torp, bombers, otherAir, landT4)
+        local now = GetGameTimeSeconds()
+        -- No base left: out of the water to rebuild it while the start area
+        -- is clear of seen enemies; back under at the first sight of one.
+        if Homeless(brain) then
+            local enemyNear = KnownCount(brain, CatEnemyTargets, ctx.startPos, Config.RebuildClearRadius) > 0
+                or KnownCount(brain, CatEnemyTargets, pos, Config.RebuildClearRadius / 2) > 0
+                or KnownCount(brain, CatEnemyWarship, ctx.startPos, Config.RebuildClearRadius) > 0
+            local _, baseBombers = AirThreat(brain, ctx.startPos)
+            local arty = stratArty or EnemyStratArtyPresent(brain, ctx.startPos)
+            if RebuildDecision(true, enemyNear, math.max(bombers, baseBombers), landT4, arty) then
+                if ctx.acuState ~= 'LANDBUILD' then
+                    Utils.Log(brain, 'base lost: the ACU comes out to rebuild it')
+                    Comms.Say(brain, ctx.side, 'rebuild:' .. brain.Name, 'My base is gone, rebuilding it with the ACU.')
+                    IssueClearCommands({ acu })
+                    IssueMove({ acu }, ctx.startPos)
+                    ctx.acuState = 'LANDBUILD'
+                    SetHideSpot(brain, ctx, nil)
+                end
+                ctx.landUntil = now + Config.LandHoldSeconds
+                return
+            elseif ctx.acuState == 'LANDBUILD' and enemyNear then
+                ctx.landUntil = nil          -- enemies back: hide now
+                want = 'DEEP'
+            end
+        end
         -- Stayed on land for torpedo bombers: keep to it a while, the count
         -- around flickers (no diving under them two seconds later); only a
         -- bomber swarm overrides it.
-        local now = GetGameTimeSeconds()
         if want == 'DEEP' and ctx.acuState == 'LANDBUILD' and ctx.landUntil and now < ctx.landUntil
             and bombers < Config.BomberThreat then
             want = nil

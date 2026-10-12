@@ -598,9 +598,24 @@ local function GridSpot(brain, id, anchors)
     return nil
 end
 
+-- Exposed for tests: in a stall with enough generators already going up,
+-- the engineer helps one of them (one engineer each builds them too slowly
+-- to get out of it).
+function PowerHelp(building, stalled)
+    return stalled and building >= 2
+end
+
 local function TryPower(brain, ctx, u)
     local building = PowerUnderConstruction(brain)
-    if not EnergyLow(brain) or building >= 3 or (building >= 2 and not EnergyStalled(brain)) then return false end
+    if not EnergyLow(brain) then return false end
+    if PowerHelp(building, EnergyStalled(brain)) then
+        local g = FirstUnfinished(brain, categories.ENERGYPRODUCTION * categories.STRUCTURE, u:GetPosition(), 120)
+        if g then
+            IssueRepair({ u }, g)
+            return true
+        end
+    end
+    if building >= 3 or (building >= 2 and not EnergyStalled(brain)) then return false end
     local id = BestPowerId(brain, u)
     if not id then return false end
     -- Power may skip the queue only when energy is nearly gone.
@@ -983,6 +998,9 @@ local function GeneralTask(brain, ctx, u, baseOnly)
     if banked and (TryFactories(brain, ctx, u) or TryAssistUpgrade(brain, ctx, u)
         or TryAssistFactories(brain, ctx, u)) then return end
     if TryMex(brain, ctx, u, baseOnly) then return end
+    -- No factory left (a base being rebuilt): one before anything else.
+    if Utils.Count(brain:GetListOfUnits(categories.FACTORY * categories.STRUCTURE, false)) == 0
+        and TryFactories(brain, ctx, u) then return end
     if TryPower(brain, ctx, u) then return end
     if not baseOnly and Projects().Offer(brain, ctx, u) then return end
     if TryRebuild(brain, ctx, u) then return end
@@ -1013,6 +1031,14 @@ local RoleTasks = {
 }
 
 function EngineersStep(brain, ctx)
+    -- Energy out for a while: the projects hand engineers back for power.
+    local now = GetGameTimeSeconds()
+    if EnergyStalled(brain) then
+        ctx.stallSince = ctx.stallSince or now
+    else
+        ctx.stallSince = nil
+    end
+    brain.DGEnergyOut = ctx.stallSince ~= nil and now - ctx.stallSince >= Config.StallPullSeconds
     ctx.upkeepTick = (ctx.upkeepTick or 0) + 1
     if ctx.upkeepTick >= 5 then
         ctx.upkeepTick = 0

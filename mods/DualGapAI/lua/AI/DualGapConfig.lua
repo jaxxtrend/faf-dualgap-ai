@@ -746,3 +746,12 @@ ArtySwitchRatio = 1.6
 -- A blind nuke (nothing scouted worth it) goes only at an enemy base the
 -- team has seen: BlindNukeSeenStructures known structures around it.
 BlindNukeSeenStructures = 5
+
+-- A GROUND / NAVAL ACU whose base is gone (no factory, no engineer) leaves
+-- its hiding spot to rebuild while no seen enemy is within RebuildClearRadius
+-- of the start (half of it around the ACU itself).
+RebuildClearRadius = 120
+
+-- Energy out (below EnergyStall) for StallPullSeconds: the non-urgent
+-- projects keep one engineer each, the others build or help power.
+StallPullSeconds = 15
