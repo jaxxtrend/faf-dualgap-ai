@@ -579,7 +579,7 @@ StatsMoveInterval   = 10
 
 -- Team chat and map pings (DualGapComms): the same alert is repeated no more
 -- often than this.
-PingCooldown = 60
+PingCooldown = 90
 
 -- General staff (DualGapCommand): every StaffSeconds it weighs the team's
 -- forces against the known enemy forces per zone. ATTACK when own mass is
@@ -729,3 +729,20 @@ MidPlans = {
     STAGGER = { pd = { { 4, -9 }, { -1, 0 }, { 4, 9 } }, shield = { { -4, -4 } }, aa = { { -4, 5 } }, walls = false,
                 proxy = { shields = 2, arty = 2, aa = 2, shift = 0 } },
 }
+
+-- Callouts per team: a map ping at most every TeamPingGap seconds (the
+-- important alerts - base under attack, game ender / T4 spotted - every
+-- TeamAlertGap), a chat line every TeamChatGap. Plans and orders are chat
+-- lines only (DualGapComms.PingKeys).
+TeamPingGap  = 30
+TeamAlertGap = 10
+TeamChatGap  = 12
+
+-- Artillery keeps its target: a new one only when it is ArtySwitchRatio x
+-- better, or the old one is gone / out of sight. Shields seen around a
+-- target count as up unless they are seen down right now.
+ArtySwitchRatio = 1.6
+
+-- A blind nuke (nothing scouted worth it) goes only at an enemy base the
+-- team has seen: BlindNukeSeenStructures known structures around it.
+BlindNukeSeenStructures = 5

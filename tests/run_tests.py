@@ -1389,6 +1389,18 @@ check(f7[6] == 'LAND' and f7[7] == 'NAVY' and f7[8] == 'NAVY' and f7[9] == 'LAND
 check(f7[10] and not f7[11] and f7[12] and f7[13], 'scouting: each AIR scouts its half of the map (overlapping in the middle)')
 check(f7[14] >= 3 and f7[15], 'mid fortification: several variants, each with point defences and a proxy')
 
+cm = lua.execute(r"""
+local Co = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+return Co.DescribeNames({ 'Brick', 'Brick', 'Monkeylord', 'Brick', 'Fatboy', 'Loyalist', 'Titan' }, 3),
+       Co.TeamGapOk(nil, 0, true, false), Co.TeamGapOk(100, 110, true, false), Co.TeamGapOk(100, 112, true, true),
+       Co.TeamGapOk(100, 105, false, false), Co.KeyPrefix('distress:ARMY_3'),
+       P.ArtySwitch(nil, 10, false), P.ArtySwitch(40, 45, false), P.ArtySwitch(40, 100, false), P.ArtySwitch(40, 45, true)
+""")
+check(cm[0].startswith('3 Brick') and 'others' in cm[0], 'callouts say who attacks: "3 Brick, 1 Monkeylord, 1 Fatboy, 2 others" (%s)' % cm[0])
+check(cm[1] and not cm[2] and cm[3] and not cm[4] and cm[5] == 'distress', 'team callouts are rate limited (pings, alerts, chat)')
+check(cm[6] and not cm[7] and cm[8] and cm[9], 'artillery keeps its target unless a clearly better one shows up (or it is gone)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

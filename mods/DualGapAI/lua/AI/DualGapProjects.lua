@@ -1284,8 +1284,16 @@ function BlindNukeTarget(brain, ctx)
     for name, sl in pairs(RoleManager.GetSlots()) do
         if sl.side == enemy and Mex.Holder(name) == name then table.insert(list, sl.pos) end
     end
+    local army = brain:GetArmyIndex()
     for _, p in ipairs(list) do
-        if Intel.AntiNukesCovering(ctx.side, p) == 0 then return { p[1], p[2], p[3] } end
+        -- Only a base the team has actually seen (no shooting at the map).
+        local seen = 0
+        for _, e in ipairs(brain:GetUnitsAroundPoint(categories.STRUCTURE - categories.WALL, p, 60, 'Enemy') or {}) do
+            if Intel.Known(e, army) then seen = seen + 1 end
+        end
+        if seen >= Config.BlindNukeSeenStructures and Intel.AntiNukesCovering(ctx.side, p) == 0 then
+            return { p[1], p[2], p[3] }
+        end
     end
     return nil
 end
@@ -1327,7 +1335,7 @@ local function NukeStep(brain, ctx)
         if not pos then
             pos = BlindNukeTarget(brain, ctx)
             value = pos and Config.NukeMinValue or nil
-            if pos then Utils.Log(brain, 'nuke: nothing scouted worth it, a missile into an enemy base without anti-nuke') end
+            if pos then Utils.Log(brain, 'nuke: nothing scouted worth it, a missile into a scouted enemy base without anti-nuke') end
         end
         if not pos then
             ctx.nukeFocus = nil
@@ -1404,8 +1412,9 @@ local function WeaponsStep(brain, ctx)
         end
     end
     NukeStep(brain, ctx)
-    -- Artillery re-picks every planner tick: a better target (an ACU walking
-    -- into range, a shield going down) takes over from the current one.
+    -- Artillery looks every planner tick but keeps its target unless a
+    -- clearly better one shows up (an ACU walking into range, a shield seen
+    -- going down) - see ArtySwitch.
     -- Novax satellites fly anywhere, so their range is the whole map; they
     -- are untargetable, so enemy AA doesn't matter to them.
     local shooters = {}
@@ -1467,6 +1476,13 @@ end
 -- with nothing better than eco / factories to shoot is left to its own
 -- automatic targeting - an explicit order on a mex would make it ignore the
 -- army walking up to it.
+-- Exposed for tests: switch the gun to a new target (score) from the
+-- current one (curScore, nil when gone / out of sight)?
+function ArtySwitch(curScore, score, idle)
+    if not curScore or idle then return true end
+    return score >= Config.ArtySwitchRatio * curScore
+end
+
 function AimShooter(brain, ctx, a, range, longRange)
     local t, score = BestTarget(brain, ctx, a:GetPosition(), range, longRange)
     local current = Alive(a.DGTarget) and a.DGTarget or nil
@@ -1475,7 +1491,11 @@ function AimShooter(brain, ctx, a, range, longRange)
         a.DGTarget, a.DGScore = nil, nil
         return
     end
-    if t and t ~= current and (not current or a:IsIdleState() or score > (a.DGScore or 0)) then
+    -- Like a player: point the gun and let it work. Switch only for a
+    -- clearly better target (a game ender, an ACU in reach), or when the old
+    -- one is gone or out of sight.
+    local curScore = current and Intel.Known(current, brain:GetArmyIndex()) and a.DGScore or nil
+    if t and t ~= current and ArtySwitch(curScore, score, a:IsIdleState()) then
         IssueClearCommands({ a })
         if EntityCategoryContains(categories.STRUCTURE, t) then
             local p = t:GetPosition()

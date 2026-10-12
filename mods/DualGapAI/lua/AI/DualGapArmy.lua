@@ -490,7 +490,9 @@ local function DistressStep(brain, ctx)
     local own = mass >= Config.DistressMass
     if own then
         Intel.PostDistress(ctx.side, brain.Name, ctx.startPos, mass)
-        Comms.Say(brain, ctx.side, 'distress:' .. brain.Name, 'My base is under attack, help!', ctx.startPos, 'alert')
+        local seen = KnownNear(brain, CatEnemyArmy, ctx.startPos, Config.DistressRadius)
+        Comms.Say(brain, ctx.side, 'distress:' .. brain.Name, 'My base is under attack by ' .. Comms.Describe(seen)
+            .. ' (~' .. math.floor(mass) .. ' mass), help!', ctx.startPos, 'alert')
     end
     ctx.helpTarget = nil
     local bestD
@@ -558,9 +560,11 @@ local function LandStep(brain, ctx)
             IssueMove({ u }, rally)
         end
     end
-    local enemyAtWall = table.getn(KnownNear(brain, CatEnemyLand, ctx.choke, 70)) >= 5
+    local atWall = KnownNear(brain, CatEnemyLand, ctx.choke, 70)
+    local enemyAtWall = table.getn(atWall) >= 5
     if enemyAtWall then
-        Comms.Say(brain, ctx.side, 'wall:' .. brain.Name, 'Enemy army at my wall, need help here!', ctx.choke, 'alert')
+        Comms.Say(brain, ctx.side, 'wall:' .. brain.Name, 'Enemy at my wall: ' .. Comms.Describe(atWall) .. '. Need help here!',
+            ctx.choke, 'alert')
     end
     local size = Config.WaveSize[TopTech(brain)] or 10
     local ender = EnderTarget(ctx)

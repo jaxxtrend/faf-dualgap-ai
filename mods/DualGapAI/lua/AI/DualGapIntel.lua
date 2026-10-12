@@ -35,6 +35,8 @@ local CatShields = categories.SHIELD * categories.STRUCTURE
 local CatHuntable = categories.STRUCTURE + categories.LAND + categories.NAVAL + categories.COMMAND - categories.WALL
 
 local teams = {}
+-- side -> brains that look for the team (declared early: ShieldsOver uses it).
+local observers = {}
 
 local OtherSide = Utils.OtherSide
 
@@ -261,14 +263,18 @@ end
 
 -- Known enemy structure shields whose bubble covers pos and is up right now.
 function ShieldsOver(side, pos)
+    local obs = observers[side] and observers[side][1]
+    local brainArmy = obs and obs:GetArmyIndex() or 0
     local n = 0
     for _, s in ipairs(Team(side).shields) do
         if Alive(s) and s:GetFractionComplete() >= 1 then
             local bp = s:GetBlueprint()
             local size = bp.Defense and bp.Defense.Shield and bp.Defense.Shield.ShieldSize
             if size and Utils.Dist2D(s:GetPosition(), pos) <= size / 2 then
+                -- A shield seen around a target counts as up - unless it is
+                -- in sight right now and visibly down (no peeking).
                 local up = true
-                if s.MyShield and s.MyShield.IsUp then
+                if s.MyShield and s.MyShield.IsUp and SeenNow(s, brainArmy) then
                     local ok, res = pcall(s.MyShield.IsUp, s.MyShield)
                     if ok then up = res end
                 end
@@ -429,8 +435,6 @@ end
 -- Scanner: one thread for the whole sim, any living DualGap brain of a side
 -- does the looking (allies share vision in FAF).
 ---------------------------------------------------------------------------
-local observers = {}
-
 function Register(brain, side)
     observers[side] = observers[side] or {}
     table.insert(observers[side], brain)
