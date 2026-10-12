@@ -1401,6 +1401,12 @@ check(cm[0].startswith('3 Brick') and 'others' in cm[0], 'callouts say who attac
 check(cm[1] and not cm[2] and cm[3] and not cm[4] and cm[5] == 'distress', 'team callouts are rate limited (pings, alerts, chat)')
 check(cm[6] and not cm[7] and cm[8] and cm[9], 'artillery keeps its target unless a clearly better one shows up (or it is gone)')
 
+ts = lua.execute(r"""
+local S = import('/mods/DualGapAI/lua/AI/DualGapStats.lua')
+return S.TechSlot(true, 3), S.TechSlot(false, 2), S.TechSlot(false, nil)
+""")
+check(ts[0] == 4 and ts[1] == 2 and ts[2] == 1, 'telemetry: army composition by tech slot (experimental = 4)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

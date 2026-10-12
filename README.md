@@ -88,6 +88,17 @@ python tools/draw_base.py ARMY_6
 One army's base at 10, 21, 30, 42 and 60 minutes (`reports/<log>_<army>_base.html`) and what touches what (adjacency),
 to compare a bot's base with a player's.
 
+```bash
+python tools/army_report.py --every 5
+```
+Every army's composition every 5 minutes: land units by tech (T1/T2/T3/T4) and mobile AA, air by kind
+(fighters, bombers, gunships, torpedo bombers, scouts, air T4s), ships by tech; `--ids` adds the unit types, `--army ARMY_3` one army only.
+
+```bash
+python tools/staff_report.py
+```
+The general staff's decisions per team: zone stances (attack / hold / defend) with own and known enemy mass, and the team focus.
+
 ## Tests
 Offline, no game needed (Python 3 and `pip install lupa`):
 

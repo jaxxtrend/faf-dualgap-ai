@@ -394,6 +394,7 @@ function T4Engage(brain, wave)
                 u.DGT4Target = e
                 IssueClearCommands({ u })
                 IssueAttack({ u }, e)
+                Utils.Log(brain, Comms.UnitName(u) .. ' turns on the enemy ' .. Comms.UnitName(e))
             elseif not e and u.DGT4Target then
                 u.DGT4Target = nil
                 if wave.lastTarget then IssueMove({ u }, wave.lastTarget) end

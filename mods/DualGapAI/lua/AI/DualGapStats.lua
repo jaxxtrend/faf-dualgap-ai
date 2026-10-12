@@ -112,6 +112,53 @@ local function MassValue(brain, cat)
     return v, n
 end
 
+-- Army composition: counts by kind and tech, plus counts per blueprint.
+--   land  [T1, T2, T3, T4] direct-fire / artillery land units
+--   aa    mobile land AA (all techs)
+--   airK  fighters, bombers, gunships, torpedo bombers, scouts, air T4s
+--   sea   [T1, T2, T3, T4] ships
+--   ids   blueprint id -> count (land, air and sea units, engineers left out)
+local CatLandAA = categories.LAND * categories.MOBILE * categories.ANTIAIR - categories.EXPERIMENTAL
+local CatAirFighter = categories.AIR * categories.MOBILE * categories.ANTIAIR - categories.BOMBER - categories.GROUNDATTACK
+    - categories.EXPERIMENTAL - categories.SCOUT
+local CatAirTorp = categories.AIR * categories.MOBILE * categories.ANTINAVY - categories.EXPERIMENTAL
+local CatAirBomber = categories.AIR * categories.MOBILE * categories.BOMBER - categories.ANTINAVY - categories.EXPERIMENTAL
+local CatAirGunship = categories.AIR * categories.MOBILE * categories.GROUNDATTACK - categories.BOMBER
+    - categories.ANTINAVY - categories.EXPERIMENTAL
+local CatAirScout = categories.AIR * categories.MOBILE * categories.SCOUT
+local CatAirT4 = categories.AIR * categories.MOBILE * categories.EXPERIMENTAL - categories.SATELLITE
+
+-- Exposed for tests: tech slot 1..4 (experimental = 4).
+function TechSlot(experimental, tech)
+    if experimental then return 4 end
+    return math.max(1, math.min(3, tech or 1))
+end
+
+local function Composition(brain)
+    local comp = { land = { 0, 0, 0, 0 }, aa = 0, sea = { 0, 0, 0, 0 },
+        airK = { fighter = 0, bomber = 0, gunship = 0, torp = 0, scout = 0, t4 = 0 }, ids = {} }
+    for _, u in ipairs(brain:GetListOfUnits(CatLand + CatAir + CatNaval, false)) do
+        if Alive(u) and u:GetFractionComplete() >= 1 then
+            local id = u:GetBlueprint().BlueprintId
+            comp.ids[id] = (comp.ids[id] or 0) + 1
+            local slot = TechSlot(EntityCategoryContains(categories.EXPERIMENTAL, u), Utils.TechOf(u))
+            if EntityCategoryContains(CatAir, u) then
+                local k = (EntityCategoryContains(CatAirT4, u) and 't4') or (EntityCategoryContains(CatAirScout, u) and 'scout')
+                    or (EntityCategoryContains(CatAirTorp, u) and 'torp') or (EntityCategoryContains(CatAirGunship, u) and 'gunship')
+                    or (EntityCategoryContains(CatAirBomber, u) and 'bomber') or (EntityCategoryContains(CatAirFighter, u) and 'fighter')
+                if k then comp.airK[k] = comp.airK[k] + 1 end
+            elseif EntityCategoryContains(CatNaval, u) then
+                comp.sea[slot] = comp.sea[slot] + 1
+            elseif EntityCategoryContains(CatLandAA, u) then
+                comp.aa = comp.aa + 1
+            else
+                comp.land[slot] = comp.land[slot] + 1
+            end
+        end
+    end
+    return comp
+end
+
 local function Snap(brain, ctx)
     local rec = Head(brain, ctx, 'snap')
     rec.mi = brain:GetEconomyIncome('MASS') * 10
@@ -135,6 +182,7 @@ local function Snap(brain, ctx)
     rec.land, rec.air, rec.naval, rec.exp = ln, an, nn, xn
     rec.armyMass = lv + av + nv
     rec.expMass = xv
+    rec.comp = Composition(brain)
     local acu = Utils.Commander(brain)
     if acu then
         local p = acu:GetPosition()
