@@ -610,3 +610,11 @@ AirCommandSeconds     = 10
 AirSweepMinDominate   = 15
 AirSweepRatioDominate = 1.2
 AirMassDominateScale  = 0.75
+
+-- Naval command (DualGapNavalCommand): every NavalCommandSeconds it turns
+-- the staff's water and lower-mid stances into a task for NAVAL. PUSH fleets
+-- sail at NavalPushScale of the usual size; SUPPORT_MID adds
+-- NavalMidSupportExtra destroyers to the mid support.
+NavalCommandSeconds  = 10
+NavalPushScale       = 0.7
+NavalMidSupportExtra = 2

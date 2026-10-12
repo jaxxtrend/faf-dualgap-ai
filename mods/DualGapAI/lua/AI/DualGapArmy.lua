@@ -51,6 +51,7 @@ local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
 local LandCmd = import('/mods/DualGapAI/lua/AI/DualGapLandCommand.lua')
 local AirCmd = import('/mods/DualGapAI/lua/AI/DualGapAirCommand.lua')
+local NavalCmd = import('/mods/DualGapAI/lua/AI/DualGapNavalCommand.lua')
 
 local function ACU()
     return import('/mods/DualGapAI/lua/AI/DualGapACUBehaviors.lua')
@@ -396,7 +397,12 @@ local function UpdateWaves(brain, ctx)
             local c = Centroid(wave.units)
             if wave.kind == 'NAVAL' and wave.stage ~= 'retreat' then
                 local enemy = KnownNear(brain, categories.NAVAL * categories.MOBILE, c, 150)
-                if NavalStrength(enemy) > 1.5 * NavalStrength(wave.units) then
+                local ntask = NavalCmd.Task(ctx.side, brain.Name)
+                if ntask and ntask.mode == 'DEFEND' and InEnemyHalf(ctx.side, c) and not wave.ender then
+                    Utils.Log(brain, 'fleet falls back to the rally (naval command: DEFEND)')
+                    FormationPath(wave.units, { Routes.GetPoint('NavalRally', ctx.side) }, c)
+                    wave.stage = 'retreat'
+                elseif NavalStrength(enemy) > 1.5 * NavalStrength(wave.units) then
                     ctx.navalThreat = { pos = c, at = GetGameTimeSeconds() }
                     Utils.Log(brain, 'fleet falls back: stronger enemy fleet ahead')
                     FormationPath(wave.units, { Routes.GetPoint('NavalRally', ctx.side) }, c)
@@ -604,7 +610,10 @@ local function MidSupportStep(brain, ctx)
     end
     local w = ctx.midWater
     ctx.midShips = Utils.FilterAlive(ctx.midShips or {})
-    local wantD, wantC = MidSupportWanted(ctx.waterPushed)
+    local ntask = NavalCmd.Task(ctx.side, brain.Name)
+    local push = ctx.waterPushed or (ntask and ntask.mode == 'PUSH')
+    local wantD, wantC = MidSupportWanted(push)
+    if ntask and ntask.mode == 'SUPPORT_MID' then wantD = wantD + Config.NavalMidSupportExtra end
     local destroyer = Utils.FactionId(brain, 'T2Destroyer')
     local cruiser = Utils.FactionId(brain, 'T2Cruiser')
     local haveD, haveC = 0, 0
@@ -634,7 +643,7 @@ local function MidSupportStep(brain, ctx)
         Utils.Log(brain, table.getn(fresh) .. ' ships join the mid support (' .. table.getn(ctx.midShips) .. ' there)')
     end
     -- (Re)issue the patrol: new ships, idle ones, or the water got pushed.
-    local far = (ctx.waterPushed and w.enemy) or w.centre
+    local far = (push and w.enemy) or w.centre
     local key = math.floor(far[1]) .. ':' .. math.floor(far[3])
     local orders = {}
     for _, u in ipairs(ctx.midShips) do
@@ -669,6 +678,8 @@ local function NavalStep(brain, ctx)
         else IssueMove({ u }, rally) end
     end
     local size = Config.NavalFleetSize[TopTech(brain)] or 6
+    local ntask = NavalCmd.Task(ctx.side, brain.Name)
+    if ntask then size = math.max(2, math.floor(size * ntask.scale)) end
     -- Searching for a hidden ACU: any two ships go.
     if Intel.HuntMode(ctx.side) then size = math.min(size, 2) end
     -- Fleets go for a game ender at full size: small groups only die one
@@ -679,10 +690,22 @@ local function NavalStep(brain, ctx)
         if enderWater then
             Claim(ready)
             FormationPath(ready, { Routes.GetPoint('BasinCenter', ctx.side), enderWater }, rally)
-            table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1 })
+            table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1, ender = true })
             Utils.Log(brain, 'fleet of ' .. Utils.Count(ready) .. ' sails for the enemy game ender')
             Comms.Say(brain, ctx.side, 'fleet:' .. brain.Name, 'Fleet going for their game ender.', enderWater, 'attack')
             return
+        end
+        -- Naval command: hold the fleet at home, or take it to the own mid.
+        if ntask and ntask.mode == 'DEFEND' and not Intel.HuntMode(ctx.side) then return end
+        if ntask and ntask.mode == 'SUPPORT_MID' then
+            local own = MidWater(ctx.side)
+            if own then
+                Claim(ready)
+                FormationPath(ready, { own }, rally)
+                table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1 })
+                Utils.Log(brain, 'fleet of ' .. Utils.Count(ready) .. ' sails to the own mid (naval command: SUPPORT_MID)')
+                return
+            end
         end
         local ahead = KnownNear(brain, categories.NAVAL * categories.MOBILE, Routes.GetPoint('BasinCenter', ctx.side), 200)
         if NavalStrength(ahead) > 1.5 * NavalStrength(ready) then return end   -- wait, keep massing

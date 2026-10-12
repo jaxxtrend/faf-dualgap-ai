@@ -1257,6 +1257,18 @@ check(ac2[2] == 'DEFEND' and ac2[3] == 'UPPER' and ac2[4] == 'CONTEST' and ac2[5
 check(ac2[6] and not ac2[7] and not ac2[8], 'air command: sweeps start earlier when dominating, never when defending')
 check(ac2[9] is None and ac2[10] == 'ender' and ac2[11] == 'mass' and ac2[12] is None, 'air command: no mass strikes while defending (game enders excepted), sooner while dominating')
 
+nc = lua.execute(r"""
+local N = import('/mods/DualGapAI/lua/AI/DualGapNavalCommand.lua')
+local m1 = N.NavalTask('DEFEND', 'DEFEND')
+local m2 = N.NavalTask('HOLD', 'DEFEND')
+local m3, s3 = N.NavalTask('ATTACK', 'HOLD')
+local m4, s4 = N.NavalTask('HOLD', 'ATTACK')
+return m1, m2, m3, s3 < 1, m4, s4
+""")
+check(nc[0] == 'DEFEND', 'naval command: a clearly weaker navy stays home (even when the mid needs help)')
+check(nc[1] == 'SUPPORT_MID', 'naval command: the navy helps the lower mid when it defends')
+check(nc[2] == 'PUSH' and nc[3] and nc[4] == 'CONTEST' and nc[5] == 1, 'naval command: a stronger navy pushes with smaller fleets; even water: own rules')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
