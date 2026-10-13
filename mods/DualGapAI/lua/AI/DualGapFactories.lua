@@ -179,7 +179,14 @@ end
 local function KeepUnits(brain, ctx, f)
     local kind = Utils.FactoryKind(f)
     if ScoutsAllowed(GetGameTimeSeconds()) and KeepList(brain, ctx, BO.Keep[ctx.role], f, kind) then return true end
-    if Intel.HuntMode(ctx.side) and KeepList(brain, ctx, BO.HuntKeep[ctx.role], f, kind) then return true end
+    if Intel.HuntMode(ctx.side) then
+        if KeepList(brain, ctx, BO.HuntKeep[ctx.role], f, kind) then return true end
+        -- Inherited roles hunt too (a GROUND heir of the AIR builds its
+        -- torpedo bombers).
+        for role, _ in pairs(ctx.duties or {}) do
+            if role ~= ctx.role and KeepList(brain, ctx, BO.HuntKeep[role], f, kind) then return true end
+        end
+    end
     return false
 end
 

@@ -1456,7 +1456,8 @@ local function PickNukeTarget(brain, ctx, from)
     ctx.nukeBlocked = ctx.nukeBlocked or {}
     local best, bestScore, bestValue
     for _, e in ipairs(brain:GetUnitsAroundPoint(CatTargets, from, 4000, 'Enemy') or {}) do
-        if Intel.Known(e, army) and not Utils.IsUnderwater(e) then
+        -- Under water only an ACU is worth it (a hidden commander).
+        if Intel.Known(e, army) and (not Utils.IsUnderwater(e) or EntityCategoryContains(categories.COMMAND, e)) then
             local p = e:GetPosition()
             local blocked = false
             for _, b in ipairs(ctx.nukeBlocked) do
@@ -1476,6 +1477,17 @@ local function PickNukeTarget(brain, ctx, from)
                         best, bestScore, bestValue = { p[1], p[2], p[3] }, score, value
                     end
                 end
+            end
+        end
+    end
+    -- A hidden enemy ACU seen under water a moment ago: its last spot.
+    if not best then
+        for _, rec in ipairs(Intel.SubmergedACUs(ctx.side)) do
+            local p = rec.pos
+            if now - rec.at <= Config.NukeSubACUAge and NukeFriendlyOk(FriendlyMassAround(brain, p)) then
+                best, bestValue = { p[1], p[2], p[3] }, NukeTargetScore(0, false, false, true)
+                Utils.Log(brain, 'nuke: on the hidden enemy ACU under water')
+                break
             end
         end
     end

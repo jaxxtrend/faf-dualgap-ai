@@ -2117,7 +2117,14 @@ function GuardHiddenACUs(brain, ctx, torps, now)
         local key = s.name
         local guards = Utils.FilterAlive(ctx.torpGuards[key] or {})
         ctx.torpGuards[key] = guards
-        local need = Config.TorpGuardsPerACU - table.getn(guards)
+        -- Hunting an enemy ACU: one guard each, the rest go hunting.
+        local want = Intel.HuntMode(ctx.side) and Config.TorpGuardsHunt or Config.TorpGuardsPerACU
+        while table.getn(guards) > want do
+            local g = table.remove(guards)
+            Release({ g })
+            IssueClearCommands({ g })
+        end
+        local need = want - table.getn(guards)
         if need > 0 and table.getn(free) > 0 then
             local group = {}
             while need > 0 and table.getn(free) > 0 do

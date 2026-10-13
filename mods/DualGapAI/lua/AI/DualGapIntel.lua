@@ -131,6 +131,8 @@ function LostACUScan(brain, side, t, now)
             local structs = known[i] or {}
             t.maxKnown = t.maxKnown or {}
             t.maxKnown[i] = math.max(t.maxKnown[i] or 0, table.getn(structs))
+            t.beaten = t.beaten or {}
+            t.beaten[i] = table.getn(structs) <= Config.ACULostMaxStructures and t.maxKnown[i] >= Config.ACUBeatenSeenBase
             if ACULost(now, seen and seen.at, table.getn(structs), t.maxKnown[i]) then
                 local clues = {}
                 if seen and now - seen.at < Config.SubACUMemory * 2 then table.insert(clues, seen.pos) end
@@ -204,7 +206,9 @@ local function Scan(side, brain)
         if under then t.underSince[key] = t.underSince[key] or now0 else t.underSince[key] = nil end
         local nx = Utils.Normalise(p0[1], p0[3])
         local rear = (side == 'LEFT' and nx >= 1 - Utils.RearDepth) or (side == 'RIGHT' and nx <= Utils.RearDepth)
-        if under and HidingUnderwater(now0 - t.underSince[key], Utils.WaterDepth(p0[1], p0[3]), rear) then
+        -- A beaten player's ACU under water is hiding, wherever it is.
+        local beaten = t.beaten and t.beaten[e:GetArmy()]
+        if under and (beaten or HidingUnderwater(now0 - t.underSince[key], Utils.WaterDepth(p0[1], p0[3]), rear)) then
             if not t.subACUs[key] then
                 Comms.Say(brain, side, 'subacu:' .. key, 'Enemy ACU hiding under water here! Torpedo bombers and ships!',
                     e:GetPosition(), 'attack')
@@ -354,6 +358,10 @@ end
 
 -- Exposed for tests: is an enemy player's ACU lost?
 function ACULost(now, lastSeenAt, knownStructures, maxKnown)
+    -- Beaten: next to nothing left of a base we had seen - hunt at once.
+    if knownStructures <= Config.ACUBeatenStructures and (maxKnown or 0) >= Config.ACUBeatenSeenBase then
+        return now - (lastSeenAt or 0) >= Config.ACUBeatenSeconds
+    end
     if now < Config.ACULostMinTime then return false end
     if (maxKnown or 0) < Config.ACULostMinSeenBase then return false end
     if knownStructures > Config.ACULostMaxStructures then return false end

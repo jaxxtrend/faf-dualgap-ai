@@ -967,3 +967,17 @@ ShelledShieldsT3 = 3
 BuilderBonus      = 1.1
 BuilderSiteRadius = 25
 BuilderSiteMemory = 300
+
+-- Finishing a beaten enemy: a player still in the game with at most
+-- ACUBeatenStructures known structures left, whose base we had seen
+-- (ACUBeatenSeenBase+ structures at once) -> its ACU counts as lost after
+-- ACUBeatenSeconds unseen (any game time), and as hiding the moment it is
+-- seen under water anywhere (not only in the rear). While hunting, each
+-- bot keeps only TorpGuardsHunt torpedo bombers over every own hidden ACU
+-- (the rest go hunting). Nukes go for a known enemy ACU under water too,
+-- or its last seen spot within NukeSubACUAge seconds.
+ACUBeatenStructures = 2
+ACUBeatenSeenBase   = 5
+ACUBeatenSeconds    = 30
+TorpGuardsHunt      = 1
+NukeSubACUAge       = 30

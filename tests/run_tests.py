@@ -848,7 +848,7 @@ check(deep[2], 'a second ACU hides 150+ away from the first (point or list of po
 
 lost = lua.execute(r"""
 local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
-return I.ACULost(3300, 2400, 2, 40), I.ACULost(3300, 3250, 2, 40), I.ACULost(3300, 2400, 20, 40), I.ACULost(500, nil, 0, 40),
+return I.ACULost(3300, 2400, 2, 40), I.ACULost(3300, 3250, 2, 40), I.ACULost(3300, 2400, 20, 40), I.ACULost(500, nil, 5, 40),
        I.ACULost(1500, nil, 0, 40), I.ACULost(1500, nil, 0, 3)
 """)
 check(not lost[5], 'lost ACU: not for a player whose base was never scouted')
@@ -1616,6 +1616,13 @@ return P.BuilderKind('ANTINUKE', nil), P.BuilderKind(nil, 'ENDER'), P.BuilderKin
 """)
 check(bk[0] == 'ANTINUKE' and bk[1] == 'ENDER' and bk[2] is None and bk[3] is None,
       'guns and satellites burn the engineers building / rebuilding game enders and anti-nukes')
+
+hb = lua.execute(r"""
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+return I.ACULost(300, 250, 1, 8), I.ACULost(300, 290, 1, 8), I.ACULost(300, 0, 1, 2), I.ACULost(300, 0, 5, 20)
+""")
+check(hb[0] and not hb[1] and not hb[2] and not hb[3],
+      'a beaten enemy (base seen, next to nothing left) is hunted at once, any game time')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
