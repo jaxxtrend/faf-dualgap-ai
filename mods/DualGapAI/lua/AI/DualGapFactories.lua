@@ -243,7 +243,7 @@ function LandAAWanted(brain, ctx)
             if Intel.Known(e, army) then n = n + 1 end
         end
     end
-    return n >= Config.LandAAThreat
+    return n >= (import('/mods/DualGapAI/lua/AI/DualGapStyle.lua').Of(ctx).aaThreat or Config.LandAAThreat)
 end
 
 -- Global so tests can drive it.
@@ -302,7 +302,11 @@ function Produce(brain, ctx, f)
     end
     -- The tier to build: the top one, or by the land mix's weights.
     local want = topTech
-    if mixed then want = MixTier(Config.LandMix[tech], open, (Random and Random()) or math.random()) or topTech end
+    if mixed then
+        local Style = import('/mods/DualGapAI/lua/AI/DualGapStyle.lua')
+        local weights = Style.MixWeights(Config.LandMix[tech], Style.Of(ctx).mix)
+        want = MixTier(weights, open, (Random and Random()) or math.random()) or topTech
+    end
     local pick = {}
     for _, o in ipairs(open) do
         if o.tech == want then table.insert(pick, o) end
@@ -360,7 +364,8 @@ local function UpgradeFactories(brain, ctx)
                 end
             end
         end
-        if hq and hq ~= ctx.mainFactory and hqTech < 3 and GetGameTimeSeconds() > 300 then
+        local hqAt = import('/mods/DualGapAI/lua/AI/DualGapStyle.lua').Of(ctx).hqUpgradeAt
+        if hq and hq ~= ctx.mainFactory and hqTech < 3 and GetGameTimeSeconds() > hqAt then
             local to = hq:GetBlueprint().General.UpgradesTo
             if to and to ~= '' then
                 StartUpgrade(hq, to)
@@ -381,6 +386,7 @@ function FactoryStep(brain, ctx)
             if Alive(f) and f:GetFractionComplete() >= 1 then
                 ctx.t2Time = GetGameTimeSeconds()
                 ctx.t2EndTime = ctx.t2Time + Config.T2PhaseLength
+                    + import('/mods/DualGapAI/lua/AI/DualGapStyle.lua').Of(ctx).t2Phase
                 Utils.Log(brain, 'T2 factory at ' .. math.floor(ctx.t2Time) .. 's, T2 phase ends at '
                     .. math.floor(ctx.t2EndTime) .. 's')
                 break

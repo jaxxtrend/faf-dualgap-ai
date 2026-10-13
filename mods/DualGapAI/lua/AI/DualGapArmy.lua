@@ -49,6 +49,7 @@ local Routes = import('/mods/DualGapAI/lua/AI/DualGapRoutes.lua')
 local Intel = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
 local RoleManager = import('/mods/DualGapAI/lua/AI/DualGapRoleManager.lua')
 local Comms = import('/mods/DualGapAI/lua/AI/DualGapComms.lua')
+local Style = import('/mods/DualGapAI/lua/AI/DualGapStyle.lua')
 local LandCmd = import('/mods/DualGapAI/lua/AI/DualGapLandCommand.lua')
 local AirCmd = import('/mods/DualGapAI/lua/AI/DualGapAirCommand.lua')
 local NavalCmd = import('/mods/DualGapAI/lua/AI/DualGapNavalCommand.lua')
@@ -450,7 +451,7 @@ local function UpdateWaves(brain, ctx)
             end
             if AllIdle(wave.units) then
                 wave.checkAt = nil
-                if wave.stage == 'retreat' or wave.stage == 'regroup' then
+                if wave.stage == 'retreat' or wave.stage == 'regroup' or wave.raid then
                     Release(wave.units)          -- rejoin the gathering army / fleet
                     wave.units = {}
                 else
@@ -621,6 +622,63 @@ function OrderPath(start, path)
     return mids
 end
 
+-- Exposed for tests: may a raid go for a mex with this much known around
+-- it (point defences, army mass)?
+function RaidTargetOk(defences, armyMass)
+    return defences == 0 and armyMass < Config.RaidMaxEnemyMass
+end
+
+local CatRaidMex = categories.STRUCTURE * categories.MASSEXTRACTION
+local CatRaidDefence = categories.STRUCTURE * categories.DEFENSE * categories.DIRECTFIRE
+
+-- Now and then a few fast units go for a scouted, unguarded enemy mex in
+-- the enemy half instead of joining the next wave. Returns true when one
+-- left (the rest keep gathering).
+function RaidStep(brain, ctx, ready, enemyAtWall, task)
+    local now = GetGameTimeSeconds()
+    if not ctx.nextRaidAt then ctx.nextRaidAt = now + Style.RandInt(Config.RaidFirst[1], Config.RaidFirst[2]) end
+    if now < ctx.nextRaidAt or enemyAtWall or (task and task.mode == 'DEFEND') then return false end
+    local size = Style.RandInt(Config.RaidSize[1], Config.RaidSize[2])
+    local pool = {}
+    for _, u in ipairs(ready) do
+        if not EntityCategoryContains(categories.EXPERIMENTAL + categories.INDIRECTFIRE, u) then table.insert(pool, u) end
+    end
+    if table.getn(pool) < size + Config.RaidKeep then return false end
+    ctx.nextRaidAt = now + Style.RandInt(Config.RaidEvery[1], Config.RaidEvery[2])
+    local from = Centroid(pool)
+    local best, bestD
+    for _, m in ipairs(KnownNear(brain, CatRaidMex, from, MapRadius())) do
+        local p = m:GetPosition()
+        if InEnemyHalf(ctx.side, p)
+            and RaidTargetOk(table.getn(KnownNear(brain, CatRaidDefence, p, Config.RaidDefenceRadius)),
+                EnemyArmyMass(brain, p, 60)) then
+            local d = Utils.Dist2D(p, from)
+            if not bestD or d < bestD then best, bestD = m, d end
+        end
+    end
+    if not best then return false end
+    table.sort(pool, function(a, b)
+        local sa = a:GetBlueprint().Physics.MaxSpeed or 0
+        local sb = b:GetBlueprint().Physics.MaxSpeed or 0
+        return sa > sb
+    end)
+    local group = {}
+    for i = 1, size do table.insert(group, pool[i]) end
+    local taken = {}
+    for _, u in ipairs(group) do taken[u] = true end
+    for i = table.getn(ready), 1, -1 do
+        if taken[ready[i]] then table.remove(ready, i) end
+    end
+    Claim(group)
+    IssueClearCommands(group)
+    IssueAttack(group, best)
+    IssueAggressiveMove(group, best:GetPosition())
+    table.insert(ctx.waves, { units = group, kind = 'LAND', stage = 1, raid = true })
+    local p = best:GetPosition()
+    Utils.Log(brain, string.format('raid: %d fast units on an enemy mex at %d,%d', size, math.floor(p[1]), math.floor(p[3])))
+    return false
+end
+
 local function LandStep(brain, ctx)
     if HelpLand(brain, ctx) then return end
     local rally = LandRally(ctx)
@@ -652,6 +710,10 @@ local function LandStep(brain, ctx)
     -- Land command task (PUSH / HOLD / DEFEND / SUPPORT), when there is one.
     local task = LandCmd.Task(ctx.side, brain.Name)
     if task then size = math.max(4, math.floor(size * task.scale)) end
+    -- This wave's manoeuvre (rolled anew after every wave).
+    ctx.manoeuvre = ctx.manoeuvre or Style.RollManoeuvre()
+    if ctx.manoeuvre == 'DOUBLE' then size = math.floor(size * Config.DoubleWaveScale) end
+    if RaidStep(brain, ctx, ready, enemyAtWall, task) then return end
     local holdBack = task and task.mode == 'DEFEND' and not enemyAtWall and not ender
     if not holdBack and task and task.mode == 'SUPPORT' and not enemyAtWall and not ender
         and WaveReady(ready, size) then
@@ -666,7 +728,8 @@ local function LandStep(brain, ctx)
         -- Through the own front, over the enemy's mid choke, on to its base.
         local path = { ctx.frontPoint or ctx.choke, Routes.GetPoint(zone, enemy) }
         -- On the lines: the zone's points on every line ahead, straight on.
-        if task and task.line and task.zone then path = LandCmd.LinePath(task.line, task.zone, ctx.side) end
+        local mt = task and task.zone and Style.ManoeuvreT(ctx.manoeuvre, task.zone)
+        if task and task.line and task.zone then path = LandCmd.LinePath(task.line, task.zone, ctx.side, nil, mt) end
         if ender and not enemyAtWall then
             -- Everyone on the game ender, through the mid lane with less
             -- known enemy army: the sneaky way in.
@@ -682,7 +745,8 @@ local function LandStep(brain, ctx)
         Claim(ready)
         FormationPath(ready, path, rally)
         table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1, defending = enemyAtWall })
-        Utils.Log(brain, 'land wave of ' .. Utils.Count(ready) .. (enemyAtWall and ' (defending)' or ''))
+        Utils.Log(brain, 'land wave of ' .. Utils.Count(ready) .. (enemyAtWall and ' (defending)' or (' (' .. ctx.manoeuvre .. ')')))
+        ctx.manoeuvre = nil
         if not enemyAtWall then
             local where = (zone == 'ChokeLower') and 'lower' or 'upper'
             Comms.Say(brain, ctx.side, 'wave:' .. brain.Name, 'Attacking the ' .. where .. ' mid with '
@@ -1930,6 +1994,7 @@ function BomberTargetKind(c)
 end
 
 local CatBomberEco = categories.STRUCTURE * categories.TECH3 * (categories.ENERGYPRODUCTION + categories.MASSFABRICATION)
+local CatBomberMex = categories.STRUCTURE * categories.MASSEXTRACTION * (categories.TECH2 + categories.TECH3)
 local CatBomberStatic = categories.STRUCTURE * (categories.ARTILLERY + categories.SHIELD + categories.FACTORY) * (categories.TECH2 + categories.TECH3)
 local CatArmyTarget = categories.MOBILE * (categories.LAND + categories.NAVAL) - categories.ENGINEER - categories.COMMAND
 
@@ -1987,9 +2052,22 @@ function BomberTarget(brain, ctx, maxAA, ok)
     -- Then the T3 economy (power blows up its neighbours), then the big
     -- static defences and factories. Bombers miss moving armies - those are
     -- the gunships' job.
-    t = pick(KnownNear(brain, CatBomberEco, ctx.startPos, MapRadius()))
-    if t then return t end
-    return pick(KnownNear(brain, CatBomberStatic, ctx.startPos, MapRadius()))
+    -- Then this player's current focus (re-rolled now and then): the T3
+    -- economy (power blows up its neighbours), the upgraded mexes, or the
+    -- big static defences and factories. Bombers miss moving armies -
+    -- those are the gunships' job.
+    local now = GetGameTimeSeconds()
+    if not ctx.airFocus or now >= (ctx.airFocusUntil or 0) then
+        local f = Style.AirFocus(Style.Rand())
+        if f ~= ctx.airFocus then Utils.Log(brain, 'bombers focus: ' .. f) end
+        ctx.airFocus, ctx.airFocusUntil = f, now + Config.AirFocusSeconds
+    end
+    local cats = { eco = CatBomberEco, mex = CatBomberMex, static = CatBomberStatic }
+    for _, k in ipairs(Style.FocusOrder(ctx.airFocus)) do
+        t = pick(KnownNear(brain, cats[k], ctx.startPos, MapRadius()))
+        if t then return t end
+    end
+    return nil
 end
 
 -- Scouted game enders first (if endersOk), then `cat`; among them the

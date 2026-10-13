@@ -919,7 +919,8 @@ local function TryFactories(brain, ctx, u)
     local lv = Utils.Level(ctx)
     local extra = (lv.banked and Utils.MassBanked(brain))
         and math.min(lv.bankedMax, BankedExtra(brain:GetEconomyIncome('MASS') * 10)) or 0
-    for k, v in pairs(BO.ExtraFactories[ctx.role] or {}) do wanted[k] = v + extra end
+    local habit = import('/mods/DualGapAI/lua/AI/DualGapStyle.lua').Of(ctx).extraFactories
+    for k, v in pairs(BO.ExtraFactories[ctx.role] or {}) do wanted[k] = math.max(1, v + extra + habit) end
     -- Inherited roles bring their factories too.
     for role, _ in pairs(ctx.duties or {}) do
         for k, v in pairs(BO.ExtraFactories[role] or {}) do

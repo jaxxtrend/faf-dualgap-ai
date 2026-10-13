@@ -66,14 +66,14 @@ end
 
 -- Exposed for tests: the normalised (left team) point of line i for a
 -- zone's player; lines past the centre are the enemy's, mirrored.
-function LineAnchorN(i, zone)
+function LineAnchorN(i, zone, t)
     local own = table.getn(Config.DefenceLines)
     local j, mirror = i, false
     if i >= own then j, mirror = 2 * (own - 1) - i, true end
     local segs = Config.DefenceLines[j + 1]
     local p
     if table.getn(segs) == 1 then
-        p = Lerp(segs[1][1], segs[1][2], (zone == 'LOWER') and 0.7 or 0.3)
+        p = Lerp(segs[1][1], segs[1][2], t or ((zone == 'LOWER') and 0.7 or 0.3))
     else
         local s = segs[(zone == 'LOWER') and 3 or 2]
         p = Lerp(s[1], s[2], 0.5)
@@ -82,8 +82,8 @@ function LineAnchorN(i, zone)
     return p
 end
 
-function LineAnchor(i, zone, side)
-    return Utils.ToWorld(LineAnchorN(i, zone), side)
+function LineAnchor(i, zone, side, t)
+    return Utils.ToWorld(LineAnchorN(i, zone, t), side)
 end
 
 -- Exposed for tests: the line to hold now, and why it changed (nil = kept).
@@ -106,9 +106,9 @@ end
 
 -- Waypoints of an attack from the held line: the zone's points on every
 -- line ahead (a straight lane, no detours), then `goal`.
-function LinePath(line, zone, side, goal)
+function LinePath(line, zone, side, goal, t)
     local out = {}
-    for i = line + 1, LineCount() - 1 do table.insert(out, LineAnchor(i, zone, side)) end
+    for i = line + 1, LineCount() - 1 do table.insert(out, LineAnchor(i, zone, side, t)) end
     if goal then table.insert(out, goal) end
     return out
 end

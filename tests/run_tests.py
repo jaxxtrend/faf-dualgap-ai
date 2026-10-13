@@ -1497,6 +1497,29 @@ return r1 == fwd, r2 == line, A.FactoryAhead(400, 250, 1), A.FactoryAhead(240, 2
 check(ry[0] and ry[1], 'units of a forward factory gather by it, base units on the held line')
 check(ry[2] and not ry[3] and ry[4] and not ry[5], 'a factory counts as ahead of the line per side (left and right)')
 
+sy = lua.execute(r"""
+local S = import('/mods/DualGapAI/lua/AI/DualGapStyle.lua')
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local lo = S.FromRolls(0, 0, 0, 0, 0)
+local hi = S.FromRolls(0.999, 0.999, 0.999, 0.999, 0.999)
+local sw = S.MixWeights({ [1] = 0.25, [2] = 0.3, [3] = 0.45 }, 'SWARM')
+local te = S.MixWeights({ [1] = 0.25, [2] = 0.3, [3] = 0.45 }, 'TECH')
+local o = S.FocusOrder('MEX')
+return lo.t2Phase, hi.t2Phase, lo.extraFactories, hi.extraFactories, lo.mix, hi.mix, lo.aaThreat >= 2,
+       sw[1], sw[3], te[3], te[1],
+       S.Manoeuvre(0.1), S.Manoeuvre(0.5), S.Manoeuvre(0.7), S.Manoeuvre(0.95),
+       S.ManoeuvreT('OUTER', 'UPPER'), S.ManoeuvreT('OUTER', 'LOWER'), S.ManoeuvreT('FRONT', 'UPPER'),
+       S.AirFocus(0.1), S.AirFocus(0.5), S.AirFocus(0.9), o[1],
+       A.RaidTargetOk(0, 100), A.RaidTargetOk(1, 0), A.RaidTargetOk(0, 900), S.Describe(lo) ~= nil
+""")
+check(sy[0] == -60 and sy[1] == 59 and sy[2] == -1 and sy[3] == 1 and sy[4] == 'BALANCED' and sy[5] == 'TECH' and sy[6],
+      'player habits roll in their ranges (T2 phase, factories, land mix, AA threshold)')
+check(sy[7] == 0.5 and sy[8] == 0.45 and sy[9] == 0.9 and sy[10] == 0.25, 'land mix: SWARM favours the low tiers, TECH the top one')
+check(sy[11] == 'FRONT' and sy[12] == 'OUTER' and sy[13] == 'INNER' and sy[14] == 'DOUBLE'
+      and sy[15] == 0.1 and sy[16] == 0.9 and sy[17] is None, 'wave manoeuvres: front, along the edge, middle of the lane, double wave')
+check(sy[18] == 'ECO' and sy[19] == 'MEX' and sy[20] == 'STATIC' and sy[21] == 'mex', 'bombers focus rolls between economy, mexes and static')
+check(sy[22] and not sy[23] and not sy[24] and sy[25], 'raids only go for unguarded mexes')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

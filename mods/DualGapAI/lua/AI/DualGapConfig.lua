@@ -831,3 +831,26 @@ PassPDs = 2
 -- A land factory more than RallyFactoryAhead in front of the held line's
 -- rally keeps its units by itself (DualGapArmy.Rallies).
 RallyFactoryAhead = 20
+
+-- Per-player habits (DualGapStyle), rolled once per game: the T2 phase
+-- +-StyleT2Jitter seconds, the HQ factory upgrade from 300 +-StyleHQJitter.
+StyleT2Jitter = 60
+StyleHQJitter = 40
+-- Wave manoeuvres, rolled for every land wave: { name, weight }.
+WaveManoeuvres = { { 'FRONT', 0.4 }, { 'OUTER', 0.2 }, { 'INNER', 0.2 }, { 'DOUBLE', 0.2 } }
+DoubleWaveScale = 1.6
+-- Raids: now and then RaidSize (random in the range) of the fastest ready
+-- land units go for a scouted enemy mex in the enemy half with no known
+-- point defence within RaidDefenceRadius and less than RaidMaxEnemyMass of
+-- known army around; the first after RaidFirst, then every RaidEvery
+-- seconds (random in the ranges), only with RaidKeep units left to gather.
+RaidSize          = { 4, 8 }
+RaidFirst         = { 420, 600 }
+RaidEvery         = { 180, 360 }
+RaidKeep          = 6
+RaidDefenceRadius = 40
+RaidMaxEnemyMass  = 300
+-- Bombers' focus after ACUs / game enders / anti-nukes, re-rolled every
+-- AirFocusSeconds: { name, weight } (DualGapStyle.FocusOrder).
+AirFocusWeights = { { 'ECO', 0.4 }, { 'MEX', 0.3 }, { 'STATIC', 0.3 } }
+AirFocusSeconds = 180
