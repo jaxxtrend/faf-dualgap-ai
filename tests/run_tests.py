@@ -1610,6 +1610,13 @@ return s ~= nil and s[1] < 110, n, s2 == nil
 """)
 check(sh[0] and sh[1] == 4 and sh[2], 'shelling: the most hit spot of the last two minutes gets shields; old hits fade')
 
+bk = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+return P.BuilderKind('ANTINUKE', nil), P.BuilderKind(nil, 'ENDER'), P.BuilderKind('MEX', nil), P.BuilderKind(nil, nil)
+""")
+check(bk[0] == 'ANTINUKE' and bk[1] == 'ENDER' and bk[2] is None and bk[3] is None,
+      'guns and satellites burn the engineers building / rebuilding game enders and anti-nukes')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

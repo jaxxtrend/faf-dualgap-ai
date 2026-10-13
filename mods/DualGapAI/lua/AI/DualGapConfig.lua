@@ -958,3 +958,12 @@ ShelledRadius    = 25
 ShelledMinHits   = 3
 ShelledShieldsT2 = 2
 ShelledShieldsT3 = 3
+
+-- Builders of priority targets (artillery and satellites): an enemy
+-- engineer seen building / repairing a game ender or an anti-nuke - or
+-- standing within BuilderSiteRadius of the spot where the guns killed one
+-- in the last BuilderSiteMemory seconds - is worth BuilderBonus x that
+-- structure: burn the builders, not only what they put up again.
+BuilderBonus      = 1.1
+BuilderSiteRadius = 25
+BuilderSiteMemory = 300

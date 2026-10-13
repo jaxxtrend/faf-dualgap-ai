@@ -1319,6 +1319,28 @@ local function NearAny(pos, list, radius)
     return false
 end
 
+-- Exposed for tests: what an enemy engineer is worth to the guns, from
+-- the kind of what it builds / repairs and of a killed priority target
+-- whose spot it stands on (nil: not a priority builder).
+function BuilderKind(focusKind, siteKind)
+    if focusKind == 'ENDER' or focusKind == 'ANTINUKE' then return focusKind end
+    if siteKind == 'ENDER' or siteKind == 'ANTINUKE' then return siteKind end
+    return nil
+end
+
+local CatEnemyBuilders = categories.ENGINEER - categories.COMMAND
+
+-- Where the guns killed game enders / anti-nukes lately (ctx.deadSites).
+local function SiteKindNear(ctx, pos)
+    local now = GetGameTimeSeconds()
+    for _, s in ipairs(ctx.deadSites or {}) do
+        if now - s.at <= Config.BuilderSiteMemory and Utils.Dist2D(s.pos, pos) <= Config.BuilderSiteRadius then
+            return s.kind
+        end
+    end
+    return nil
+end
+
 local function BestTarget(brain, ctx, from, range, longRange)
     local army = brain:GetArmyIndex()
     local haveNuke = OwnsNuke(brain)
@@ -1332,6 +1354,21 @@ local function BestTarget(brain, ctx, from, range, longRange)
                 Utils.IsUnderwater(e), longRange)
             if score > 0 and NearAny(p, ecoBases, 120) then score = score * Config.EcoVsEcoBonus end
             if score > 0 and (not bestScore or score > bestScore) then best, bestScore = e, score end
+        end
+    end
+    -- The engineers putting a game ender / anti-nuke (back) up.
+    for _, e in ipairs(brain:GetUnitsAroundPoint(CatEnemyBuilders, from, range, 'Enemy') or {}) do
+        if Alive(e) and Intel.SeenNow(e, army) then
+            local focusKind
+            local ok, f = pcall(e.GetFocusUnit, e)
+            if ok and f and not f.Dead and EntityCategoryContains(CatEnders + CatAntiNuke, f) then focusKind = TargetKind(f) end
+            local p = e:GetPosition()
+            local kind = BuilderKind(focusKind, SiteKindNear(ctx, p))
+            if kind then
+                local score = ArtilleryScore(kind, Intel.ShieldsOver(ctx.side, p), haveNuke, Utils.IsUnderwater(e), longRange)
+                    * Config.BuilderBonus
+                if score > 0 and (not bestScore or score > bestScore) then best, bestScore = e, score end
+            end
         end
     end
     return best, bestScore
@@ -1670,6 +1707,14 @@ function ArtySwitch(curScore, score, idle)
 end
 
 function AimShooter(brain, ctx, a, range, longRange)
+    -- The last target (a game ender / anti-nuke) died: remember the spot,
+    -- its builders will come back to it.
+    if a.DGTarget and not Alive(a.DGTarget) and a.DGTargetKind then
+        ctx.deadSites = ctx.deadSites or {}
+        table.insert(ctx.deadSites, { pos = a.DGTargetPos, kind = a.DGTargetKind, at = GetGameTimeSeconds() })
+        while table.getn(ctx.deadSites) > 12 do table.remove(ctx.deadSites, 1) end
+        a.DGTargetKind = nil
+    end
     local t, score = BestTarget(brain, ctx, a:GetPosition(), range, longRange)
     local current = Alive(a.DGTarget) and a.DGTarget or nil
     if not longRange and (not t or score < 60) and ArmyInRange(brain, a:GetPosition(), range) then
@@ -1690,6 +1735,9 @@ function AimShooter(brain, ctx, a, range, longRange)
             IssueAttack({ a }, t)
         end
         a.DGTarget, a.DGScore = t, score
+        local k = EntityCategoryContains(CatEnders + CatAntiNuke, t) and TargetKind(t) or nil
+        local tp = t:GetPosition()
+        a.DGTargetKind, a.DGTargetPos = k, { tp[1], tp[2], tp[3] }
     elseif current and (not t or a:IsIdleState()) then
         -- Target gone from sight or reach: free the gun, pick again next tick.
         IssueClearCommands({ a })
