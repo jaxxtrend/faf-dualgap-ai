@@ -821,3 +821,9 @@ LineEnemyMass      = 1000
 LineFortifiedPDs   = 2
 LinePDSeconds      = 90
 LinePDs            = 2
+
+-- The three passes of line 0 in front of the upper bases, one per player
+-- of that group: the AIR player the top one, the upper GROUND the middle,
+-- the lower GROUND the one at the shore. From the T2 factory on, each
+-- closes its own with PassPDs point defences (rebuilt when lost).
+PassPDs = 2

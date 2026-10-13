@@ -1478,6 +1478,14 @@ check(ln[6] == 3 and ln[7] == 2 and ln[8] == 3, 'ATTACK steps one line forward a
 check(ln[9] == 1 and ln[10] == 2, 'DEFEND steps back unless the line is fortified')
 check(ln[11] == 0 and ln[12] == 0 and ln[13] == 2, 'an enemy army past the held line forces a fall back behind it at once')
 
+ps = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+return P.PassIndex('AIR', 'UPPER', 0.3), P.PassIndex('GROUND', 'UPPER', 0.37), P.PassIndex('GROUND', 'LOWER', 0.42),
+       P.PassIndex('AIR', 'UPPER', 0.76), P.PassIndex('ECO', 'UPPER', 0.3)
+""")
+check(ps[0] == 1 and ps[1] == 2 and ps[2] == 3 and ps[3] is None and ps[4] is None,
+      'upper bases: AIR closes the top pass, the GROUNDs the middle and the shore ones')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

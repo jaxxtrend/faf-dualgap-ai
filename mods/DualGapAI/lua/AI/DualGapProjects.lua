@@ -976,6 +976,26 @@ local function PlanSiegeDefense(brain, ctx)
     end
 end
 
+-- Exposed for tests: which pass of line 0 (1 top, 2 middle, 3 shore) a
+-- player closes: only the upper base group (start nz < 0.5) has them.
+function PassIndex(role, zone, startNz)
+    if startNz >= 0.5 then return nil end
+    if role == 'AIR' then return 1 end
+    if role == 'GROUND' then return (zone == 'LOWER') and 3 or 2 end
+    return nil
+end
+
+local function PlanBasePass(brain, ctx)
+    if not ctx.t2Time then return end
+    local LandCmd = import('/mods/DualGapAI/lua/AI/DualGapLandCommand.lua')
+    local _, nz = Utils.Normalise(ctx.startPos[1], ctx.startPos[3])
+    local i = PassIndex(ctx.role, LandCmd.ZoneOfPlayer(ctx), nz)
+    local seg = i and Config.DefenceLines[1][i]
+    if not seg then return end
+    local mid = { (seg[1][1] + seg[2][1]) / 2, (seg[1][2] + seg[2][2]) / 2 }
+    PlanCluster(brain, ctx, 'PassPD', 'PointDefenseT2', CatPDs, Utils.ToWorld(mid, ctx.side), Config.PassPDs, 20, 1)
+end
+
 local function PlanBaseShields(brain, ctx)
     local arty = table.getn(Intel.Enders(ctx.side, 'ARTY')) > 0
     for _, s in ipairs(ShieldPlan(TopFactoryTech(brain), arty)) do
@@ -1648,6 +1668,7 @@ local function PlannerStep(brain, ctx)
     PlanProxy(brain, ctx)
     PlanForwardBase(brain, ctx)
     PlanSiegeDefense(brain, ctx)
+    PlanBasePass(brain, ctx)
     PlanFrontline(brain, ctx)
     PlanBaseTorpedoes(brain, ctx)
     PlanBaseAA(brain, ctx)
