@@ -1486,6 +1486,17 @@ return P.PassIndex('AIR', 'UPPER', 0.3), P.PassIndex('GROUND', 'UPPER', 0.37), P
 check(ps[0] == 1 and ps[1] == 2 and ps[2] == 3 and ps[3] is None and ps[4] is None,
       'upper bases: AIR closes the top pass, the GROUNDs the middle and the shore ones')
 
+ry = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local line, fwd = { 250, 0, 450 }, { 395, 0, 440 }
+local r1 = A.PickRally({ 400, 0, 445 }, { line, fwd })
+local r2 = A.PickRally({ 150, 0, 450 }, { line, fwd })
+return r1 == fwd, r2 == line, A.FactoryAhead(400, 250, 1), A.FactoryAhead(240, 250, 1),
+       A.FactoryAhead(600, 770, -1), A.FactoryAhead(800, 770, -1)
+""")
+check(ry[0] and ry[1], 'units of a forward factory gather by it, base units on the held line')
+check(ry[2] and not ry[3] and ry[4] and not ry[5], 'a factory counts as ahead of the line per side (left and right)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

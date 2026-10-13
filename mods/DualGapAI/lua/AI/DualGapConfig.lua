@@ -827,3 +827,7 @@ LinePDs            = 2
 -- the lower GROUND the one at the shore. From the T2 factory on, each
 -- closes its own with PassPDs point defences (rebuilt when lost).
 PassPDs = 2
+
+-- A land factory more than RallyFactoryAhead in front of the held line's
+-- rally keeps its units by itself (DualGapArmy.Rallies).
+RallyFactoryAhead = 20

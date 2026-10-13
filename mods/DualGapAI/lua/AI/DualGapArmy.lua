@@ -561,6 +561,42 @@ local function LandRally(ctx, task)
     return Shift(ctx.choke or ctx.frontPoint, -Toward(ctx) * 25)
 end
 
+-- Exposed for tests: the rally of a free unit - the nearest of `rallies`
+-- (the held line's, and one by every land factory standing ahead of it).
+function PickRally(pos, rallies)
+    local best, bestD
+    for _, r in ipairs(rallies) do
+        local d = Utils.Dist2D(pos, r)
+        if not bestD or d < bestD then best, bestD = r, d end
+    end
+    return best, bestD
+end
+
+-- Exposed for tests: is a factory at x ahead of the line rally at lineX
+-- (dir: +1 the left team, -1 the right)?
+function FactoryAhead(x, lineX, dir)
+    return dir * (x - lineX) > Config.RallyFactoryAhead
+end
+
+local CatLandFactory = categories.FACTORY * categories.LAND * categories.STRUCTURE
+
+-- Every factory its own rally, in line with the fight: one behind the held
+-- line sends its units up to the line; one standing ahead of it (a forward
+-- factory once the line fell back) keeps them by itself, on its own side -
+-- they guard it and join the waves from there instead of walking back to
+-- the base.
+local function Rallies(brain, ctx, lineRally)
+    local out = { lineRally }
+    local dir = Toward(ctx)
+    for _, f in ipairs(brain:GetListOfUnits(CatLandFactory, false)) do
+        if Alive(f) and f:GetFractionComplete() >= 1 then
+            local p = f:GetPosition()
+            if FactoryAhead(p[1], lineRally[1], dir) then table.insert(out, Shift(p, -dir * 12)) end
+        end
+    end
+    return out
+end
+
 -- Exposed for tests: does a free land unit count as gathered?
 function RallyReady(dist, idle)
     return dist <= Config.RallyRadius or (idle and dist <= Config.RallyIdleRadius)
@@ -594,12 +630,14 @@ local function LandStep(brain, ctx)
     local task0 = LandCmd.Task(ctx.side, brain.Name)
     rally = LandRally(ctx, task0)
     local holdAt = task0 and task0.mode == 'SUPPORT' and task0.support and LandCmd.ZonePoint(task0.support, ctx.side, task0.line)
+    local rallies = Rallies(brain, ctx, rally)
     for _, u in ipairs(FreeUnits(brain, CatLandDF)) do
         local p = u:GetPosition()
-        if RallyReady(Utils.Dist2D(p, rally), u:IsIdleState()) then
+        local own, d = PickRally(p, rallies)
+        if RallyReady(d, u:IsIdleState()) then
             table.insert(ready, u)
         elseif u:IsIdleState() and not (holdAt and Utils.Dist2D(p, holdAt) <= Config.RallyIdleRadius) then
-            IssueMove({ u }, rally)
+            IssueMove({ u }, own)
         end
     end
     local atWall = KnownNear(brain, CatEnemyLand, rally, 70)
