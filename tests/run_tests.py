@@ -1441,6 +1441,23 @@ check(sg[0] and sg[1] and sg[2] and sg[3], 'siege: land army -> point defences; 
 check(sg[4] == 130 and sg[5] == 110, 'siege: defences go toward the attackers, at most half way')
 check(not sg[6] and sg[7] and sg[8], 'no land waves sent to help against ships alone')
 
+rt = lua.execute(r"""
+local LC = import('/mods/DualGapAI/lua/AI/DualGapLandCommand.lua')
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local E = import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua')
+local p = A.OrderPath({ 0, 0, 0 }, { { 300, 0, 0 }, { 200, 0, 0 }, { 400, 0, 0 } })
+local q = A.OrderPath({ 250, 0, 0 }, { { 100, 0, 0 }, { 300, 0, 0 }, { 400, 0, 0 } })
+return LC.KeepTask('SUPPORT', 0, 60, 'DEFEND'), LC.KeepTask('SUPPORT', 0, 200, 'DEFEND'),
+       LC.KeepTask('DEFEND', 0, 60, 'SUPPORT'), LC.KeepTask('HOLD', 0, 5, 'DEFEND'), LC.KeepTask(nil, 0, 5, 'PUSH'),
+       p[1][1], p[2][1], p[3][1], table.getn(q), q[1][1],
+       E.NearerFirst(300, { 50 }, 80, 40), E.NearerFirst(60, { 5 }, 80, 40), E.NearerFirst(300, { 280 }, 80, 40)
+""")
+check(rt[0] == 'SUPPORT' and rt[1] == 'DEFEND' and rt[2] == 'DEFEND' and rt[3] == 'DEFEND' and rt[4] == 'PUSH',
+      'land command: support holds a while, no support right after defending (no back and forth)')
+check(rt[5] == 200 and rt[6] == 300 and rt[7] == 400 and rt[8] == 2 and rt[9] == 300,
+      'wave paths only get closer to the target (no going back to a passed point)')
+check(rt[10] and not rt[11] and not rt[12], 'a far job goes to a clearly nearer idle engineer')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

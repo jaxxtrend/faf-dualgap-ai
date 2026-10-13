@@ -526,6 +526,41 @@ local function PowerUnderConstruction(brain)
     return n
 end
 
+-- Exposed for tests: is another free engineer clearly nearer to a job
+-- (mine = own distance, others = theirs)? Only a far job is given away.
+function NearerFirst(mine, others, near, margin)
+    if mine <= near then return false end
+    for _, d in ipairs(others) do
+        if d < mine - margin then return true end
+    end
+    return false
+end
+
+-- Idle free engineers of this tick (EngineersStep collects them).
+local function CollectIdle(brain, ctx)
+    local out = {}
+    for _, e in ipairs(brain:GetListOfUnits(CatEngineer, false)) do
+        if Alive(e) and e:GetFractionComplete() >= 1 and not e.DualGapAssigned and e:IsIdleState() then
+            table.insert(out, e)
+        end
+    end
+    ctx.idleEngineers = out
+end
+
+-- Leave a far job to an idle engineer nearer to it (players use the one
+-- at hand, not one from across the map). Also used by DualGapProjects.
+function NearerOneFree(ctx, u, pos)
+    local mine = Utils.Dist2D(u:GetPosition(), pos)
+    if mine <= Config.EngineerNearRange then return false end
+    local others = {}
+    for _, e in ipairs(ctx.idleEngineers or {}) do
+        if e ~= u and Alive(e) and not e.DualGapAssigned and e:IsIdleState() then
+            table.insert(others, Utils.Dist2D(e:GetPosition(), pos))
+        end
+    end
+    return NearerFirst(mine, others, Config.EngineerNearRange, Config.EngineerNearMargin)
+end
+
 local function TryMex(brain, ctx, u, baseOnly)
     ctx.mexClaims = ctx.mexClaims or {}
     local now = GetGameTimeSeconds()
@@ -543,7 +578,7 @@ local function TryMex(brain, ctx, u, baseOnly)
     local m
     for _ = 1, 6 do
         m = MexOwn.NearestFree(brain, baseOnly and ctx.startPos or u:GetPosition(), nil, maxD, exclude)
-        if not m or not Unsafe(brain, m.pos) then break end
+        if not m or not (Unsafe(brain, m.pos) or (not baseOnly and NearerOneFree(ctx, u, m.pos))) then break end
         exclude[m] = true
         m = nil
     end
@@ -719,7 +754,7 @@ local function TryRebuild(brain, ctx, u)
                 if id and not Utils.CanStartBuild(brain, id) then
                     id = nil        -- slots full: rebuild later
                 elseif id and brain:CanBuildStructureAt(id, r.pos) then
-                    if not Unsafe(brain, r.pos) then
+                    if not Unsafe(brain, r.pos) and not NearerOneFree(ctx, u, r.pos) then
                         local d = Utils.Dist2D(from, r.pos)
                         if not bestD or d < bestD then best, bestD, bestId, bestKey = r, d, id, key end
                     end
@@ -1044,6 +1079,7 @@ function EngineersStep(brain, ctx)
         ctx.stallSince = nil
     end
     brain.DGEnergyOut = ctx.stallSince ~= nil and now - ctx.stallSince >= Config.StallPullSeconds
+    CollectIdle(brain, ctx)
     ctx.upkeepTick = (ctx.upkeepTick or 0) + 1
     if ctx.upkeepTick >= 5 then
         ctx.upkeepTick = 0

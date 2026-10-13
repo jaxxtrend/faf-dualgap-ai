@@ -562,14 +562,38 @@ function RallyReady(dist, idle)
     return dist <= Config.RallyRadius or (idle and dist <= Config.RallyIdleRadius)
 end
 
+-- Exposed for tests: the wave's waypoints in an order that only gets
+-- closer to the last one (a point that would send the wave back - an own
+-- front point already passed, a siege camp beyond the enemy choke - is
+-- moved to its place on the way or dropped when it is behind the start).
+function OrderPath(start, path)
+    local n = table.getn(path)
+    if n <= 1 then return path end
+    local goal = path[n]
+    local startD = Utils.Dist2D(start, goal)
+    local mids = {}
+    for i = 1, n - 1 do
+        local p = path[i]
+        if Utils.Dist2D(p, goal) < startD then table.insert(mids, p) end
+    end
+    table.sort(mids, function(a, b) return Utils.Dist2D(a, goal) > Utils.Dist2D(b, goal) end)
+    table.insert(mids, goal)
+    return mids
+end
+
 local function LandStep(brain, ctx)
     if HelpLand(brain, ctx) then return end
     local rally = LandRally(ctx)
     local ready = {}
+    -- Units sent to support the other mid stay there while the task lasts
+    -- (no walking home the moment the wave is done).
+    local task0 = LandCmd.Task(ctx.side, brain.Name)
+    local holdAt = task0 and task0.mode == 'SUPPORT' and task0.support and LandCmd.ZonePoint(task0.support, ctx.side)
     for _, u in ipairs(FreeUnits(brain, CatLandDF)) do
-        if RallyReady(Utils.Dist2D(u:GetPosition(), rally), u:IsIdleState()) then
+        local p = u:GetPosition()
+        if RallyReady(Utils.Dist2D(p, rally), u:IsIdleState()) then
             table.insert(ready, u)
-        elseif u:IsIdleState() then
+        elseif u:IsIdleState() and not (holdAt and Utils.Dist2D(p, holdAt) <= Config.RallyIdleRadius) then
             IssueMove({ u }, rally)
         end
     end
@@ -608,6 +632,7 @@ local function LandStep(brain, ctx)
             Comms.Say(brain, ctx.side, 'enderwave:' .. brain.Name, 'Going for their game ender with '
                 .. Utils.Count(ready) .. ' units!', ender.pos, 'attack')
         elseif ctx.enemyGroundBase then table.insert(path, ctx.enemyGroundBase) end
+        path = OrderPath(Centroid(ready), path)
         Claim(ready)
         FormationPath(ready, path, rally)
         table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1, defending = enemyAtWall })

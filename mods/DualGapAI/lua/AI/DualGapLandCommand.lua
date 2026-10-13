@@ -32,6 +32,20 @@ function LandTask(zone, ownStance, otherStance, focus)
     return 'HOLD', 1, nil
 end
 
+-- Exposed for tests: the task mode to keep (prev held since `since`)
+-- when the stances now say `new`. A SUPPORT holds LandSupportHold seconds
+-- (the army is on its way; calling it back at once only walks it through
+-- the base and back), and right after a DEFEND the army is not sent away
+-- to the other mid for as long: its own mid got weak just now. Fighting at
+-- the own wall goes on regardless (DualGapArmy: enemy at the wall).
+function KeepTask(prev, since, now, new)
+    if not prev or prev == new then return new end
+    local fresh = now - since < Config.LandSupportHold
+    if prev == 'SUPPORT' and fresh then return prev end
+    if new == 'SUPPORT' and prev == 'DEFEND' and fresh then return prev end
+    return new
+end
+
 -- The mid zone a player holds: the lower GROUND the lower mid, everyone
 -- else (the upper GROUND, an heir with another role) the upper one.
 function ZoneOfPlayer(ctx)
@@ -77,7 +91,13 @@ local function Step(side)
             local mode, scale, support = LandTask(zone, Command.ZoneStance(side, zone),
                 Command.ZoneStance(side, OtherZone[zone]), focus)
             local prev = cmd.tasks[b.Name]
-            local task = { mode = mode, scale = scale, zone = zone, support = support, at = GetGameTimeSeconds() }
+            local now = GetGameTimeSeconds()
+            if prev then
+                local keep = KeepTask(prev.mode, prev.since or now, now, mode)
+                if keep ~= mode then mode, scale, support = keep, prev.scale, prev.support end
+            end
+            local since = (prev and prev.mode == mode and prev.support == support) and prev.since or now
+            local task = { mode = mode, scale = scale, zone = zone, support = support, at = now, since = since }
             cmd.tasks[b.Name] = task
             if not prev or prev.mode ~= mode or prev.support ~= support then
                 Utils.Log(b, 'LAND COMMAND: ' .. mode .. ' ' .. zone .. (support and (' -> support ' .. support) or ''))

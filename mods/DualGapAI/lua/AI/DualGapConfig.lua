@@ -775,3 +775,13 @@ SiegeTorpedoes       = 4
 -- Engineers keep this far from seen enemy warships (their guns outrange
 -- anything on land).
 NavalUnsafeRadius    = 90
+
+-- Land command: a SUPPORT task holds LandSupportHold seconds, and a player
+-- that just had to DEFEND is not sent to the other mid for as long (no
+-- armies walking mid -> base -> other mid and back every half minute).
+LandSupportHold = 120
+
+-- A job farther than EngineerNearRange from an engineer goes to an idle
+-- engineer at least EngineerNearMargin nearer to it, if there is one.
+EngineerNearRange  = 80
+EngineerNearMargin = 40

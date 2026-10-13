@@ -144,6 +144,8 @@ function Offer(brain, ctx, u, maxPriority)
         -- (one from the mid for the base and one from the base for the mid).
         local far = p.site and Utils.Count(p.crew) > 0
             and Utils.Dist2D(u:GetPosition(), p.site) > Config.ProjectCrewRange
+        -- A far job goes to an idle engineer nearer to it, if there is one.
+        far = far or (p.site and import('/mods/DualGapAI/lua/AI/DualGapEngineers.lua').NearerOneFree(ctx, u, p.site))
         if (not maxPriority or p.priority <= maxPriority) and not capped and not far
             and Utils.Count(p.crew) < CrewWanted(brain, p)
             and Utils.TechOf(u) >= (p.minCrewTech or 1) then
