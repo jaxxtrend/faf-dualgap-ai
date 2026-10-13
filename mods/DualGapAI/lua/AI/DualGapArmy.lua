@@ -2270,6 +2270,42 @@ function RepairState(hp, since, now)
     return nil
 end
 
+-- Exposed for tests: focus fire value of a target (mass per hit point
+-- left): the cheapest kill of the most worth first.
+function FocusScore(mass, hp)
+    return mass / math.max(1, hp)
+end
+
+local function FocusTarget(enemies, army, from, range)
+    local best, bestS
+    for _, e in ipairs(enemies) do
+        if Alive(e) and Intel.SeenNow(e, army) and Utils.Dist2D(from, e:GetPosition()) <= range then
+            local eco = e:GetBlueprint().Economy
+            local s = FocusScore((eco and eco.BuildCostMass) or 0, e:GetHealth())
+            if not bestS or s > bestS then best, bestS = e, s end
+        end
+    end
+    return best
+end
+
+-- Exposed for tests: does a unit of reach `r` stand off from an enemy of
+-- reach `enemyRange` (and how: 'BACK', 'STAND' or nil = go on)?
+function StandoffStep(r, enemyRange, d)
+    if r < enemyRange + Config.StandoffEdge then return nil end
+    if d < enemyRange + Config.KiteMargin then return 'BACK' end
+    if d <= r * 0.95 then return 'STAND' end
+    return nil
+end
+
+local function Nearest(enemies, p)
+    local near, d
+    for _, e in ipairs(enemies) do
+        local dd = Utils.Dist2D(p, e:GetPosition())
+        if not d or dd < d then near, d = e, dd end
+    end
+    return near, d
+end
+
 local CatContactEnemy = (categories.MOBILE * (categories.LAND + categories.NAVAL) - categories.ENGINEER - categories.SCOUT)
     + categories.STRUCTURE * categories.DEFENSE * (categories.DIRECTFIRE + categories.INDIRECTFIRE + categories.ANTINAVY)
 
@@ -2351,7 +2387,41 @@ local function WaveTactic(brain, ctx, wave, now)
         end
         if p and naval and Utils.WaterDepth(p[1], p[3]) < 1.5 then p = nil end
         IssueClearCommands(units)
-        if p then IssueMove(units, p) end
+        if p then
+            IssueMove(units, p)
+        else
+            local f = FocusTarget(enemies, army, c, ownRange)
+            if f then IssueAttack(units, f) end
+        end
+    elseif t == 'PUSH' then
+        for _, u in ipairs(units) do
+            if not EntityCategoryContains(categories.EXPERIMENTAL, u) then
+                local p = u:GetPosition()
+                local near, d = Nearest(enemies, p)
+                local r = WeaponRange(u:GetBlueprint())
+                local step = near and StandoffStep(r, enemyRange, d)
+                if step == 'BACK' then
+                    local q = Away(near:GetPosition(), p, enemyRange + Config.KiteMargin + 8 - d)
+                    if not naval or Utils.WaterDepth(q[1], q[3]) >= 1.5 then
+                        IssueClearCommands({ u })
+                        IssueMove({ u }, q)
+                        u.DGStandoff = true
+                    end
+                elseif step == 'STAND' then
+                    local f = FocusTarget(enemies, army, p, r)
+                    if f and u.DGFocus ~= f then
+                        IssueClearCommands({ u })
+                        IssueAttack({ u }, f)
+                        u.DGFocus = f
+                    end
+                    u.DGStandoff = true
+                elseif u.DGStandoff then
+                    -- Out of the stand-off: on with the wave.
+                    u.DGStandoff, u.DGFocus = nil, nil
+                    if wave.lastTarget then IssueMove({ u }, wave.lastTarget) end
+                end
+            end
+        end
     elseif t == 'HOLD' then
         Utils.Log(brain, 'land wave of ' .. table.getn(units) .. ' holds at its fortified line')
         FormationPath(units, { rally }, c, true)

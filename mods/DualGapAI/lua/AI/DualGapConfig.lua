@@ -908,3 +908,11 @@ RepairDoneHealth = 0.9
 RepairMaxSeconds = 120
 RepairBack       = 30
 RepairersPerUnit = 2
+
+-- Tactics, stage 2 (level MASTER):
+--  focus fire: units standing and shooting (kiting, standing off) all hit
+--    the target worth the most per hit point left (mass / health), seen now;
+--  stand-off: in a wave that pushes, a unit with a reach StandoffEdge+
+--    longer than the enemy's (artillery, missile launchers, battleships)
+--    keeps out of their reach and shoots from its own, behind the screen.
+StandoffEdge = 15

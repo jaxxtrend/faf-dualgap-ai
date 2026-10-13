@@ -1558,6 +1558,15 @@ check(tc[12] == 'BACK' and tc[13] == 'IN' and tc[14] == 'STAND', 'kiting: step b
 check(tc[15] == 'GO' and tc[16] is None and tc[17] == 'DONE' and tc[18] == 'KEEP' and tc[19] == 'DONE',
       'damaged units go back for repairs and return when fixed (or after a while)')
 
+t2 = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+return A.FocusScore(500, 100) > A.FocusScore(500, 1000), A.FocusScore(2000, 1000) > A.FocusScore(100, 100),
+       A.StandoffStep(60, 25, 20), A.StandoffStep(60, 25, 45), A.StandoffStep(60, 25, 80), A.StandoffStep(30, 25, 20)
+""")
+check(t2[0] and t2[1], 'focus fire: most mass per hit point left first (finish the wounded, the expensive)')
+check(t2[2] == 'BACK' and t2[3] == 'STAND' and t2[4] is None and t2[5] is None,
+      'stand-off: long-reach units keep out of the enemy reach and shoot from their own; short-reach ones go on')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
