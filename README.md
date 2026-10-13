@@ -46,7 +46,7 @@ Each slot can get its own level: **AI: DualGap Easy / Normal / Hard / Expert / M
 | Normal | Team commands with a rough staff estimate (±20%), ACU survival tricks, some banked spending |
 | Hard | Nearly full speed, staff estimate ±10%, air sweeps, bomber follow-ups, every fighter on an enemy air T4 |
 | Expert | The full bot (the old "AI: DualGap (beta)") |
-| Master | Expert plus attack on the move: direct-fire land units walk and shoot instead of stopping in front of the enemy (they still stop for structures; artillery always stops), fleets strafe back and forth, weapons pick targets by priority |
+| Master | Expert plus attack on the move: direct-fire land units walk and shoot instead of stopping in front of the enemy (they still stop for structures; artillery always stops), fleets strafe back and forth, weapons pick targets by priority. In contact a wave picks a tactic from the seen strength and weapon reach: push through, concave arc in an even fight, kite with the longer reach, hold a fortified line (and bait the enemy onto it), split round an enemy land T4, disengage when losing. Long-reach units stand off behind the screen, standing units focus fire, damaged units go back for repairs, fleets keep out of shore defence reach, submarines dive away from anti-sub units |
 
 The settings of each level are the `Levels` table at the end of [DualGapConfig.lua](mods/DualGapAI/lua/AI/DualGapConfig.lua).
 

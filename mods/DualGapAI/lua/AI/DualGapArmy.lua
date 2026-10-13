@@ -372,7 +372,13 @@ end
 function HuntOnTheMove(brain, wave, c, t, e)
     local structure = e and EntityCategoryContains(categories.STRUCTURE, e)
     if wave.kind == 'NAVAL' then
-        local legs = StrafeLegs(c, t, Config.NavalStrafeRange, Config.NavalStrafeWidth, Config.NavalStrafeLegs)
+        -- Out of the reach of the shore defences seen around the target.
+        local range = Config.NavalStrafeRange
+        for _, d in ipairs(KnownNear(brain, categories.STRUCTURE * categories.DEFENSE, t, 120)) do
+            range = math.max(range, WeaponRange(d:GetBlueprint()) + Config.KiteMargin
+                - Utils.Dist2D(d:GetPosition(), t))
+        end
+        local legs = StrafeLegs(c, t, range, Config.NavalStrafeWidth, Config.NavalStrafeLegs)
         local ok = true
         for _, p in ipairs(legs) do
             if Utils.WaterDepth(p[1], p[3]) < 1.5 then ok = false; break end
@@ -2237,13 +2243,63 @@ local function MedianRange(units)
 end
 
 -- Exposed for tests: the tactic for a wave in contact (see Config).
-function ChooseTactic(ratio, rangeAdv, fortified, losing, naval)
+function ChooseTactic(ratio, rangeAdv, fortified, losing, naval, enemyT4)
     if losing then return 'DISENGAGE' end
+    if enemyT4 and not naval then return 'T4' end
     if rangeAdv >= Config.KiteRangeEdge and ratio < Config.PushRatio then return 'KITE' end
     if ratio >= Config.PushRatio then return 'PUSH' end
     if ratio < Config.HoldRatio and fortified and not naval then return 'HOLD' end
     if ratio < Config.DisengageRatio then return 'DISENGAGE' end
-    return 'PUSH'
+    return 'CONCAVE'
+end
+
+-- atan2 (Lua 5.0 has math.atan2; newer ones math.atan(y, x)).
+local function Atan2(y, x)
+    if math.atan2 then return math.atan2(y, x) end
+    return math.atan(y, x)
+end
+
+-- Exposed for tests: n points on an arc of `arc` degrees around `centre`,
+-- `r` from it, facing `from` (the wave); the outer `flank` share of them
+-- a further half-arc round the sides.
+function ArcPoints(centre, from, r, n, arc, flank)
+    local base = Atan2(from[3] - centre[3], from[1] - centre[1])
+    local out = {}
+    local outer = math.floor(n * flank)
+    for i = 1, n do
+        local f = (n == 1) and 0 or ((i - 1) / (n - 1) - 0.5)       -- -0.5 .. 0.5
+        local spread = arc
+        if i <= math.floor(outer / 2) or i > n - (outer - math.floor(outer / 2)) then spread = arc * 1.5 end
+        local a = base + f * spread * math.pi / 180
+        table.insert(out, { centre[1] + math.cos(a) * r, 0, centre[3] + math.sin(a) * r })
+    end
+    return out
+end
+
+-- Exposed for tests: points to the sides and back of a T4 (angles off the
+-- line T4 -> wave), `r` from it.
+function FlankPoints(t4, from, r, angles)
+    local base = Atan2(from[3] - t4[3], from[1] - t4[1])
+    local out = {}
+    for _, deg in ipairs(angles) do
+        local a = base + deg * math.pi / 180
+        table.insert(out, { t4[1] + math.cos(a) * r, 0, t4[3] + math.sin(a) * r })
+    end
+    return out
+end
+
+-- Units sorted across the line wave -> enemy (left to right), so arc spots
+-- go to the nearest units without crossing paths.
+local function SortAcross(units, c, target)
+    local dx, dz = target[1] - c[1], target[3] - c[3]
+    local function side(u)
+        local p = u:GetPosition()
+        return (p[1] - c[1]) * dz - (p[3] - c[3]) * dx
+    end
+    local list = {}
+    for _, u in ipairs(units) do table.insert(list, u) end
+    table.sort(list, function(a, b) return side(a) < side(b) end)
+    return list
 end
 
 -- Exposed for tests: is the fight going badly (loss fractions since contact)?
@@ -2337,6 +2393,66 @@ local function Away(from, c, dist)
     return { x, GetSurfaceHeight(x, z), z }
 end
 
+-- Submarines: under anti-sub units seen close by they dive away to the
+-- rally; otherwise they go for the surface ships in reach.
+local CatSub = categories.NAVAL * categories.MOBILE * categories.SUBMERSIBLE - categories.NUKE - categories.STRATEGIC
+local CatAntiSub = categories.MOBILE * categories.ANTINAVY
+local CatSurface = categories.NAVAL * categories.MOBILE - categories.SUBMERSIBLE
+function SubmarineStep(brain, ctx, units, enemies, army)
+    for _, u in ipairs(units) do
+        if EntityCategoryContains(CatSub, u) then
+            local p = u:GetPosition()
+            if table.getn(KnownNear(brain, CatAntiSub, p, Config.SubDangerRadius)) > 0 then
+                if not u.DGDiving then
+                    u.DGDiving = true
+                    IssueClearCommands({ u })
+                    IssueMove({ u }, Routes.GetPoint('NavalRally', ctx.side))
+                end
+            else
+                u.DGDiving = nil
+                local best, bestD
+                for _, e in ipairs(enemies) do
+                    if EntityCategoryContains(CatSurface, e) and Intel.SeenNow(e, army) then
+                        local d = Utils.Dist2D(p, e:GetPosition())
+                        if not bestD or d < bestD then best, bestD = e, d end
+                    end
+                end
+                if best and u.DGFocus ~= best then
+                    u.DGFocus = best
+                    IssueClearCommands({ u })
+                    IssueAttack({ u }, best)
+                end
+            end
+        end
+    end
+end
+
+-- Bait: a few fast units poke the enemy in front of the held line and run
+-- back to the guns, to draw it in.
+function BaitStep(brain, ctx, units, enemies, rally, now)
+    if ctx.baitAt and now - ctx.baitAt < Config.BaitEvery then return end
+    local near = Nearest(enemies, rally)
+    if not near then return end
+    local pool = {}
+    for _, u in ipairs(units) do
+        if not EntityCategoryContains(categories.EXPERIMENTAL + categories.INDIRECTFIRE, u) then table.insert(pool, u) end
+    end
+    if table.getn(pool) < Config.BaitSize * 2 then return end
+    table.sort(pool, function(a, b)
+        return (a:GetBlueprint().Physics.MaxSpeed or 0) > (b:GetBlueprint().Physics.MaxSpeed or 0)
+    end)
+    local bait = {}
+    for i = 1, Config.BaitSize do table.insert(bait, pool[i]) end
+    ctx.baitAt = now
+    local np = near:GetPosition()
+    local poke = Away(np, Centroid(bait), WeaponRange(bait[1]:GetBlueprint()) * 0.9 - Utils.Dist2D(np, Centroid(bait)))
+    IssueClearCommands(bait)
+    IssueMove(bait, poke)
+    IssueAttack(bait, near)
+    IssueMove(bait, rally)
+    Utils.Log(brain, Config.BaitSize .. ' units bait the enemy toward the line')
+end
+
 local function WaveTactic(brain, ctx, wave, now)
     if wave.stage == 'retreat' or wave.stage == 'regroup' or wave.ender or wave.raid then return end
     local units = Utils.FilterAlive(wave.units)
@@ -2363,7 +2479,17 @@ local function WaveTactic(brain, ctx, wave, now)
     local fortified = (not naval) and Utils.Dist2D(c, rally) <= Config.HoldReach
         and Utils.CountAround(brain, categories.STRUCTURE * categories.DEFENSE * categories.DIRECTFIRE, rally, 40, 'Ally')
             >= Config.LineFortifiedPDs
-    local t = ChooseTactic(own / math.max(1, enemy), ownRange - enemyRange, fortified, Losing(ownLoss, enemyLoss), naval)
+    local enemyT4, ownT4
+    for _, e in ipairs(enemies) do
+        if EntityCategoryContains(categories.EXPERIMENTAL * categories.LAND, e) then enemyT4 = e; break end
+    end
+    for _, u in ipairs(units) do
+        if EntityCategoryContains(categories.EXPERIMENTAL, u) then ownT4 = true; break end
+    end
+    if ownT4 then enemyT4 = nil end
+    local t = ChooseTactic(own / math.max(1, enemy), ownRange - enemyRange, fortified, Losing(ownLoss, enemyLoss), naval,
+        enemyT4 ~= nil)
+    if naval then SubmarineStep(brain, ctx, units, enemies, army) end
     if wave.tactic and t ~= wave.tactic and t ~= 'DISENGAGE' and now - (wave.tacticAt or 0) < Config.TacticHold then
         t = wave.tactic
     end
@@ -2422,10 +2548,43 @@ local function WaveTactic(brain, ctx, wave, now)
                 end
             end
         end
+    elseif t == 'CONCAVE' then
+        if not wave.arcAt or now - wave.arcAt >= Config.TacticHold then
+            wave.arcAt = now
+            local ec = Centroid(enemies)
+            local spots = ArcPoints(ec, c, math.max(15, ownRange * 0.9), table.getn(units), Config.ConcaveArc,
+                Config.ConcaveFlankShare)
+            local ok = true
+            for i, u in ipairs(SortAcross(units, c, ec)) do
+                local p = spots[i]
+                if naval and Utils.WaterDepth(p[1], p[3]) < 1.5 then ok = false end
+                if ok then
+                    IssueClearCommands({ u })
+                    IssueMove({ u }, { p[1], GetSurfaceHeight(p[1], p[3]), p[3] })
+                    local f = FocusTarget(enemies, army, p, WeaponRange(u:GetBlueprint()) + 10)
+                    if f then IssueAttack({ u }, f) end
+                end
+            end
+        end
+    elseif t == 'T4' then
+        if not wave.arcAt or now - wave.arcAt >= Config.TacticHold or wave.t4 ~= enemyT4 then
+            wave.arcAt, wave.t4 = now, enemyT4
+            local tp = enemyT4:GetPosition()
+            local spots = FlankPoints(tp, c, math.max(20, ownRange * 0.85), Config.T4FlankAngles)
+            local k = table.getn(spots)
+            for i, u in ipairs(units) do
+                local p = spots[i - k * math.floor((i - 1) / k)]
+                IssueClearCommands({ u })
+                IssueMove({ u }, { p[1], GetSurfaceHeight(p[1], p[3]), p[3] })
+                IssueAttack({ u }, enemyT4)
+            end
+            Utils.Log(brain, 'land wave of ' .. table.getn(units) .. ' splits round the enemy ' .. Comms.UnitName(enemyT4))
+        end
     elseif t == 'HOLD' then
         Utils.Log(brain, 'land wave of ' .. table.getn(units) .. ' holds at its fortified line')
         FormationPath(units, { rally }, c, true)
         wave.stage, wave.tactic = 'regroup', nil
+        BaitStep(brain, ctx, units, enemies, rally, now)
     elseif t == 'DISENGAGE' then
         FormationPath(units, { rally }, c, true)
         wave.stage, wave.tactic = naval and 'retreat' or 'regroup', nil

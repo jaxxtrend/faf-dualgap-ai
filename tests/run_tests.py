@@ -1551,8 +1551,8 @@ return A.WeaponRange(bp),
 """)
 check(tc[0] == 60, 'weapon reach: ground / naval weapons only (no AA, no death weapon)')
 check(tc[1] == 'PUSH' and tc[2] == 'KITE' and tc[3] == 'KITE' and tc[4] == 'HOLD' and tc[5] == 'DISENGAGE'
-      and tc[6] == 'PUSH' and tc[7] == 'DISENGAGE' and tc[8] == 'DISENGAGE',
-      'tactics: push when much stronger, kite with the longer reach, hold a fortified line, disengage when weak or losing')
+      and tc[6] == 'CONCAVE' and tc[7] == 'DISENGAGE' and tc[8] == 'DISENGAGE',
+      'tactics: push when much stronger, kite with the longer reach, concave when even, hold a fortified line, disengage when weak or losing')
 check(tc[9] and not tc[10] and not tc[11], 'a fight counts as lost only when own losses clearly outrun the enemy\'s')
 check(tc[12] == 'BACK' and tc[13] == 'IN' and tc[14] == 'STAND', 'kiting: step back out of their reach, in to ours, else stand and shoot')
 check(tc[15] == 'GO' and tc[16] is None and tc[17] == 'DONE' and tc[18] == 'KEEP' and tc[19] == 'DONE',
@@ -1566,6 +1566,20 @@ return A.FocusScore(500, 100) > A.FocusScore(500, 1000), A.FocusScore(2000, 1000
 check(t2[0] and t2[1], 'focus fire: most mass per hit point left first (finish the wounded, the expensive)')
 check(t2[2] == 'BACK' and t2[3] == 'STAND' and t2[4] is None and t2[5] is None,
       'stand-off: long-reach units keep out of the enemy reach and shoot from their own; short-reach ones go on')
+
+t3 = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local arc = A.ArcPoints({ 0, 0, 0 }, { 100, 0, 0 }, 50, 5, 100, 0)
+local fl = A.FlankPoints({ 0, 0, 0 }, { 100, 0, 0 }, 30, { 90, -90, 180 })
+local function r(p) return math.floor(p[1] + 0.5), math.floor(p[3] + 0.5) end
+local a1x, a1z = r(arc[1]); local a3x, a3z = r(arc[3]); local a5x, a5z = r(arc[5])
+local f1x, f1z = r(fl[1]); local f3x, f3z = r(fl[3])
+return a3x, a3z, a1z < 0 and a5z > 0, math.floor(math.sqrt(arc[1][1]^2 + arc[1][3]^2) + 0.5),
+       f1x, math.abs(f1z), f3x, A.ChooseTactic(3, 0, false, false, false, true), A.ChooseTactic(3, 0, false, false, true, true)
+""")
+check(t3[0] == 50 and t3[1] == 0 and t3[2] and t3[3] == 50, 'concave: the wave spreads on an arc facing the enemy at its reach')
+check(t3[4] == 0 and t3[5] == 30 and t3[6] == -30 and t3[7] == 'T4' and t3[8] != 'T4',
+      'against a land T4: split to its sides and back (land waves only)')
 
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")

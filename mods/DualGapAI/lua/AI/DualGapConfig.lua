@@ -916,3 +916,21 @@ RepairersPerUnit = 2
 --    longer than the enemy's (artillery, missile launchers, battleships)
 --    keeps out of their reach and shoots from its own, behind the screen.
 StandoffEdge = 15
+
+-- Tactics, stage 3 (level MASTER):
+--  CONCAVE: an even fight (DisengageRatio .. PushRatio) - the wave spreads
+--    on an arc ConcaveArc degrees wide around the enemy at its own reach,
+--    the outer ConcaveFlankShare of it further round the flanks;
+--  T4: an enemy land experimental and none of ours - the wave splits to
+--    its sides and back (T4FlankAngles off the line to us) and shoots it;
+--  bait: a wave holding its fortified line sends BaitSize fast units to
+--    poke the enemy in front and run back to the guns (every BaitEvery);
+--  fleets strafe out of the reach of the shore defences around the target;
+--  submarines hit surface ships and dive away from seen anti-sub units
+--    within SubDangerRadius.
+ConcaveArc        = 100
+ConcaveFlankShare = 0.25
+T4FlankAngles     = { 90, -90, 150, -150 }
+BaitSize          = 3
+BaitEvery         = 60
+SubDangerRadius   = 60
