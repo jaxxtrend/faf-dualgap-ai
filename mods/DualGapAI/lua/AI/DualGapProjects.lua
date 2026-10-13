@@ -1268,7 +1268,7 @@ local CatTargets = CatEnders + CatAntiNuke + categories.COMMAND + CatEco + categ
 -- 'MEX' | 'ECO' | 'FACTORY'. longRange: T3/T4 artillery and satellites.
 function ArtilleryScore(kind, shields, haveNuke, underwater, longRange, splash)
     local base = 0
-    -- Experimental artillery (level MASTER) reaches a submerged ACU with
+    -- The Mavor (level MASTER) reaches a submerged ACU with
     -- the splash of a shell on the water above it: worth the most then.
     if kind == 'ACU' and underwater and splash and shields == 0 then return Config.SplashACUScore end
     -- Game enders, and the anti-nukes in the way of the team's nukes, are
@@ -1721,7 +1721,8 @@ function ArtySwitch(curScore, score, idle)
     return score >= Config.ArtySwitchRatio * curScore
 end
 
-local CatSplashArty = categories.STRUCTURE * categories.ARTILLERY * categories.EXPERIMENTAL
+-- Only the Mavor's shells splash deep enough (the Salvation's don't).
+local CatSplashArty = categories.ueb2401
 
 function AimShooter(brain, ctx, a, range, longRange)
     -- The last target (a game ender / anti-nuke) died: remember the spot,

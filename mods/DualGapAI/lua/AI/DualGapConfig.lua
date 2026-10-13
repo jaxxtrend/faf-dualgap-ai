@@ -982,7 +982,7 @@ ACUBeatenSeconds    = 30
 TorpGuardsHunt      = 1
 NukeSubACUAge       = 30
 
--- Level MASTER: experimental artillery (Mavor, Salvation) shells a seen
+-- Level MASTER: the Mavor (not the Salvation: its shells don't reach) shells a seen
 -- enemy ACU under water through the splash of shells on the water above
 -- it (unshielded), as its top target.
 SplashACUScore = 110
