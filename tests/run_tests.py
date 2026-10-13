@@ -1458,6 +1458,26 @@ check(rt[5] == 200 and rt[6] == 300 and rt[7] == 400 and rt[8] == 2 and rt[9] ==
       'wave paths only get closer to the target (no going back to a passed point)')
 check(rt[10] and not rt[11] and not rt[12], 'a far job goes to a clearly nearer idle engineer')
 
+ln = lua.execute(r"""
+local LC = import('/mods/DualGapAI/lua/AI/DualGapLandCommand.lua')
+local u2 = LC.LineAnchorN(2, 'UPPER')
+local l2 = LC.LineAnchorN(2, 'LOWER')
+local e2 = LC.LineAnchorN(4, 'UPPER')
+local b0 = LC.LineAnchorN(0, 'LOWER')
+local function ch(...) local l, why = LC.ChooseLine(...); return l end
+return LC.LineCount(), u2[1], u2[2], l2[2], e2[1], b0[1],
+       ch(2, 0, 100, 'ATTACK', nil, false, 3), ch(2, 0, 30, 'ATTACK', nil, false, 3), ch(3, 0, 100, 'ATTACK', nil, false, 3),
+       ch(2, 0, 100, 'DEFEND', nil, false, 3), ch(2, 0, 100, 'DEFEND', nil, true, 3), ch(3, 90, 100, 'HOLD', 1, true, 3),
+       ch(1, 90, 100, 'HOLD', 0, true, 3), ch(2, 0, 100, 'HOLD', nil, false, 3)
+""")
+check(ln[0] == 7, 'seven defence lines from base to base')
+check(abs(ln[1] - 0.4285) < 0.002 and abs(ln[2] - 0.3076) < 0.002 and ln[3] > ln[2],
+      'line 2 points sit on the map mid defensive points (upper above lower)')
+check(abs(ln[4] - (1 - ln[1])) < 1e-9 and 0.25 < ln[5] < 0.26, 'enemy lines are mirrored; line 0 lower point is the shore gap')
+check(ln[6] == 3 and ln[7] == 2 and ln[8] == 3, 'ATTACK steps one line forward after the hold time, up to the centre')
+check(ln[9] == 1 and ln[10] == 2, 'DEFEND steps back unless the line is fortified')
+check(ln[11] == 0 and ln[12] == 0 and ln[13] == 2, 'an enemy army past the held line forces a fall back behind it at once')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

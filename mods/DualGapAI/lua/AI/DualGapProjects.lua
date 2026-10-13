@@ -856,6 +856,15 @@ local function PlanFrontline(brain, ctx)
             Utils.Log(brain, 'siege camp at the enemy base')
             Comms.Say(brain, ctx.side, 'front2:' .. brain.Name, 'Setting up a siege of their base here.', p, 'attack')
         end
+        -- A defence line held a while gets a few point defences (line 2 has
+        -- the ACU's fortification).
+        local LandCmd = import('/mods/DualGapAI/lua/AI/DualGapLandCommand.lua')
+        local line, since = LandCmd.Line(ctx.side, brain.Name)
+        local task = LandCmd.Task(ctx.side, brain.Name)
+        if line and line ~= 2 and line <= 3 and task and task.zone and now - since >= Config.LinePDSeconds then
+            PlanCluster(brain, ctx, 'Line' .. line .. 'PD', 'PointDefenseT2', CatPDs,
+                LandCmd.LineAnchor(line, task.zone, ctx.side), Config.LinePDs, 20, 1)
+        end
         if ctx.frontStage == 1 then
             local s = ctx.frontPoint
             PlanCluster(brain, ctx, 'Front1PD', 'PointDefenseT2', CatPDs, s, 3, 20, 0)

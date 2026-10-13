@@ -440,7 +440,7 @@ local function UpdateWaves(brain, ctx)
             local task = (wave.kind == 'LAND') and LandCmd.Task(ctx.side, brain.Name)
             if task and task.mode == 'DEFEND' and wave.stage ~= 'regroup' and not wave.defending
                 and InEnemyHalf(ctx.side, c) then
-                FormationPath(wave.units, { Shift(ctx.frontPoint or ctx.choke, -Toward(ctx) * 25) }, c)
+                FormationPath(wave.units, { LandRally(ctx, task) }, c)
                 wave.stage = 'regroup'
                 Utils.Log(brain, 'land wave of ' .. table.getn(wave.units) .. ' falls back to the wall (land command: DEFEND)')
             end
@@ -553,7 +553,11 @@ end
 -- Units gather behind the own mid choke, not at an advanced front point:
 -- walking there one by one, they were picked off on the way. The wave
 -- passes the front point on its way out.
-local function LandRally(ctx)
+local function LandRally(ctx, task)
+    -- On the defence line the land command holds (just behind it).
+    if task and task.line and task.zone then
+        return Shift(LandCmd.LineAnchor(task.line, task.zone, ctx.side), -Toward(ctx) * 15)
+    end
     return Shift(ctx.choke or ctx.frontPoint, -Toward(ctx) * 25)
 end
 
@@ -588,7 +592,8 @@ local function LandStep(brain, ctx)
     -- Units sent to support the other mid stay there while the task lasts
     -- (no walking home the moment the wave is done).
     local task0 = LandCmd.Task(ctx.side, brain.Name)
-    local holdAt = task0 and task0.mode == 'SUPPORT' and task0.support and LandCmd.ZonePoint(task0.support, ctx.side)
+    rally = LandRally(ctx, task0)
+    local holdAt = task0 and task0.mode == 'SUPPORT' and task0.support and LandCmd.ZonePoint(task0.support, ctx.side, task0.line)
     for _, u in ipairs(FreeUnits(brain, CatLandDF)) do
         local p = u:GetPosition()
         if RallyReady(Utils.Dist2D(p, rally), u:IsIdleState()) then
@@ -597,7 +602,7 @@ local function LandStep(brain, ctx)
             IssueMove({ u }, rally)
         end
     end
-    local atWall = KnownNear(brain, CatEnemyLand, ctx.choke, 70)
+    local atWall = KnownNear(brain, CatEnemyLand, rally, 70)
     local enemyAtWall = table.getn(atWall) >= 5
     if enemyAtWall then
         Comms.Say(brain, ctx.side, 'wall:' .. brain.Name, 'Enemy at my wall: ' .. Comms.Describe(atWall) .. '. Need help here!',
@@ -612,7 +617,7 @@ local function LandStep(brain, ctx)
     local holdBack = task and task.mode == 'DEFEND' and not enemyAtWall and not ender
     if not holdBack and task and task.mode == 'SUPPORT' and not enemyAtWall and not ender
         and WaveReady(ready, size) then
-        local to = LandCmd.ZonePoint(task.support, ctx.side)
+        local to = LandCmd.ZonePoint(task.support, ctx.side, task.line)
         Claim(ready)
         FormationPath(ready, { to }, rally)
         table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1 })
@@ -622,13 +627,16 @@ local function LandStep(brain, ctx)
         local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
         -- Through the own front, over the enemy's mid choke, on to its base.
         local path = { ctx.frontPoint or ctx.choke, Routes.GetPoint(zone, enemy) }
+        -- On the lines: the zone's points on every line ahead, straight on.
+        if task and task.line and task.zone then path = LandCmd.LinePath(task.line, task.zone, ctx.side) end
         if ender and not enemyAtWall then
             -- Everyone on the game ender, through the mid lane with less
             -- known enemy army: the sneaky way in.
             local up, low = Routes.GetPoint('ChokeUpper', enemy), Routes.GetPoint('ChokeLower', enemy)
             local lane = (table.getn(KnownNear(brain, CatEnemyLand, up, 120))
                 <= table.getn(KnownNear(brain, CatEnemyLand, low, 120))) and up or low
-            path = { ctx.frontPoint or ctx.choke, lane, ender.pos }
+            path = { (task and task.line and task.zone) and LandCmd.LineAnchor(math.min(task.line + 1, LandCmd.LineCount() - 1), task.zone, ctx.side)
+                or ctx.frontPoint or ctx.choke, lane, ender.pos }
             Comms.Say(brain, ctx.side, 'enderwave:' .. brain.Name, 'Going for their game ender with '
                 .. Utils.Count(ready) .. ' units!', ender.pos, 'attack')
         elseif ctx.enemyGroundBase then table.insert(path, ctx.enemyGroundBase) end
@@ -645,7 +653,7 @@ local function LandStep(brain, ctx)
     end
 
     -- Artillery / MML: behind the wall, then follow the last wave out.
-    local staging = Shift(ctx.choke, -Toward(ctx) * 40)
+    local staging = Shift(rally, -Toward(ctx) * 15)
     local arty = {}
     for _, u in ipairs(FreeUnits(brain, CatLandArty)) do
         if Utils.Dist2D(u:GetPosition(), staging) > 15 then IssueMove({ u }, staging)

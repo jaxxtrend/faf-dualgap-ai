@@ -785,3 +785,39 @@ LandSupportHold = 120
 -- engineer at least EngineerNearMargin nearer to it, if there is one.
 EngineerNearRange  = 80
 EngineerNearMargin = 40
+
+-- Defence lines of the land mid (left team, normalised; mirrored for the
+-- right), drawn by a player on the map, from the own base out to the
+-- centre. Each line: one or more segments {top, bottom}, across the land
+-- from the cliffs to the river shore.
+--   0  the passes between the rocks in front of the bases (three gaps)
+--   1  the second line
+--   2  the mid defensive points (the map's markers, the ACU's fortification)
+--   3  the centre
+-- Lines 4..6 are the enemy's 2, 1, 0 mirrored (attack waypoints). A GROUND
+-- player stands on one point of a line: the upper one 30% down a single
+-- segment line, the lower one 70%; on line 0 the upper takes the middle
+-- gap, the lower the gap at the shore.
+DefenceLines = {
+    { { { 0.153, 0.163 }, { 0.183, 0.244 } }, { { 0.188, 0.309 }, { 0.208, 0.366 } }, { { 0.252, 0.407 }, { 0.257, 0.472 } } },
+    { { { 0.358, 0.252 }, { 0.386, 0.504 } } },
+    { { { 0.421, 0.220 }, { 0.446, 0.512 } } },
+    { { { 0.498, 0.265 }, { 0.498, 0.485 } } },
+}
+-- The line held (DualGapLandCommand.ChooseLine), per GROUND player:
+--  * a seen enemy army (LineEnemyMass+ within LineEnemyRadius of a line
+--    point) on a line behind the held one -> back to the line behind it,
+--    at once;
+--  * otherwise at most one step per LineHoldSeconds: the staff's ATTACK on
+--    the zone -> one line forward (up to the centre; the enemy's line 2
+--    once the mid is pushed), DEFEND -> one line back unless the held line
+--    is fortified (LineFortifiedPDs own point defences near its point).
+-- A line held LinePDSeconds gets LinePDs point defences (lines without the
+-- ACU's fortification).
+LineStart          = 2
+LineHoldSeconds    = 60
+LineEnemyRadius    = 60
+LineEnemyMass      = 1000
+LineFortifiedPDs   = 2
+LinePDSeconds      = 90
+LinePDs            = 2
