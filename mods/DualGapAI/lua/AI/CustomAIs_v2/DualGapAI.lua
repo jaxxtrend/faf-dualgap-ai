@@ -41,7 +41,7 @@ local Ratings = { easy = 300, normal = 500, hard = 700, expert = 850, master = 1
 
 AI = {
     Name = "DualGap AI",
-    Version = "2",
+    Version = "3",
     AIList = {
         Entry('dualgapeasy',   "AI: DualGap Easy",   Ratings.easy),
         Entry('dualgapnormal', "AI: DualGap Normal", Ratings.normal),

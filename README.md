@@ -18,7 +18,7 @@ The bots play like a team, not like twelve strangers:
 - **Base and economy.** A player-like base with tight adjacency, base mexes T2 → storages → T3, and spending that grows with the income.
 
 The standard AI plays with fog of war: it reacts only to what its team has seen or has on radar.
-What changed in version 2: [CHANGELOG.md](CHANGELOG.md).
+What changed in version 3 (and before): [CHANGELOG.md](CHANGELOG.md).
 
 ## Video
 DualGap AI v2 demo match: https://youtu.be/qkAYdtKiQqw
@@ -30,7 +30,7 @@ If you like the project and want to see where it goes next, follow and support i
 
 ## Install
 1. Get the mod one of two ways:
-   - from the **FAF mod vault**: find **DualGap AI** (version 2) in the FAF client and install it;
+   - from the **FAF mod vault**: find **DualGap AI** (version 3) in the FAF client and install it;
    - or by hand: copy the [`mods/DualGapAI`](mods/DualGapAI) folder to
      `%USERPROFILE%\Documents\My Games\Gas Powered Games\Supreme Commander Forged Alliance\mods\`.
      The folder must be named exactly `DualGapAI`.
