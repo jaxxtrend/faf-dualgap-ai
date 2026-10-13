@@ -1435,6 +1435,13 @@ local function LaunchStrike(brain, ctx, units, target, staging, now)
     end
     local escort = Nearest(free, staging, n)
     local route = SafeAirPath(ctx, staging, tpos)
+    -- Torpedo bombers on a target in the water fly along the river (the
+    -- rally points and the basin), not straight over the land mid's AA.
+    if EntityCategoryContains(CatTorpBomber, units[1]) then
+        route = OrderPath(staging, { Routes.GetPoint('NavalRally', ctx.side), Routes.GetPoint('BasinCenter', ctx.side),
+            Routes.GetPoint('NavalRally', OtherSide(ctx.side)), tpos })
+        table.remove(route)
+    end
     for _, u in ipairs(escort) do u.DGEscort, u.DGLine = true, nil end
     if table.getn(escort) > 0 then
         -- The escort flies ahead on the route with the least known AA.
@@ -1582,7 +1589,7 @@ local function AirStep(brain, ctx)
     local torpsBusy = false
     local subACU = NearestKnown(brain, categories.COMMAND, ctx.startPos, MapRadius())
     subACU = subACU and Utils.IsUnderwater(subACU)
-    if Utils.Count(torps) >= Config.AirStrikeSize or (hunt and Utils.Count(torps) >= 2)
+    if Utils.Count(torps) >= Config.AirStrikeSize or (hunt and Utils.Count(torps) >= Config.TorpHuntMin)
         or (subACU and Utils.Count(torps) >= Config.TorpACUStrikeMin) then
         -- A small hunting group goes for the hidden ACU only, not for any
         -- ship in the basin.

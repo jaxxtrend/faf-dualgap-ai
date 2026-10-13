@@ -986,3 +986,7 @@ NukeSubACUAge       = 30
 -- enemy ACU under water through the splash of shells on the water above
 -- it (unshielded), as its top target.
 SplashACUScore = 110
+
+-- Torpedo bombers hunting a hidden ACU go in groups of TorpHuntMin or more
+-- (pairs flying across the map only fed the enemy AA).
+TorpHuntMin = 4

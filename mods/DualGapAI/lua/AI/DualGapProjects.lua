@@ -1727,11 +1727,16 @@ local CatSplashArty = categories.ueb2401
 function AimShooter(brain, ctx, a, range, longRange)
     -- The last target (a game ender / anti-nuke) died: remember the spot,
     -- its builders will come back to it.
-    if a.DGTarget and not Alive(a.DGTarget) and a.DGTargetKind then
-        ctx.deadSites = ctx.deadSites or {}
-        table.insert(ctx.deadSites, { pos = a.DGTargetPos, kind = a.DGTargetKind, at = GetGameTimeSeconds() })
-        while table.getn(ctx.deadSites) > 12 do table.remove(ctx.deadSites, 1) end
-        a.DGTargetKind = nil
+    if a.DGTarget and not Alive(a.DGTarget) then
+        if a.DGTargetKind then
+            ctx.deadSites = ctx.deadSites or {}
+            table.insert(ctx.deadSites, { pos = a.DGTargetPos, kind = a.DGTargetKind, at = GetGameTimeSeconds() })
+            while table.getn(ctx.deadSites) > 12 do table.remove(ctx.deadSites, 1) end
+        end
+        -- A ground-fire order outlives its target: the gun would keep
+        -- shelling the empty spot (and whoever of ours walks onto it).
+        IssueClearCommands({ a })
+        a.DGTarget, a.DGScore, a.DGTargetKind = nil, nil, nil
     end
     local splash = Utils.Level(ctx).tactics and EntityCategoryContains(CatSplashArty, a)
     local t, score = BestTarget(brain, ctx, a:GetPosition(), range, longRange, splash)
