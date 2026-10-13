@@ -423,14 +423,15 @@ local function HuntTarget(brain, ctx, wave, c)
     -- a hidden ACU), land waves walk to a random enemy base.
     -- Fleets go where the hidden ACU most likely is; each fleet takes the
     -- next clue, so several fleets spread over the search points.
-    if wave.kind == 'NAVAL' and Intel.HuntMode(ctx.side) then
+    -- A fleet with nothing in sight doesn't sit at the rally: it sweeps
+    -- the clues (hidden ACUs' last spots, their structures by the water)
+    -- and then the enemy's deep water spot by spot - its sonar finds what
+    -- hides there.
+    if wave.kind == 'NAVAL' then
         ctx.searchIdx = (ctx.searchIdx or 0) + 1
         local p = Intel.SearchPoint(ctx.side, ctx.searchIdx)
         if p then return p end
-    end
-    if wave.kind == 'NAVAL' then
-        if Intel.Stale(ctx.side) then return Intel.DeepWater(OtherSide(ctx.side)) end
-        return nil
+        return Intel.DeepWater(OtherSide(ctx.side))
     end
     -- Nothing scouted: a land wave doesn't stand at the mid, it walks on -
     -- the enemy's mid, its base, then the other enemy bases.
