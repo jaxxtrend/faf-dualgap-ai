@@ -1240,9 +1240,13 @@ local CatTargets = CatEnders + CatAntiNuke + categories.COMMAND + CatEco + categ
 -- 'MEX' | 'ECO' | 'FACTORY'. longRange: T3/T4 artillery and satellites.
 function ArtilleryScore(kind, shields, haveNuke, underwater, longRange)
     local base = 0
-    if kind == 'ENDER' then base = 100
-    elseif kind == 'ANTINUKE' then base = haveNuke and 80 or 0
-    elseif kind == 'ACU' then
+    -- Game enders, and the anti-nukes in the way of the team's nukes, are
+    -- worth breaking through shields for with the long-range guns (shields
+    -- go down under T3 shells): they lose less to them there.
+    local pen = longRange and (1 + 0.5 * shields) or (1 + 2 * shields)
+    if kind == 'ENDER' then return 100 / pen end
+    if kind == 'ANTINUKE' then return (haveNuke and 95 or 0) / pen end
+    if kind == 'ACU' then
         if underwater or shields > 0 then return 0 end
         base = 60
     elseif kind == 'MEX3' then base = 45
@@ -1265,8 +1269,9 @@ local function TargetKind(e)
     return 'FACTORY'
 end
 
+-- The team (not only this player) has a finished nuke silo.
 local function OwnsNuke(brain)
-    for _, u in ipairs(brain:GetListOfUnits(CatOwnNukes, false)) do
+    for _, u in ipairs(brain:GetUnitsAroundPoint(CatOwnNukes, { 512, 0, 512 }, 3000, 'Ally') or {}) do
         if Alive(u) and u:GetFractionComplete() >= 1 then return true end
     end
     return false
@@ -1330,6 +1335,11 @@ end
 -- mass there when we started and now)
 -- Exposed for tests: missiles to fire together at a point covered by
 -- `covering` known anti-nukes, with `silos` finished silos.
+-- Exposed for tests: do n missiles get through `covering` anti-nukes?
+function NukeFireOk(covering, n)
+    return n > covering
+end
+
 function NukeSalvoNeed(covering, silos)
     return math.max(1, math.min(silos, covering + 1))
 end
@@ -1492,10 +1502,25 @@ local function NukeStep(brain, ctx)
     for _, s in ipairs(brain:GetListOfUnits(CatOwnNukes, false)) do
         if Alive(s) and s:GetFractionComplete() >= 1 then silos = silos + 1 end
     end
-    local need = NukeSalvoNeed(Intel.AntiNukesCovering(ctx.side, target), silos)
+    local covering = Intel.AntiNukesCovering(ctx.side, target)
+    local need = NukeSalvoNeed(covering, silos)
     if n < need then
         f.waitSince = f.waitSince or GetGameTimeSeconds()
         if GetGameTimeSeconds() - f.waitSince < Config.NukeWaitMax then return end
+        -- Waited long enough and still not enough missiles to get through:
+        -- never throw them into the anti-nukes - another target, and the
+        -- artillery on those anti-nukes.
+        if not NukeFireOk(covering, n) then
+            Utils.Log(brain, 'nuke: ' .. n .. ' missile(s) would not get through ' .. covering
+                .. ' anti-nuke(s): another target, artillery on the anti-nukes')
+            ctx.nukeBlocked = ctx.nukeBlocked or {}
+            table.insert(ctx.nukeBlocked, { pos = f.pos, at = GetGameTimeSeconds() })
+            ctx.wantAntiSMDArty = true
+            f.waitSince = nil
+            Strat.SetNukeFocus(ctx.side, nil)
+            ctx.nukeFocus = nil
+            return
+        end
     end
     f.waitSince = nil
     -- Longest flight first, so all missiles arrive together (speed ~40/s).

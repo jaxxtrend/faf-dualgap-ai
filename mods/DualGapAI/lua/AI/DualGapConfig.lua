@@ -934,3 +934,16 @@ T4FlankAngles     = { 90, -90, 150, -150 }
 BaitSize          = 3
 BaitEvery         = 60
 SubDangerRadius   = 60
+
+-- A wave within HoldAtLine of its line's point fights there instead of
+-- going back to it (HOLD would loop: out, back, out ...).
+HoldAtLine = 50
+
+-- All-in: AllInMinUnits+ ready land units with AllInRatio x the seen enemy
+-- army mass on the lane (or AllInUnits+ whatever the enemy) -> every free
+-- land unit goes, along the line points, through the enemy bases of the
+-- lane's group (within AllInBaseRadius of the mirrored base) one by one.
+AllInMinUnits   = 25
+AllInUnits      = 80
+AllInRatio      = 2.0
+AllInBaseRadius = 160

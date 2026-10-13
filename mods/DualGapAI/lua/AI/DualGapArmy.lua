@@ -540,7 +540,8 @@ local function UpdateWaves(brain, ctx)
             -- back to the own wall instead of being fed in alone.
             local task = (wave.kind == 'LAND') and LandCmd.Task(ctx.side, brain.Name)
             if task and task.mode == 'DEFEND' and wave.stage ~= 'regroup' and not wave.defending
-                and InEnemyHalf(ctx.side, c) then
+                and not wave.t4only and InEnemyHalf(ctx.side, c) then
+                SplitT4(ctx, wave)
                 FormationPath(wave.units, { LandRally(ctx, task) }, c, MoveFire(ctx))
                 wave.stage = 'regroup'
                 Utils.Log(brain, 'land wave of ' .. table.getn(wave.units) .. ' falls back to the wall (land command: DEFEND)')
@@ -784,6 +785,66 @@ function RaidStep(brain, ctx, ready, enemyAtWall, task)
     return false
 end
 
+-- Exposed for tests: is the army at the line overwhelming enough to go
+-- and clear the enemy bases?
+function AllInWanted(count, ownMass, enemyMass)
+    if count < Config.AllInMinUnits then return false end
+    return count >= Config.AllInUnits or ownMass >= Config.AllInRatio * enemyMass
+end
+
+-- Exposed for tests: the enemy bases of a group, nearest first from
+-- `first` and then each next nearest to the last (a walking order).
+function BaseChain(first, bases, radius)
+    local left = {}
+    for _, p in ipairs(bases) do
+        if Utils.Dist2D(p, first) <= radius then table.insert(left, p) end
+    end
+    local out, at = {}, first
+    while table.getn(left) > 0 do
+        local bi, bd
+        for i, p in ipairs(left) do
+            local d = Utils.Dist2D(p, at)
+            if not bd or d < bd then bi, bd = i, d end
+        end
+        at = table.remove(left, bi)
+        table.insert(out, at)
+    end
+    return out
+end
+
+local function MassOf(units)
+    local m = 0
+    for _, u in ipairs(units) do
+        local eco = u:GetBlueprint().Economy
+        m = m + ((eco and eco.BuildCostMass) or 0)
+    end
+    return m
+end
+
+local function AllInStep(brain, ctx, ready, rally, task)
+    if not ctx.enemyGroundBase then return false end
+    local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
+    local enemyMass = EnemyArmyMass(brain, rally, 250) + EnemyArmyMass(brain, Routes.GetPoint(zone, OtherSide(ctx.side)), 150)
+    if not AllInWanted(Utils.Count(ready), MassOf(ready), enemyMass) then return false end
+    -- Everything free goes, not only what stands at the rally.
+    local army, seen = {}, {}
+    for _, u in ipairs(ready) do table.insert(army, u); seen[u] = true end
+    for _, u in ipairs(FreeUnits(brain, CatLandDF)) do
+        if not seen[u] and not InEnemyHalf(ctx.side, u:GetPosition()) then table.insert(army, u) end
+    end
+    local path = {}
+    if task and task.line and task.zone then path = LandCmd.LinePath(task.line, task.zone, ctx.side) end
+    for _, b in ipairs(BaseChain(ctx.enemyGroundBase, EnemySlots(ctx), Config.AllInBaseRadius)) do table.insert(path, b) end
+    Claim(army)
+    FormationPath(army, path, rally, MoveFire(ctx))
+    table.insert(ctx.waves, { units = army, kind = 'LAND', stage = 1, allIn = true })
+    Utils.Log(brain, string.format('all-in: %d units (%d mass vs %d seen) to clear their bases', Utils.Count(army),
+        MassOf(army), enemyMass))
+    Comms.Say(brain, ctx.side, 'allin:' .. brain.Name, 'All in: ' .. Utils.Count(army) .. ' units going to clear their bases!',
+        ctx.enemyGroundBase, 'attack')
+    return true
+end
+
 local function LandStep(brain, ctx)
     if HelpLand(brain, ctx) then return end
     local rally = LandRally(ctx)
@@ -819,6 +880,7 @@ local function LandStep(brain, ctx)
     ctx.manoeuvre = ctx.manoeuvre or Style.RollManoeuvre()
     if ctx.manoeuvre == 'DOUBLE' then size = math.floor(size * Config.DoubleWaveScale) end
     if RaidStep(brain, ctx, ready, enemyAtWall, task) then return end
+    if not enemyAtWall and AllInStep(brain, ctx, ready, rally, task) then return end
     local holdBack = task and task.mode == 'DEFEND' and not enemyAtWall and not ender
     if not holdBack and task and task.mode == 'SUPPORT' and not enemyAtWall and not ender
         and WaveReady(ready, size) then
@@ -846,6 +908,7 @@ local function LandStep(brain, ctx)
             Comms.Say(brain, ctx.side, 'enderwave:' .. brain.Name, 'Going for their game ender with '
                 .. Utils.Count(ready) .. ' units!', ender.pos, 'attack')
         elseif ctx.enemyGroundBase then table.insert(path, ctx.enemyGroundBase) end
+        if enemyAtWall then path = { Centroid(atWall) } end
         path = OrderPath(Centroid(ready), path)
         Claim(ready)
         FormationPath(ready, path, rally, MoveFire(ctx))
@@ -2453,10 +2516,34 @@ function BaitStep(brain, ctx, units, enemies, rally, now)
     Utils.Log(brain, Config.BaitSize .. ' units bait the enemy toward the line')
 end
 
+local CatOwnArmy = categories.MOBILE * (categories.LAND + categories.NAVAL) - categories.ENGINEER - categories.COMMAND
+
+-- Experimentals never fall back with a wave (a Ythotha dying among the
+-- enemy is a bomb going off): out of a wave that backs off they go on as a
+-- wave of their own. Returns the units left in the wave.
+function SplitT4(ctx, wave)
+    local t4, rest = {}, {}
+    for _, u in ipairs(wave.units) do
+        if EntityCategoryContains(categories.EXPERIMENTAL, u) then table.insert(t4, u) else table.insert(rest, u) end
+    end
+    if table.getn(t4) > 0 and table.getn(rest) > 0 then
+        wave.units = rest
+        table.insert(ctx.waves, { units = t4, kind = wave.kind, stage = 2, t4only = true, lastTarget = wave.lastTarget })
+    end
+    return rest
+end
+
+local function OnlyT4(units)
+    for _, u in ipairs(units) do
+        if not EntityCategoryContains(categories.EXPERIMENTAL, u) then return false end
+    end
+    return true
+end
+
 local function WaveTactic(brain, ctx, wave, now)
     if wave.stage == 'retreat' or wave.stage == 'regroup' or wave.ender or wave.raid then return end
     local units = Utils.FilterAlive(wave.units)
-    if table.getn(units) == 0 then return end
+    if table.getn(units) == 0 or OnlyT4(units) then return end
     local c = Centroid(units)
     local army = brain:GetArmyIndex()
     local enemies = KnownNear(brain, CatContactEnemy, c, Config.ContactRadius)
@@ -2467,7 +2554,13 @@ local function WaveTactic(brain, ctx, wave, now)
         end
         return
     end
-    local own, enemy = Strength(units), Strength(enemies, army)
+    -- Our side of the fight: every allied army unit around, not just this
+    -- wave (a wave of four next to the whole army is not weak).
+    local around = {}
+    for _, u in ipairs(brain:GetUnitsAroundPoint(CatOwnArmy, c, Config.ContactRadius, 'Ally') or {}) do
+        if Alive(u) and u:GetFractionComplete() >= 1 then table.insert(around, u) end
+    end
+    local own, enemy = Strength(around), Strength(enemies, army)
     wave.contact = wave.contact or { own0 = own, enemy0 = enemy }
     if enemy > wave.contact.enemy0 then wave.contact.enemy0 = enemy end
     local ownLoss = 1 - own / math.max(1, wave.contact.own0)
@@ -2490,6 +2583,10 @@ local function WaveTactic(brain, ctx, wave, now)
     local t = ChooseTactic(own / math.max(1, enemy), ownRange - enemyRange, fortified, Losing(ownLoss, enemyLoss), naval,
         enemyT4 ~= nil)
     if naval then SubmarineStep(brain, ctx, units, enemies, army) end
+    -- At the line already (or out to defend it): HOLD means fight here.
+    if t == 'HOLD' and (wave.defending or Utils.Dist2D(c, rally) < Config.HoldAtLine) then t = 'CONCAVE' end
+    -- T4s don't back off with the wave.
+    if t == 'KITE' or t == 'HOLD' or t == 'DISENGAGE' then units = SplitT4(ctx, wave) end
     if wave.tactic and t ~= wave.tactic and t ~= 'DISENGAGE' and now - (wave.tacticAt or 0) < Config.TacticHold then
         t = wave.tactic
     end

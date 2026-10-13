@@ -1581,6 +1581,25 @@ check(t3[0] == 50 and t3[1] == 0 and t3[2] and t3[3] == 50, 'concave: the wave s
 check(t3[4] == 0 and t3[5] == 30 and t3[6] == -30 and t3[7] == 'T4' and t3[8] != 'T4',
       'against a land T4: split to its sides and back (land waves only)')
 
+fm = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+return P.ArtilleryScore('ANTINUKE', 2, true, false, true), P.ArtilleryScore('MEX', 0, true, false, true),
+       P.ArtilleryScore('MEX3', 0, true, false, true), P.ArtilleryScore('ANTINUKE', 0, false, false, true),
+       P.NukeFireOk(2, 2), P.NukeFireOk(2, 3), P.NukeFireOk(0, 1)
+""")
+check(fm[0] > fm[2] and fm[0] > fm[1] and fm[3] == 0,
+      'artillery: the anti-nuke before mexes when the team has a nuke, even under shields')
+check(not fm[4] and fm[5] and fm[6], 'nukes never go alone into anti-nuke cover')
+
+ai = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local chain = A.BaseChain({ 900, 0, 400 }, { { 900, 0, 400 }, { 860, 0, 470 }, { 880, 0, 440 }, { 870, 0, 680 } }, 160)
+return A.AllInWanted(30, 20000, 5000), A.AllInWanted(30, 6000, 5000), A.AllInWanted(10, 99999, 0), A.AllInWanted(90, 1, 99999),
+       table.getn(chain), chain[1][3], chain[2][3], chain[3][3]
+""")
+check(ai[0] and not ai[1] and not ai[2] and ai[3], 'all-in: a big army clearly stronger than the seen enemy (or a huge one) goes')
+check(ai[4] == 3 and ai[5] == 400 and ai[6] == 440 and ai[7] == 470, 'all-in: the enemy bases of the group, one after the other')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
