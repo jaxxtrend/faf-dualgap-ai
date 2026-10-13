@@ -661,7 +661,7 @@ Levels = {
     -- walk and shoot instead of stopping in front of the enemy, fleets strafe
     -- back and forth, weapons pick targets by priority.
     MASTER = { slow = 1.0, staffNoise = 0, commands = true, micro = true, advanced = true,
-               banked = true, bankedMax = 8, nukes = true, moveFire = true },
+               banked = true, bankedMax = 8, nukes = true, moveFire = true, tactics = true },
 }
 
 -- Air routes: strikes and mass attacks fly the line (direct or a dog-leg to
@@ -875,3 +875,36 @@ LandTargetPriorities = { 'COMMAND', 'EXPERIMENTAL', 'MOBILE LAND TECH3 DIRECTFIR
     'STRUCTURE', 'ALLUNITS' }
 NavalTargetPriorities = { 'EXPERIMENTAL NAVAL', 'NAVAL MOBILE TECH3', 'NAVAL MOBILE TECH2', 'COMMAND', 'NAVAL MOBILE',
     'STRUCTURE DEFENSE', 'STRUCTURE', 'ALLUNITS' }
+
+-- Tactics in contact (level MASTER, every TacticsSeconds). A wave with a
+-- seen enemy (army or defences) within ContactRadius compares its strength
+-- (mass x health) and reach (median weapon range) with the enemy's:
+--   losing the fight (own losses LosingOwnLoss+ and LosingMargin more than
+--     the enemy's since contact)                -> DISENGAGE (back to the line)
+--   reach KiteRangeEdge+ longer, not PushRatio x stronger -> KITE: stay
+--     between their reach (+KiteMargin) and ours, step back when they come
+--   PushRatio x stronger or more               -> PUSH (on through them)
+--   below HoldRatio with a fortified own line within HoldReach -> HOLD there
+--   below DisengageRatio                        -> DISENGAGE
+--   otherwise                                   -> PUSH
+-- A tactic holds TacticHold seconds (DISENGAGE at once).
+TacticsSeconds  = 1.5
+ContactRadius   = 110
+PushRatio       = 1.5
+HoldRatio       = 0.8
+DisengageRatio  = 0.67
+KiteRangeEdge   = 15
+KiteMargin      = 6
+LosingOwnLoss   = 0.35
+LosingMargin    = 0.15
+TacticHold      = 6
+HoldReach       = 250
+-- Damaged units (level MASTER): T2 / T3 land units and ships below
+-- RepairHealth go back behind the line (ships to the own yard) to be
+-- repaired by the engineers there, and return at RepairDoneHealth (or
+-- after RepairMaxSeconds). RepairBack: how far behind the line.
+RepairHealth     = 0.3
+RepairDoneHealth = 0.9
+RepairMaxSeconds = 120
+RepairBack       = 30
+RepairersPerUnit = 2

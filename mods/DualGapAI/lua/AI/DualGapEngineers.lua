@@ -1027,8 +1027,26 @@ end
 -- baseOnly: the ACU in base-builder mode never wanders off.
 -- Economy first, like a player: no energy -> power; then the anti-nuke,
 -- own mexes, power, and only then the other projects.
+-- Damaged units sent back for repairs (DualGapArmy, level MASTER): an
+-- engineer nearby fixes them (RepairersPerUnit at most each).
+local CatMobileArmy = (categories.LAND + categories.NAVAL) * categories.MOBILE - categories.ENGINEER
+local function TryRepairUnits(brain, ctx, u)
+    for _, x in ipairs(brain:GetUnitsAroundPoint(CatMobileArmy, u:GetPosition(), 80, 'Ally') or {}) do
+        if Alive(x) and x.DGRepairAt and x:GetAIBrain() == brain and x:GetHealth() < x:GetMaxHealth() then
+            x.DGRepairers = Utils.FilterAlive(x.DGRepairers or {})
+            if table.getn(x.DGRepairers) < Config.RepairersPerUnit then
+                table.insert(x.DGRepairers, u)
+                IssueRepair({ u }, x)
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function GeneralTask(brain, ctx, u, baseOnly)
     if EnergyStalled(brain) and TryPower(brain, ctx, u) then return end
+    if TryRepairUnits(brain, ctx, u) then return end
     if not baseOnly and Projects().Offer(brain, ctx, u, 1) then return end
     if not baseOnly and TryAssistGroupSMD(brain, ctx, u) then return end
     if not baseOnly and TryAssistSMD(brain, ctx, u) then return end

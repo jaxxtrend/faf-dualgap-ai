@@ -540,10 +540,11 @@ local function UpdateWaves(brain, ctx)
                 Utils.Log(brain, 'land wave of ' .. table.getn(wave.units) .. ' falls back to the wall (land command: DEFEND)')
             end
             if wave.kind == 'LAND' then T4Engage(brain, wave) end
-            if wave.kind == 'LAND' and wave.stage ~= 'regroup' and Utils.Level(ctx).micro and not AllIdle(wave.units) then
+            if wave.kind == 'LAND' and wave.stage ~= 'regroup' and Utils.Level(ctx).micro and not AllIdle(wave.units)
+                and wave.tactic ~= 'KITE' then
                 UnstickWave(brain, ctx, wave, c, now)
             end
-            if AllIdle(wave.units) then
+            if AllIdle(wave.units) and wave.tactic ~= 'KITE' then
                 wave.checkAt = nil
                 if wave.stage == 'retreat' or wave.stage == 'regroup' or wave.raid then
                     Release(wave.units)          -- rejoin the gathering army / fleet
@@ -2199,6 +2200,222 @@ local function ArmyStep(brain, ctx)
     AirStep(brain, ctx)
 end
 
+---------------------------------------------------------------------------
+-- Tactics in contact (level MASTER): how a wave fights the enemy in front
+-- of it, and damaged units going back for repairs.
+---------------------------------------------------------------------------
+local rangeCache = {}
+
+-- Exposed for tests: the longest reach of a blueprint's weapons against
+-- ground and sea (no anti-air, no death weapons).
+function WeaponRange(bp)
+    if not bp then return 0 end
+    local id = bp.BlueprintId
+    if id and rangeCache[id] then return rangeCache[id] end
+    local r = 0
+    for _, w in ipairs(bp.Weapon or {}) do
+        local rc = w.RangeCategory
+        if (rc == 'UWRC_DirectFire' or rc == 'UWRC_IndirectFire' or rc == 'UWRC_AntiNavy')
+            and w.Label ~= 'DeathWeapon' and not w.DummyWeapon and (w.MaxRadius or 0) > r then
+            r = w.MaxRadius
+        end
+    end
+    if id then rangeCache[id] = r end
+    return r
+end
+
+local function MedianRange(units)
+    local list = {}
+    for _, u in ipairs(units) do
+        local r = WeaponRange(u:GetBlueprint())
+        if r > 0 then table.insert(list, r) end
+    end
+    local n = table.getn(list)
+    if n == 0 then return 0 end
+    table.sort(list)
+    return list[math.floor((n + 1) / 2)]
+end
+
+-- Exposed for tests: the tactic for a wave in contact (see Config).
+function ChooseTactic(ratio, rangeAdv, fortified, losing, naval)
+    if losing then return 'DISENGAGE' end
+    if rangeAdv >= Config.KiteRangeEdge and ratio < Config.PushRatio then return 'KITE' end
+    if ratio >= Config.PushRatio then return 'PUSH' end
+    if ratio < Config.HoldRatio and fortified and not naval then return 'HOLD' end
+    if ratio < Config.DisengageRatio then return 'DISENGAGE' end
+    return 'PUSH'
+end
+
+-- Exposed for tests: is the fight going badly (loss fractions since contact)?
+function Losing(ownLoss, enemyLoss)
+    return ownLoss >= Config.LosingOwnLoss and ownLoss > enemyLoss + Config.LosingMargin
+end
+
+-- Exposed for tests: the kiting step for distance d to the nearest enemy:
+-- BACK out of its reach, IN to the own reach, or STAND and shoot.
+function KiteStep(d, ownRange, enemyRange)
+    if d < enemyRange + Config.KiteMargin then return 'BACK' end
+    if d > ownRange * 0.95 then return 'IN' end
+    return 'STAND'
+end
+
+-- Exposed for tests: should a damaged unit go back / come back?
+-- 'GO', 'DONE', 'KEEP' (repairing on) or nil (fight on).
+function RepairState(hp, since, now)
+    if since then
+        if hp >= Config.RepairDoneHealth or now - since >= Config.RepairMaxSeconds then return 'DONE' end
+        return 'KEEP'
+    end
+    if hp < Config.RepairHealth then return 'GO' end
+    return nil
+end
+
+local CatContactEnemy = (categories.MOBILE * (categories.LAND + categories.NAVAL) - categories.ENGINEER - categories.SCOUT)
+    + categories.STRUCTURE * categories.DEFENSE * (categories.DIRECTFIRE + categories.INDIRECTFIRE + categories.ANTINAVY)
+
+local function HealthOf(u)
+    local m = u:GetMaxHealth()
+    if not m or m <= 0 then return 1 end
+    return u:GetHealth() / m
+end
+
+-- Mass x health; the enemy's health only where it is in sight right now.
+local function Strength(units, army)
+    local s = 0
+    for _, u in ipairs(units) do
+        if Alive(u) then
+            local eco = u:GetBlueprint().Economy
+            local h = 1
+            if not army or Intel.SeenNow(u, army) then h = HealthOf(u) end
+            s = s + ((eco and eco.BuildCostMass) or 0) * h
+        end
+    end
+    return s
+end
+
+local function Away(from, c, dist)
+    local dx, dz = c[1] - from[1], c[3] - from[3]
+    local len = math.sqrt(dx * dx + dz * dz)
+    if len < 1 then dx, dz, len = 1, 0, 1 end
+    local x, z = c[1] + dx / len * dist, c[3] + dz / len * dist
+    return { x, GetSurfaceHeight(x, z), z }
+end
+
+local function WaveTactic(brain, ctx, wave, now)
+    if wave.stage == 'retreat' or wave.stage == 'regroup' or wave.ender or wave.raid then return end
+    local units = Utils.FilterAlive(wave.units)
+    if table.getn(units) == 0 then return end
+    local c = Centroid(units)
+    local army = brain:GetArmyIndex()
+    local enemies = KnownNear(brain, CatContactEnemy, c, Config.ContactRadius)
+    if table.getn(enemies) == 0 then
+        if wave.tactic then
+            if wave.tactic == 'KITE' then IssueClearCommands(units) end    -- back to hunting
+            wave.tactic, wave.contact = nil, nil
+        end
+        return
+    end
+    local own, enemy = Strength(units), Strength(enemies, army)
+    wave.contact = wave.contact or { own0 = own, enemy0 = enemy }
+    if enemy > wave.contact.enemy0 then wave.contact.enemy0 = enemy end
+    local ownLoss = 1 - own / math.max(1, wave.contact.own0)
+    local enemyLoss = 1 - enemy / math.max(1, wave.contact.enemy0)
+    local ownRange, enemyRange = MedianRange(units), MedianRange(enemies)
+    local naval = wave.kind == 'NAVAL'
+    local task = (not naval) and LandCmd.Task(ctx.side, brain.Name)
+    local rally = naval and Routes.GetPoint('NavalRally', ctx.side) or LandRally(ctx, task)
+    local fortified = (not naval) and Utils.Dist2D(c, rally) <= Config.HoldReach
+        and Utils.CountAround(brain, categories.STRUCTURE * categories.DEFENSE * categories.DIRECTFIRE, rally, 40, 'Ally')
+            >= Config.LineFortifiedPDs
+    local t = ChooseTactic(own / math.max(1, enemy), ownRange - enemyRange, fortified, Losing(ownLoss, enemyLoss), naval)
+    if wave.tactic and t ~= wave.tactic and t ~= 'DISENGAGE' and now - (wave.tacticAt or 0) < Config.TacticHold then
+        t = wave.tactic
+    end
+    if t ~= wave.tactic then
+        Utils.Log(brain, string.format('%s wave of %d: %s (strength %d vs %d, reach %d vs %d)',
+            naval and 'naval' or 'land', table.getn(units), t, own, enemy, ownRange, enemyRange))
+        wave.tactic, wave.tacticAt = t, now
+    end
+    if t == 'KITE' then
+        local near, d = nil, nil
+        for _, e in ipairs(enemies) do
+            local dd = Utils.Dist2D(c, e:GetPosition())
+            if not d or dd < d then near, d = e, dd end
+        end
+        local step = KiteStep(d, ownRange, enemyRange)
+        local p
+        if step == 'BACK' then
+            p = Away(near:GetPosition(), c, enemyRange + Config.KiteMargin + 8 - d)
+        elseif step == 'IN' then
+            p = Away(near:GetPosition(), c, ownRange * 0.85 - d)
+        end
+        if p and naval and Utils.WaterDepth(p[1], p[3]) < 1.5 then p = nil end
+        IssueClearCommands(units)
+        if p then IssueMove(units, p) end
+    elseif t == 'HOLD' then
+        Utils.Log(brain, 'land wave of ' .. table.getn(units) .. ' holds at its fortified line')
+        FormationPath(units, { rally }, c, true)
+        wave.stage, wave.tactic = 'regroup', nil
+    elseif t == 'DISENGAGE' then
+        FormationPath(units, { rally }, c, true)
+        wave.stage, wave.tactic = naval and 'retreat' or 'regroup', nil
+    end
+end
+
+local CatRepairable = (categories.LAND + categories.NAVAL) * categories.MOBILE * (categories.TECH2 + categories.TECH3)
+    - categories.ENGINEER - categories.COMMAND - categories.EXPERIMENTAL
+
+local function RepairPoint(brain, ctx, u)
+    if EntityCategoryContains(categories.NAVAL, u) then
+        local best, bestD
+        for _, f in ipairs(brain:GetListOfUnits(categories.FACTORY * categories.NAVAL * categories.STRUCTURE, false)) do
+            if Alive(f) then
+                local d = Utils.Dist2D(f:GetPosition(), u:GetPosition())
+                if not bestD or d < bestD then best, bestD = f, d end
+            end
+        end
+        return best and best:GetPosition() or Routes.GetPoint('NavalRally', ctx.side)
+    end
+    return Shift(LandRally(ctx, LandCmd.Task(ctx.side, brain.Name)), -Toward(ctx) * Config.RepairBack)
+end
+
+local function RepairStep(brain, ctx, now)
+    local sent = 0
+    for _, u in ipairs(brain:GetListOfUnits(CatRepairable, false)) do
+        if Alive(u) and u:GetFractionComplete() >= 1 then
+            local s = RepairState(HealthOf(u), u.DGRepairAt, now)
+            if s == 'GO' then
+                for _, w in ipairs(ctx.waves) do
+                    for i = table.getn(w.units), 1, -1 do
+                        if w.units[i] == u then table.remove(w.units, i) end
+                    end
+                end
+                for i = table.getn(ctx.midShips or {}), 1, -1 do
+                    if ctx.midShips[i] == u then table.remove(ctx.midShips, i) end
+                end
+                u.DualGapAssigned, u.DGRepairAt = true, now
+                IssueClearCommands({ u })
+                IssueMove({ u }, RepairPoint(brain, ctx, u))
+                sent = sent + 1
+            elseif s == 'DONE' then
+                u.DGRepairAt, u.DualGapAssigned = nil, nil
+                IssueClearCommands({ u })
+            end
+        end
+    end
+    if sent > 0 then Utils.Log(brain, sent .. ' damaged units go back for repairs') end
+end
+
+local function TacticsStep(brain, ctx)
+    local now = GetGameTimeSeconds()
+    for _, wave in ipairs(ctx.waves or {}) do WaveTactic(brain, ctx, wave, now) end
+    ctx.repairTick = (ctx.repairTick or 0) + 1
+    if ctx.repairTick >= 2 then
+        ctx.repairTick = 0
+        RepairStep(brain, ctx, now)
+    end
+end
+
 function Start(brain, ctx)
     ctx.waves = {}
     ctx.strikes = {}
@@ -2213,4 +2430,7 @@ function Start(brain, ctx)
         ctx.airZones = (own.rank <= 3) and Config.AirPatrolTop or Config.AirPatrolBottom
     end
     ForkThread(Utils.RunLoop, 'Army', brain, ctx, 5, ArmyStep)
+    if Utils.Level(ctx).tactics then
+        ForkThread(Utils.RunLoop, 'Tactics', brain, ctx, Config.TacticsSeconds, TacticsStep)
+    end
 end

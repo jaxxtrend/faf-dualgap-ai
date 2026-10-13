@@ -1536,6 +1536,28 @@ check(mf[4] == 125 and mf[5] == 145 and mf[6] == 15 and mf[7] == -15 and mf[8] =
 check(mf[9] == 'MASTER' and mf[10] == 'MASTER' and mf[11] == 'EXPERT' and mf[12] and not mf[13],
       'lobby key dualgapmaster -> level MASTER (Expert + attack on the move)')
 
+tc = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local bp = { BlueprintId = 'test_mml', Weapon = { { RangeCategory = 'UWRC_IndirectFire', MaxRadius = 60 },
+    { RangeCategory = 'UWRC_AntiAir', MaxRadius = 90 }, { RangeCategory = 'UWRC_DirectFire', MaxRadius = 1, Label = 'DeathWeapon' } } }
+return A.WeaponRange(bp),
+       A.ChooseTactic(2, 0, false, false), A.ChooseTactic(0.9, 25, false, false), A.ChooseTactic(1.2, 25, false, false),
+       A.ChooseTactic(0.7, 0, true, false), A.ChooseTactic(0.5, 0, false, false), A.ChooseTactic(1.0, 0, false, false),
+       A.ChooseTactic(3, 30, false, true), A.ChooseTactic(0.6, 0, true, false, true),
+       A.Losing(0.4, 0.1), A.Losing(0.4, 0.3), A.Losing(0.2, 0),
+       A.KiteStep(20, 60, 25), A.KiteStep(70, 60, 25), A.KiteStep(45, 60, 25),
+       A.RepairState(0.2, nil, 0), A.RepairState(0.5, nil, 0), A.RepairState(0.95, 10, 20), A.RepairState(0.5, 10, 20),
+       A.RepairState(0.5, 10, 200)
+""")
+check(tc[0] == 60, 'weapon reach: ground / naval weapons only (no AA, no death weapon)')
+check(tc[1] == 'PUSH' and tc[2] == 'KITE' and tc[3] == 'KITE' and tc[4] == 'HOLD' and tc[5] == 'DISENGAGE'
+      and tc[6] == 'PUSH' and tc[7] == 'DISENGAGE' and tc[8] == 'DISENGAGE',
+      'tactics: push when much stronger, kite with the longer reach, hold a fortified line, disengage when weak or losing')
+check(tc[9] and not tc[10] and not tc[11], 'a fight counts as lost only when own losses clearly outrun the enemy\'s')
+check(tc[12] == 'BACK' and tc[13] == 'IN' and tc[14] == 'STAND', 'kiting: step back out of their reach, in to ours, else stand and shoot')
+check(tc[15] == 'GO' and tc[16] is None and tc[17] == 'DONE' and tc[18] == 'KEEP' and tc[19] == 'DONE',
+      'damaged units go back for repairs and return when fixed (or after a while)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
