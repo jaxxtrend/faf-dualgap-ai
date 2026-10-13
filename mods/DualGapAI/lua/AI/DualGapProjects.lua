@@ -1266,8 +1266,11 @@ local CatTargets = CatEnders + CatAntiNuke + categories.COMMAND + CatEco + categ
 
 -- Exposed for tests. kind: 'ENDER' | 'ANTINUKE' | 'ACU' | 'MEX3' | 'ECO3' |
 -- 'MEX' | 'ECO' | 'FACTORY'. longRange: T3/T4 artillery and satellites.
-function ArtilleryScore(kind, shields, haveNuke, underwater, longRange)
+function ArtilleryScore(kind, shields, haveNuke, underwater, longRange, splash)
     local base = 0
+    -- Experimental artillery (level MASTER) reaches a submerged ACU with
+    -- the splash of a shell on the water above it: worth the most then.
+    if kind == 'ACU' and underwater and splash and shields == 0 then return Config.SplashACUScore end
     -- Game enders, and the anti-nukes in the way of the team's nukes, are
     -- worth breaking through shields for with the long-range guns (shields
     -- go down under T3 shells): they lose less to them there.
@@ -1341,7 +1344,7 @@ local function SiteKindNear(ctx, pos)
     return nil
 end
 
-local function BestTarget(brain, ctx, from, range, longRange)
+local function BestTarget(brain, ctx, from, range, longRange, splash)
     local army = brain:GetArmyIndex()
     local haveNuke = OwnsNuke(brain)
     -- ECO's long-range guns go for the enemy ECO first.
@@ -1351,7 +1354,7 @@ local function BestTarget(brain, ctx, from, range, longRange)
         if Intel.Known(e, army) then
             local p = e:GetPosition()
             local score = ArtilleryScore(TargetKind(e), Intel.ShieldsOver(ctx.side, p), haveNuke,
-                Utils.IsUnderwater(e), longRange)
+                Utils.IsUnderwater(e), longRange, splash)
             if score > 0 and NearAny(p, ecoBases, 120) then score = score * Config.EcoVsEcoBonus end
             if score > 0 and (not bestScore or score > bestScore) then best, bestScore = e, score end
         end
@@ -1718,6 +1721,8 @@ function ArtySwitch(curScore, score, idle)
     return score >= Config.ArtySwitchRatio * curScore
 end
 
+local CatSplashArty = categories.STRUCTURE * categories.ARTILLERY * categories.EXPERIMENTAL
+
 function AimShooter(brain, ctx, a, range, longRange)
     -- The last target (a game ender / anti-nuke) died: remember the spot,
     -- its builders will come back to it.
@@ -1727,8 +1732,17 @@ function AimShooter(brain, ctx, a, range, longRange)
         while table.getn(ctx.deadSites) > 12 do table.remove(ctx.deadSites, 1) end
         a.DGTargetKind = nil
     end
-    local t, score = BestTarget(brain, ctx, a:GetPosition(), range, longRange)
+    local splash = Utils.Level(ctx).tactics and EntityCategoryContains(CatSplashArty, a)
+    local t, score = BestTarget(brain, ctx, a:GetPosition(), range, longRange, splash)
     local current = Alive(a.DGTarget) and a.DGTarget or nil
+    -- Shelling a submerged ACU: aim at the water above it, again every
+    -- tick (it moves, and a unit order can't reach it under water).
+    if current and splash and current == t and EntityCategoryContains(categories.COMMAND, t) and Utils.IsUnderwater(t) then
+        local p = t:GetPosition()
+        IssueClearCommands({ a })
+        IssueAttack({ a }, { p[1], GetSurfaceHeight(p[1], p[3]), p[3] })
+        return
+    end
     if not longRange and (not t or score < 60) and ArmyInRange(brain, a:GetPosition(), range) then
         if current or not a:IsIdleState() then IssueClearCommands({ a }) end
         a.DGTarget, a.DGScore = nil, nil
@@ -1743,6 +1757,10 @@ function AimShooter(brain, ctx, a, range, longRange)
         if EntityCategoryContains(categories.STRUCTURE, t) then
             local p = t:GetPosition()
             IssueAttack({ a }, { p[1], p[2], p[3] })
+        elseif Utils.IsUnderwater(t) then
+            local p = t:GetPosition()
+            IssueAttack({ a }, { p[1], GetSurfaceHeight(p[1], p[3]), p[3] })
+            Utils.Log(brain, 'experimental artillery shells the hidden enemy ACU under water (splash)')
         else
             IssueAttack({ a }, t)
         end

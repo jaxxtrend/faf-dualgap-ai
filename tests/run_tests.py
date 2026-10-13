@@ -1624,6 +1624,14 @@ return I.ACULost(300, 250, 1, 8), I.ACULost(300, 290, 1, 8), I.ACULost(300, 0, 1
 check(hb[0] and not hb[1] and not hb[2] and not hb[3],
       'a beaten enemy (base seen, next to nothing left) is hunted at once, any game time')
 
+sp = lua.execute(r"""
+local P = import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')
+return P.ArtilleryScore('ACU', 0, false, true, true, true), P.ArtilleryScore('ACU', 0, false, true, true, false),
+       P.ArtilleryScore('ACU', 1, false, true, true, true), P.ArtilleryScore('ENDER', 0, false, false, true, true)
+""")
+check(sp[0] > sp[3] and sp[1] == 0 and sp[2] == 0,
+      'MASTER: experimental artillery splashes a submerged ACU (top target); others still skip it')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted
