@@ -396,7 +396,7 @@ return function(role, kind, tech, counts)
     if tech >= 3 then f.cats.TECH3 = true; f.cats.TECH2 = nil end
     local ctx = { role = role, mainFactory = nil }
     local seen = {}
-    for i = 1, 6 do F.Produce(brain, ctx, f) end
+    for i = 1, 40 do F.Produce(brain, ctx, f) end
     return table.concat(built, ',')
 end
 """)
