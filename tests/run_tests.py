@@ -1600,6 +1600,16 @@ return A.AllInWanted(30, 20000, 5000), A.AllInWanted(30, 6000, 5000), A.AllInWan
 check(ai[0] and not ai[1] and not ai[2] and ai[3], 'all-in: a big army clearly stronger than the seen enemy (or a huge one) goes')
 check(ai[4] == 3 and ai[5] == 400 and ai[6] == 440 and ai[7] == 470, 'all-in: the enemy bases of the group, one after the other')
 
+sh = lua.execute(r"""
+local I = import('/mods/DualGapAI/lua/AI/DualGapIntel.lua')
+local hits = { { pos = { 100, 0, 100 }, at = 90 }, { pos = { 105, 0, 98 }, at = 95 }, { pos = { 102, 0, 104 }, at = 99 },
+               { pos = { 300, 0, 300 }, at = 99 }, { pos = { 100, 0, 100 }, at = 1 } }
+local s, n = I.ShelledSpot(hits, 100, 120, 25, 3)
+local s2 = I.ShelledSpot(hits, 400, 120, 25, 3)
+return s ~= nil and s[1] < 110, n, s2 == nil
+""")
+check(sh[0] and sh[1] == 4 and sh[2], 'shelling: the most hit spot of the last two minutes gets shields; old hits fade')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

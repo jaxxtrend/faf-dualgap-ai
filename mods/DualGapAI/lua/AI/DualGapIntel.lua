@@ -709,3 +709,35 @@ function Start(brain, ctx)
     StartScanner()
     ForkThread(Utils.RunLoop, 'Scouts', brain, ctx, 5, ScoutStep)
 end
+
+---------------------------------------------------------------------------
+-- Artillery fire on own structures (hook on Unit.OnDamage): where, when.
+---------------------------------------------------------------------------
+function RecordShelling(brain, pos)
+    local now = GetGameTimeSeconds()
+    brain.DGShellHits = brain.DGShellHits or {}
+    local list = brain.DGShellHits
+    -- One entry per spot and second is plenty.
+    local last = list[table.getn(list)]
+    if last and now - last.at < 1 and Utils.Dist2D(last.pos, pos) < 10 then return end
+    table.insert(list, { pos = { pos[1], pos[2], pos[3] }, at = now })
+    while table.getn(list) > 40 do table.remove(list, 1) end
+end
+
+-- Exposed for tests: the most shelled spot among hits {pos, at} within
+-- `memory` seconds of now: the hit with the most others within `radius`
+-- (and how many). nil when fewer than `min`.
+function ShelledSpot(hits, now, memory, radius, min)
+    local best, bestN
+    for _, h in ipairs(hits or {}) do
+        if now - h.at <= memory then
+            local n = 0
+            for _, o in ipairs(hits) do
+                if now - o.at <= memory and Utils.Dist2D(h.pos, o.pos) <= radius then n = n + 1 end
+            end
+            if not bestN or n > bestN then best, bestN = h.pos, n end
+        end
+    end
+    if not bestN or bestN < min then return nil, 0 end
+    return best, bestN
+end

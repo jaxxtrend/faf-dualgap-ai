@@ -996,8 +996,36 @@ local function PlanBasePass(brain, ctx)
     PlanCluster(brain, ctx, 'PassPD', 'PointDefenseT2', CatPDs, Utils.ToWorld(mid, ctx.side), Config.PassPDs, 20, 1)
 end
 
+-- Shelled: shields over the spot the enemy artillery keeps hitting (urgent),
+-- seen or not where it fires from.
+local function PlanShelledShields(brain, ctx)
+    local spot, n = Intel.ShelledSpot(brain.DGShellHits, GetGameTimeSeconds(), Config.ShelledMemory,
+        Config.ShelledRadius, Config.ShelledMinHits)
+    if not spot or Find(ctx, 'ShelledShield') then return end
+    local t3 = TopFactoryTech(brain) >= 3 and HasT3Engineer(brain)
+    local key = t3 and 'ShieldT3' or 'ShieldT2'
+    local want = t3 and Config.ShelledShieldsT3 or Config.ShelledShieldsT2
+    local site = { spot[1], GetSurfaceHeight(spot[1], spot[3]), spot[3] }
+    local have = Utils.CountAround(brain, categories.SHIELD * categories.STRUCTURE, site, Config.ShelledRadius, 'Ally')
+    if have < want then
+        local p = Add(brain, ctx, { name = 'ShelledShield', key = key, site = site, count = want - have, crewMax = 4,
+            minCrewTech = 2, gap = 2, maxRadius = Config.ShelledRadius, priority = 1 })
+        if p then
+            Utils.Log(brain, string.format('shelled by artillery (%d hits at %d,%d): shields over it', n,
+                math.floor(spot[1]), math.floor(spot[3])))
+        end
+    end
+end
+
+-- The base is being shelled right now (any artillery, scouted or not).
+local function BaseShelled(brain, ctx)
+    local spot = Intel.ShelledSpot(brain.DGShellHits, GetGameTimeSeconds(), Config.ShelledMemory,
+        Config.ShelledRadius, Config.ShelledMinHits)
+    return spot ~= nil and Utils.Dist2D(spot, ctx.startPos) <= Config.UpkeepRadius
+end
+
 local function PlanBaseShields(brain, ctx)
-    local arty = table.getn(Intel.Enders(ctx.side, 'ARTY')) > 0
+    local arty = table.getn(Intel.Enders(ctx.side, 'ARTY')) > 0 or BaseShelled(brain, ctx)
     for _, s in ipairs(ShieldPlan(TopFactoryTech(brain), arty)) do
         -- T2 points count any shield (an upgraded one is still there),
         -- T3 points want a heavy one.
@@ -1702,6 +1730,7 @@ local function PlannerStep(brain, ctx)
     PlanAntiNuke(brain, ctx)
     PlanYolonaDefense(brain, ctx)
     PlanBaseShields(brain, ctx)
+    PlanShelledShields(brain, ctx)
     PlanExperimentals(brain, ctx)
     WeaponsStep(brain, ctx)
     UpgradeShields(brain, ctx)

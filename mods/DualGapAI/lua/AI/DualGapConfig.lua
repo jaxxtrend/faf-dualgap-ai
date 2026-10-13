@@ -947,3 +947,14 @@ AllInMinUnits   = 25
 AllInUnits      = 80
 AllInRatio      = 2.0
 AllInBaseRadius = 160
+
+-- Shelled (any artillery hitting own structures, DualGapIntel.ShelledSpot):
+-- ShelledMinHits hits within ShelledRadius over the last ShelledMemory
+-- seconds -> ShelledShieldsT2 / ShelledShieldsT3 shields over that spot
+-- (urgent); in the base it also raises the heavy shield ring
+-- (BaseShieldsVsArty) as scouted enemy T3 artillery does.
+ShelledMemory    = 120
+ShelledRadius    = 25
+ShelledMinHits   = 3
+ShelledShieldsT2 = 2
+ShelledShieldsT3 = 3
