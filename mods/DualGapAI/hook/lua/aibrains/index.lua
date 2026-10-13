@@ -6,7 +6,7 @@
 if keyToBrain then
     local plain = keyToBrain['dualgap'] or keyToBrain['adaptive'] or keyToBrain['medium']
     local cheat = keyToBrain['dualgapcheat'] or keyToBrain['adaptivecheat'] or plain
-    for _, level in ipairs({ '', 'easy', 'normal', 'hard' }) do
+    for _, level in ipairs({ '', 'easy', 'normal', 'hard', 'master' }) do
         keyToBrain['dualgap' .. level] = keyToBrain['dualgap' .. level] or plain
         keyToBrain['dualgap' .. level .. 'cheat'] = keyToBrain['dualgap' .. level .. 'cheat'] or cheat
     end

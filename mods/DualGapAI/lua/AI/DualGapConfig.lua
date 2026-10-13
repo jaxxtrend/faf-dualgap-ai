@@ -657,6 +657,11 @@ Levels = {
                banked = true, bankedMax = 6, nukes = true },
     EXPERT = { slow = 1.0, staffNoise = 0, commands = true, micro = true, advanced = true,
                banked = true, bankedMax = 8, nukes = true },
+    -- Expert plus the attack on the move (moveFire): direct-fire land units
+    -- walk and shoot instead of stopping in front of the enemy, fleets strafe
+    -- back and forth, weapons pick targets by priority.
+    MASTER = { slow = 1.0, staffNoise = 0, commands = true, micro = true, advanced = true,
+               banked = true, bankedMax = 8, nukes = true, moveFire = true },
 }
 
 -- Air routes: strikes and mass attacks fly the line (direct or a dog-leg to
@@ -854,3 +859,19 @@ RaidMaxEnemyMass  = 300
 -- AirFocusSeconds: { name, weight } (DualGapStyle.FocusOrder).
 AirFocusWeights = { { 'ECO', 0.4 }, { 'MEX', 0.3 }, { 'STATIC', 0.3 } }
 AirFocusSeconds = 180
+
+-- Attack on the move (level MASTER): a land wave hunting a mobile target
+-- walks MoveThroughOvershoot past it (shooting all the way) instead of
+-- stopping in front of it; structures are still attack-moved (stop and
+-- kill). A fleet strafes: NavalStrafeLegs moves back and forth across the
+-- target at NavalStrafeRange from it, NavalStrafeWidth wide.
+MoveThroughOvershoot = 25
+NavalStrafeRange     = 45
+NavalStrafeWidth     = 30
+NavalStrafeLegs      = 6
+-- Weapon target priorities (level MASTER), first match first.
+LandTargetPriorities = { 'COMMAND', 'EXPERIMENTAL', 'MOBILE LAND TECH3 DIRECTFIRE', 'MOBILE LAND INDIRECTFIRE',
+    'MOBILE LAND DIRECTFIRE', 'MOBILE LAND ANTIAIR', 'STRUCTURE DEFENSE DIRECTFIRE', 'ENGINEER', 'MOBILE LAND',
+    'STRUCTURE', 'ALLUNITS' }
+NavalTargetPriorities = { 'EXPERIMENTAL NAVAL', 'NAVAL MOBILE TECH3', 'NAVAL MOBILE TECH2', 'COMMAND', 'NAVAL MOBILE',
+    'STRUCTURE DEFENSE', 'STRUCTURE', 'ALLUNITS' }

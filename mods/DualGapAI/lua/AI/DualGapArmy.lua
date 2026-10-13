@@ -191,24 +191,62 @@ local function Perp(from, to)
     return -dz / len, dx / len
 end
 
--- Formation attack-move through waypoints, facing along the path.
+-- Exposed for tests: does this unit walk and shoot (moving = level MASTER)
+-- rather than attack-move? Artillery and missile launchers can't fire on
+-- the move: they still stop.
+function FiresOnMove(moving, indirect)
+    return moving == true and not indirect
+end
+
+-- Weapon target priorities (level MASTER), set once per unit; anti-air
+-- weapons keep their own.
+local function SetPriorities(u)
+    if u.DGPrio then return end
+    u.DGPrio = true
+    local list = EntityCategoryContains(categories.NAVAL, u) and Config.NavalTargetPriorities or Config.LandTargetPriorities
+    local n = (u.GetWeaponCount and u:GetWeaponCount()) or 0
+    for i = 1, n do
+        local w = u:GetWeapon(i)
+        local bp = w and w.GetBlueprint and w:GetBlueprint()
+        local rc = bp and bp.RangeCategory
+        if w and w.SetWeaponPriorities and rc ~= 'UWRC_AntiAir' then pcall(w.SetWeaponPriorities, w, list) end
+    end
+end
+
+-- Formation moves through waypoints, facing along the path: attack-move,
+-- or (moving: level MASTER) a plain move for the units that fire on the
+-- move - they shoot whatever comes in range and keep walking, a moving
+-- target is harder to hit than one standing in front of the enemy.
 -- Experimentals don't join the formation: each walks its own copy of the
 -- path shifted sideways by SpreadOffsets.
-function FormationPath(units, path, from)
+function FormationPath(units, path, from, moving)
     units = Utils.FilterAlive(units)
     if table.getn(units) == 0 or table.getn(path) == 0 then return end
     IssueClearCommands(units)
-    local exps, rest = {}, {}
+    local exps, movers, stoppers = {}, {}, {}
     for _, u in ipairs(units) do
-        if EntityCategoryContains(categories.EXPERIMENTAL, u) then table.insert(exps, u) else table.insert(rest, u) end
+        if EntityCategoryContains(categories.EXPERIMENTAL, u) then
+            table.insert(exps, u)
+        elseif FiresOnMove(moving, EntityCategoryContains(categories.INDIRECTFIRE * categories.LAND, u)) then
+            SetPriorities(u)
+            table.insert(movers, u)
+        else
+            table.insert(stoppers, u)
+        end
     end
     local start = from or Centroid(units)
-    if table.getn(rest) > 0 then
-        local prev = start
-        for _, wp in ipairs(path) do
-            local p = { wp[1], GetSurfaceHeight(wp[1], wp[3]), wp[3] }
-            IssueFormAggressiveMove(rest, p, 'AttackFormation', Utils.FacingDegrees(prev, p))
-            prev = p
+    for _, group in ipairs({ movers, stoppers }) do
+        if table.getn(group) > 0 then
+            local prev = start
+            for _, wp in ipairs(path) do
+                local p = { wp[1], GetSurfaceHeight(wp[1], wp[3]), wp[3] }
+                if group == movers then
+                    IssueFormMove(group, p, 'AttackFormation', Utils.FacingDegrees(prev, p))
+                else
+                    IssueFormAggressiveMove(group, p, 'AttackFormation', Utils.FacingDegrees(prev, p))
+                end
+                prev = p
+            end
         end
     end
     -- Experimentals walk (they shoot on the move) instead of attack-moving:
@@ -299,6 +337,62 @@ function ForwardOk(side, c, p)
     return (p[1] - c[1]) * dir >= -Config.HuntBehindMax
 end
 
+function MoveFire(ctx)
+    return Utils.Level(ctx).moveFire == true
+end
+
+-- Exposed for tests: the point a moving wave walks to - through a mobile
+-- target, `over` beyond it on the line from the wave.
+function ThroughPoint(c, t, over)
+    local dx, dz = t[1] - c[1], t[3] - c[3]
+    local len = math.sqrt(dx * dx + dz * dz)
+    if len < 1 then return { t[1], t[2], t[3] } end
+    return { t[1] + dx / len * over, t[2], t[3] + dz / len * over }
+end
+
+-- Exposed for tests: a fleet's strafe around a target: legs back and
+-- forth across the line wave -> target, `range` short of the target.
+function StrafeLegs(c, t, range, width, legs)
+    local dx, dz = c[1] - t[1], c[3] - t[3]
+    local len = math.sqrt(dx * dx + dz * dz)
+    if len < 1 then dx, dz, len = 1, 0, 1 end
+    local ux, uz = dx / len, dz / len
+    local sx, sz = t[1] + ux * range, t[3] + uz * range
+    local px, pz = -uz, ux
+    local out = {}
+    for i = 1, legs do
+        local s = ((i - 2 * math.floor(i / 2)) == 1) and 1 or -1
+        table.insert(out, { sx + px * width / 2 * s, 0, sz + pz * width / 2 * s })
+    end
+    return out
+end
+
+-- Level MASTER: land waves walk through mobile targets shooting (and stop
+-- for structures - those don't dodge and need killing); fleets strafe.
+function HuntOnTheMove(brain, wave, c, t, e)
+    local structure = e and EntityCategoryContains(categories.STRUCTURE, e)
+    if wave.kind == 'NAVAL' then
+        local legs = StrafeLegs(c, t, Config.NavalStrafeRange, Config.NavalStrafeWidth, Config.NavalStrafeLegs)
+        local ok = true
+        for _, p in ipairs(legs) do
+            if Utils.WaterDepth(p[1], p[3]) < 1.5 then ok = false; break end
+        end
+        if not ok then
+            FormationPath(wave.units, { t }, c, false)
+            return
+        end
+        IssueClearCommands(wave.units)
+        for _, u in ipairs(wave.units) do SetPriorities(u) end
+        for _, p in ipairs(legs) do IssueMove(wave.units, { p[1], GetSurfaceHeight(p[1], p[3]), p[3] }) end
+        return
+    end
+    if structure or not e then
+        FormationPath(wave.units, { t }, c, false)
+        return
+    end
+    FormationPath(wave.units, { ThroughPoint(c, t, Config.MoveThroughOvershoot) }, c, true)
+end
+
 local function HuntTarget(brain, ctx, wave, c)
     -- Scouted game enders first, then anything known.
     if wave.kind == 'NAVAL' then
@@ -318,7 +412,7 @@ local function HuntTarget(brain, ctx, wave, c)
             if not bestD or d < bestD then best, bestD = e, d end
         end
     end
-    if best then return best:GetPosition() end
+    if best then return best:GetPosition(), best end
     -- Nothing known: search. Fleets sweep the enemy's deep water (sonar finds
     -- a hidden ACU), land waves walk to a random enemy base.
     -- Fleets go where the hidden ACU most likely is; each fleet takes the
@@ -427,12 +521,12 @@ local function UpdateWaves(brain, ctx)
                 local ntask = NavalCmd.Task(ctx.side, brain.Name)
                 if ntask and ntask.mode == 'DEFEND' and InEnemyHalf(ctx.side, c) and not wave.ender then
                     Utils.Log(brain, 'fleet falls back to the rally (naval command: DEFEND)')
-                    FormationPath(wave.units, { Routes.GetPoint('NavalRally', ctx.side) }, c)
+                    FormationPath(wave.units, { Routes.GetPoint('NavalRally', ctx.side) }, c, MoveFire(ctx))
                     wave.stage = 'retreat'
                 elseif NavalStrength(enemy) > 1.5 * NavalStrength(wave.units) then
                     ctx.navalThreat = { pos = c, at = GetGameTimeSeconds() }
                     Utils.Log(brain, 'fleet falls back: stronger enemy fleet ahead')
-                    FormationPath(wave.units, { Routes.GetPoint('NavalRally', ctx.side) }, c)
+                    FormationPath(wave.units, { Routes.GetPoint('NavalRally', ctx.side) }, c, MoveFire(ctx))
                     wave.stage = 'retreat'
                 end
             end
@@ -441,7 +535,7 @@ local function UpdateWaves(brain, ctx)
             local task = (wave.kind == 'LAND') and LandCmd.Task(ctx.side, brain.Name)
             if task and task.mode == 'DEFEND' and wave.stage ~= 'regroup' and not wave.defending
                 and InEnemyHalf(ctx.side, c) then
-                FormationPath(wave.units, { LandRally(ctx, task) }, c)
+                FormationPath(wave.units, { LandRally(ctx, task) }, c, MoveFire(ctx))
                 wave.stage = 'regroup'
                 Utils.Log(brain, 'land wave of ' .. table.getn(wave.units) .. ' falls back to the wall (land command: DEFEND)')
             end
@@ -456,10 +550,14 @@ local function UpdateWaves(brain, ctx)
                     wave.units = {}
                 else
                     wave.stage = 2
-                    local t = HuntTarget(brain, ctx, wave, c)
+                    local t, e = HuntTarget(brain, ctx, wave, c)
                     if t then
                         wave.lastTarget = t
-                        FormationPath(wave.units, { t }, c)
+                        if MoveFire(ctx) then
+                            HuntOnTheMove(brain, wave, c, t, e)
+                        else
+                            FormationPath(wave.units, { t }, c, MoveFire(ctx))
+                        end
                     end
                 end
             end
@@ -526,7 +624,7 @@ local function HelpLand(brain, ctx)
     for _, u in ipairs(FreeUnits(brain, CatLandDF)) do table.insert(ready, u) end
     if Utils.Count(ready) < Config.HelpWaveMin then return false end
     Claim(ready)
-    FormationPath(ready, { d.pos }, Centroid(ready))
+    FormationPath(ready, { d.pos }, Centroid(ready), MoveFire(ctx))
     table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1 })
     Utils.Log(brain, 'land wave of ' .. Utils.Count(ready) .. ' goes to help ' .. d.name)
     Comms.Say(brain, ctx.side, 'help:' .. brain.Name, 'Coming to help with ' .. Utils.Count(ready) .. ' units!', d.pos, 'move')
@@ -542,7 +640,7 @@ local function HelpNaval(brain, ctx)
     local ready = FreeUnits(brain, CatNaval)
     if Utils.Count(ready) < 3 then return false end
     Claim(ready)
-    FormationPath(ready, { water }, Centroid(ready))
+    FormationPath(ready, { water }, Centroid(ready), MoveFire(ctx))
     table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1 })
     Utils.Log(brain, 'fleet of ' .. Utils.Count(ready) .. ' goes to help ' .. d.name)
     return true
@@ -719,7 +817,7 @@ local function LandStep(brain, ctx)
         and WaveReady(ready, size) then
         local to = LandCmd.ZonePoint(task.support, ctx.side, task.line)
         Claim(ready)
-        FormationPath(ready, { to }, rally)
+        FormationPath(ready, { to }, rally, MoveFire(ctx))
         table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1 })
         Utils.Log(brain, 'land wave of ' .. Utils.Count(ready) .. ' supports the ' .. task.support .. ' mid (land command)')
     elseif not holdBack and (WaveReady(ready, size) or (enemyAtWall and Utils.Count(ready) >= 4)) then
@@ -743,7 +841,7 @@ local function LandStep(brain, ctx)
         elseif ctx.enemyGroundBase then table.insert(path, ctx.enemyGroundBase) end
         path = OrderPath(Centroid(ready), path)
         Claim(ready)
-        FormationPath(ready, path, rally)
+        FormationPath(ready, path, rally, MoveFire(ctx))
         table.insert(ctx.waves, { units = ready, kind = 'LAND', stage = 1, defending = enemyAtWall })
         Utils.Log(brain, 'land wave of ' .. Utils.Count(ready) .. (enemyAtWall and ' (defending)' or (' (' .. ctx.manoeuvre .. ')')))
         ctx.manoeuvre = nil
@@ -766,7 +864,7 @@ local function LandStep(brain, ctx)
     if Utils.Count(arty) >= Config.ArtyWaveSize and landWaveOut then
         local zone = (ctx.groundArc == 'GroundArcSouth') and 'ChokeLower' or 'ChokeUpper'
         Claim(arty)
-        FormationPath(arty, { ctx.choke, Routes.GetPoint(zone, OtherSide(ctx.side)) }, staging)
+        FormationPath(arty, { ctx.choke, Routes.GetPoint(zone, OtherSide(ctx.side)) }, staging, MoveFire(ctx))
         table.insert(ctx.waves, { units = arty, kind = 'LAND', stage = 1 })
     end
 end
@@ -875,7 +973,7 @@ local function NavalStep(brain, ctx)
         local enemy = OtherSide(ctx.side)
         if enderWater then
             Claim(ready)
-            FormationPath(ready, { Routes.GetPoint('BasinCenter', ctx.side), enderWater }, rally)
+            FormationPath(ready, { Routes.GetPoint('BasinCenter', ctx.side), enderWater }, rally, MoveFire(ctx))
             table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1, ender = true })
             Utils.Log(brain, 'fleet of ' .. Utils.Count(ready) .. ' sails for the enemy game ender')
             Comms.Say(brain, ctx.side, 'fleet:' .. brain.Name, 'Fleet going for their game ender.', enderWater, 'attack')
@@ -887,7 +985,7 @@ local function NavalStep(brain, ctx)
             local own = MidWater(ctx.side)
             if own then
                 Claim(ready)
-                FormationPath(ready, { own }, rally)
+                FormationPath(ready, { own }, rally, MoveFire(ctx))
                 table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1 })
                 Utils.Log(brain, 'fleet of ' .. Utils.Count(ready) .. ' sails to the own mid (naval command: SUPPORT_MID)')
                 return
@@ -904,7 +1002,7 @@ local function NavalStep(brain, ctx)
         end
         ctx.navalThreat = nil
         Claim(ready)
-        FormationPath(ready, { Routes.GetPoint('BasinCenter', ctx.side), Routes.GetPoint('NavalRally', enemy) }, rally)
+        FormationPath(ready, { Routes.GetPoint('BasinCenter', ctx.side), Routes.GetPoint('NavalRally', enemy) }, rally, MoveFire(ctx))
         table.insert(ctx.waves, { units = ready, kind = 'NAVAL', stage = 1 })
         Utils.Log(brain, 'fleet of ' .. Utils.Count(ready) .. ' sails')
         Comms.Say(brain, ctx.side, 'fleet:' .. brain.Name, 'Fleet of ' .. Utils.Count(ready) .. ' moving out.',

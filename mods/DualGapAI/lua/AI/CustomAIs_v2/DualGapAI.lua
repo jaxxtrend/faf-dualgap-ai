@@ -37,7 +37,7 @@ local function Entry(key, name, rating, cheat)
     return e
 end
 
-local Ratings = { easy = 300, normal = 500, hard = 700, expert = 850 }
+local Ratings = { easy = 300, normal = 500, hard = 700, expert = 850, master = 1000 }
 
 AI = {
     Name = "DualGap AI",
@@ -47,11 +47,13 @@ AI = {
         Entry('dualgapnormal', "AI: DualGap Normal", Ratings.normal),
         Entry('dualgaphard',   "AI: DualGap Hard",   Ratings.hard),
         Entry('dualgap',       "AI: DualGap Expert", Ratings.expert),
+        Entry('dualgapmaster', "AI: DualGap Master", Ratings.master),
     },
     CheatAIList = {
         Entry('dualgapeasycheat',   "AIx: DualGap Easy",   Ratings.easy, true),
         Entry('dualgapnormalcheat', "AIx: DualGap Normal", Ratings.normal, true),
         Entry('dualgaphardcheat',   "AIx: DualGap Hard",   Ratings.hard, true),
         Entry('dualgapcheat',       "AIx: DualGap Expert", Ratings.expert, true),
+        Entry('dualgapmastercheat', "AIx: DualGap Master", Ratings.master, true),
     },
 }

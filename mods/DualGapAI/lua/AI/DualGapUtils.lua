@@ -514,6 +514,7 @@ end
 -- (the original key) is Expert.
 function ParseLevel(personality)
     local p = string.lower(personality or '')
+    if string.find(p, 'master', 1, true) then return 'MASTER' end
     if string.find(p, 'easy', 1, true) then return 'EASY' end
     if string.find(p, 'normal', 1, true) then return 'NORMAL' end
     if string.find(p, 'hard', 1, true) then return 'HARD' end

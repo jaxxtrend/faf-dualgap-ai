@@ -1520,6 +1520,22 @@ check(sy[11] == 'FRONT' and sy[12] == 'OUTER' and sy[13] == 'INNER' and sy[14] =
 check(sy[18] == 'ECO' and sy[19] == 'MEX' and sy[20] == 'STATIC' and sy[21] == 'mex', 'bombers focus rolls between economy, mexes and static')
 check(sy[22] and not sy[23] and not sy[24] and sy[25], 'raids only go for unguarded mexes')
 
+mf = lua.execute(r"""
+local A = import('/mods/DualGapAI/lua/AI/DualGapArmy.lua')
+local U = import('/mods/DualGapAI/lua/AI/DualGapUtils.lua')
+local p = A.ThroughPoint({ 0, 0, 0 }, { 100, 0, 0 }, 25)
+local legs = A.StrafeLegs({ 200, 0, 0 }, { 100, 0, 0 }, 45, 30, 4)
+return A.FiresOnMove(true, false), A.FiresOnMove(true, true), A.FiresOnMove(false, false), A.FiresOnMove(nil, false),
+       p[1], legs[1][1], legs[1][3], legs[2][3], table.getn(legs),
+       U.ParseLevel('dualgapmaster'), U.ParseLevel('dualgapmastercheat'), U.ParseLevel('dualgap'),
+       U.Level({ level = 'MASTER' }).moveFire, U.Level({ level = 'EXPERT' }).moveFire
+""")
+check(mf[0] and not mf[1] and not mf[2] and not mf[3], 'MASTER: direct-fire units walk and shoot, artillery still stops; other levels attack-move')
+check(mf[4] == 125 and mf[5] == 145 and mf[6] == 15 and mf[7] == -15 and mf[8] == 4,
+      'MASTER: waves walk through a mobile target; fleets strafe across it at range')
+check(mf[9] == 'MASTER' and mf[10] == 'MASTER' and mf[11] == 'EXPERT' and mf[12] and not mf[13],
+      'lobby key dualgapmaster -> level MASTER (Expert + attack on the move)')
+
 print('\nIntel structures')
 P = lua.execute("return import('/mods/DualGapAI/lua/AI/DualGapProjects.lua')")
 W = P.IntelUpgradeWanted

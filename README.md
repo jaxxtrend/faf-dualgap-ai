@@ -38,7 +38,7 @@ If you like the project and want to see where it goes next, follow and support i
    The bots appear in the AI list only while the mod is enabled.
 
 ## Difficulty
-Each slot can get its own level: **AI: DualGap Easy / Normal / Hard / Expert** (and **AIx: DualGap …**, the cheating versions with extra resources).
+Each slot can get its own level: **AI: DualGap Easy / Normal / Hard / Expert / Master** (and **AIx: DualGap …**, the cheating versions with extra resources).
 
 | Level | What it means |
 |---|---|
@@ -46,6 +46,7 @@ Each slot can get its own level: **AI: DualGap Easy / Normal / Hard / Expert** (
 | Normal | Team commands with a rough staff estimate (±20%), ACU survival tricks, some banked spending |
 | Hard | Nearly full speed, staff estimate ±10%, air sweeps, bomber follow-ups, every fighter on an enemy air T4 |
 | Expert | The full bot (the old "AI: DualGap (beta)") |
+| Master | Expert plus attack on the move: direct-fire land units walk and shoot instead of stopping in front of the enemy (they still stop for structures; artillery always stops), fleets strafe back and forth, weapons pick targets by priority |
 
 The settings of each level are the `Levels` table at the end of [DualGapConfig.lua](mods/DualGapAI/lua/AI/DualGapConfig.lua).
 
