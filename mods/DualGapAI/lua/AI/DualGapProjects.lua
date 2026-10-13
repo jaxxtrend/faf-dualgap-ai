@@ -923,13 +923,15 @@ local function KnownMass(brain, cat, pos, radius)
     return mass, { cx / n, 0, cz / n }
 end
 
-local function PlanSiegeCluster(brain, ctx, name, key, have, site, want, near, minTech)
+-- Plans what is missing; says `why` only when it plans something.
+local function PlanSiegeCluster(brain, ctx, name, key, have, site, want, near, minTech, why)
     if Find(ctx, name) then return end
     site[2] = GetSurfaceHeight(site[1], site[3])
     local n = Utils.CountAround(brain, have, site, near, 'Ally')
     if n < want then
-        Add(brain, ctx, { name = name, key = key, site = site, count = want - n, crewMax = 4,
+        local p = Add(brain, ctx, { name = name, key = key, site = site, count = want - n, crewMax = 4,
             minCrewTech = minTech, gap = 1, maxRadius = near, priority = 1 })
+        if p then Utils.Log(brain, why) end
     end
 end
 
@@ -942,19 +944,13 @@ local function PlanSiegeDefense(brain, ctx)
     local tech = TopFactoryTech(brain)
     if wantPD and landAt then
         local key = (tech >= 2) and 'PointDefenseT2' or 'PointDefenseT1'
-        if not Find(ctx, 'SiegePD') then
-            Utils.Log(brain, string.format('besieged by land (~%d mass): point defences toward them', landMass))
-        end
         PlanSiegeCluster(brain, ctx, 'SiegePD', key, CatPDs, SiegeSite(base, landAt, Config.SiegePDOffset),
-            Config.SiegePDs, 18, 1)
+            Config.SiegePDs, 18, 1, string.format('besieged by land (~%d mass): point defences toward them', landMass))
     end
     if wantTMD and tech >= 2 then
         local from = navalAt or tmlAt
-        if not Find(ctx, 'SiegeTMD') then
-            Utils.Log(brain, 'missiles / warships at the base: tactical missile defence')
-        end
         PlanSiegeCluster(brain, ctx, 'SiegeTMD', 'TMD', CatTMDs, SiegeSite(base, from, Config.SiegeTMDOffset),
-            Config.SiegeTMDs, 25, 2)
+            Config.SiegeTMDs, 25, 2, 'missiles / warships at the base: tactical missile defence')
     end
     if wantTorp then
         if ctx.baseWater == nil then
@@ -962,11 +958,9 @@ local function PlanSiegeDefense(brain, ctx)
         end
         if ctx.baseWater then
             local key, t = TorpedoKey(brain)
-            if not Find(ctx, 'SiegeTorpedo') then
-                Utils.Log(brain, string.format('besieged by sea (~%d mass): torpedo launchers', navalMass))
-            end
             PlanSiegeCluster(brain, ctx, 'SiegeTorpedo', key, CatTorps,
-                { ctx.baseWater[1], ctx.baseWater[2], ctx.baseWater[3] }, Config.SiegeTorpedoes, 25, t)
+                { ctx.baseWater[1], ctx.baseWater[2], ctx.baseWater[3] }, Config.SiegeTorpedoes, 25, t,
+                string.format('besieged by sea (~%d mass): torpedo launchers', navalMass))
         end
     end
 end

@@ -333,7 +333,10 @@ local function SafetyStep(brain, ctx)
         local now = GetGameTimeSeconds()
         -- No base left: out of the water to rebuild it while the start area
         -- is clear of seen enemies; back under at the first sight of one.
-        if Homeless(brain) then
+        -- (Only once there was a base: at the start nothing stands yet.)
+        local homeless = Homeless(brain)
+        if not homeless then ctx.hadBase = true end
+        if homeless and ctx.hadBase then
             local enemyNear = KnownCount(brain, CatEnemyTargets, ctx.startPos, Config.RebuildClearRadius) > 0
                 or KnownCount(brain, CatEnemyTargets, pos, Config.RebuildClearRadius / 2) > 0
                 or KnownCount(brain, CatEnemyWarship, ctx.startPos, Config.RebuildClearRadius) > 0
